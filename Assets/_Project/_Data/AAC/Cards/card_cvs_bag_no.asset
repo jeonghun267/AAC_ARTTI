@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c12b4f431134aa0418b1ad7f0114e362, type: 3}
+  m_Name: card_cvs_bag_no
+  m_EditorClassIdentifier: Assembly-CSharp::Artti.AAC.AACCard
+  id: card_cvs_bag_no
+  symbol: {fileID: 11400000, guid: b4fa319140295c84ebfd293b086bf9e1, type: 2}
+  phrase: {fileID: 11400000, guid: fd054ca9c06bc7a4e99558eef2a004b6, type: 2}
+  applicableScenarios:
+  - convenience
+  applicableObjectives:
+  - extras
+  tags:
+  - bag
+  - no
+  branchId: 
+  priorityHint: 1

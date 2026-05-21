@@ -1,0 +1,23 @@
+{
+    "asset": "2cd538086360cab4d88303238a943953",
+    "fileName": "019e1a30-3247-7032-93ba-b72aaf6a61ce.glb",
+    "prompt": "A low-poly stylized interior of a modern convenience store. High detail.",
+    "negativePrompt": "",
+    "model": "model3d-tripo-p1",
+    "modelName": "Tripo P1",
+    "customSeed": -1,
+    "w3CTraceId": "",
+    "feedback": 0,
+    "refinementMode": "Generation",
+    "promptImageReferenceGuid": "82af28d871017904f90894eb1afbd535",
+    "modelReferenceGuid": "",
+    "multiviewFrontGuid": "",
+    "multiviewBackGuid": "",
+    "multiviewLeftGuid": "",
+    "multiviewRightGuid": "",
+    "multiviewTopGuid": "",
+    "multiviewBottomGuid": "",
+    "multiviewLeftFrontGuid": "",
+    "multiviewRightFrontGuid": "",
+    "faceLimit": -1
+}

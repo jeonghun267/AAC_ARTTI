@@ -1,0 +1,23 @@
+{
+    "asset": "0d77bd04662b34b41b462628a09300b0",
+    "fileName": "019e1a30-4e53-79cb-a17c-d0ce3a927b23.glb",
+    "prompt": "A low-poly stylized interior of a clean pharmacy. High detail.",
+    "negativePrompt": "",
+    "model": "model3d-tripo-p1",
+    "modelName": "Tripo P1",
+    "customSeed": -1,
+    "w3CTraceId": "",
+    "feedback": 0,
+    "refinementMode": "Generation",
+    "promptImageReferenceGuid": "54f2f70877d707e4ab082fe536af7a32",
+    "modelReferenceGuid": "",
+    "multiviewFrontGuid": "",
+    "multiviewBackGuid": "",
+    "multiviewLeftGuid": "",
+    "multiviewRightGuid": "",
+    "multiviewTopGuid": "",
+    "multiviewBottomGuid": "",
+    "multiviewLeftFrontGuid": "",
+    "multiviewRightFrontGuid": "",
+    "faceLimit": -1
+}

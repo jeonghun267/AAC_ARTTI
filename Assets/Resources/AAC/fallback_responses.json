@@ -1,0 +1,86 @@
+{
+  "_comment": "PLAN.MD v3 section 11.3.4 - Pre-defined safe NPC lines for when LLM fails, times out, or input is unintelligible. Random-select from the array for the matching condition.",
+  "fallbacks": [
+    {
+      "scenario_id": "pharmacy",
+      "responses": {
+        "llm_call_failed": [
+          "잠시만요, 다시 한 번 말씀해주세요.",
+          "죄송합니다, 잘 못 들었어요. 다시 한 번요.",
+          "한 번 더 천천히 말씀해주실 수 있어요?"
+        ],
+        "stt_empty": [
+          "카드를 다시 골라보세요.",
+          "어떤 게 필요하신지 카드를 눌러주세요."
+        ],
+        "turn_limit_reached": [
+          "오늘은 여기까지 도와드릴게요. 두통약 드릴게요. 안녕히 가세요.",
+          "필요한 약 챙겨드렸어요. 안녕히 가세요."
+        ],
+        "user_distressed_no_llm": [
+          "괜찮아요, 천천히 하셔도 돼요.",
+          "급하지 않아요. 편하게 말씀하세요."
+        ],
+        "default": [
+          "네, 잘 알겠습니다.",
+          "조금만 더 자세히 알려주실 수 있어요?"
+        ]
+      }
+    },
+    {
+      "scenario_id": "convenience",
+      "responses": {
+        "llm_call_failed": [
+          "잠깐만요, 다시 한 번 말씀해주세요.",
+          "죄송해요, 한 번 더요.",
+          "다시 한 번만 천천히 말씀해주세요."
+        ],
+        "stt_empty": [
+          "사고 싶은 걸 카드로 골라주세요.",
+          "어떤 게 필요하신가요? 카드를 눌러주세요."
+        ],
+        "turn_limit_reached": [
+          "계산 완료됐어요. 안녕히 가세요.",
+          "여기 영수증 드릴게요. 안녕히 가세요."
+        ],
+        "user_distressed_no_llm": [
+          "괜찮아요, 천천히 하셔도 돼요.",
+          "급하지 않으니까 편하게 하세요."
+        ],
+        "default": [
+          "네, 알겠습니다.",
+          "어떤 거 드릴까요?"
+        ]
+      }
+    },
+    {
+      "scenario_id": "restaurant",
+      "responses": {
+        "llm_call_failed": [
+          "잠시만요, 다시 한 번 말씀해주세요.",
+          "죄송해요, 한 번 더 말씀해주실 수 있어요?",
+          "다시 한 번 천천히 말씀해주세요."
+        ],
+        "stt_empty": [
+          "메뉴 보고 카드로 골라주세요.",
+          "어떤 메뉴 드시고 싶으세요? 카드를 눌러주세요."
+        ],
+        "turn_limit_reached": [
+          "주문 받았어요. 김치찌개 준비해드릴게요. 잠시만 기다려주세요.",
+          "주문하신 거 곧 나옵니다. 맛있게 드세요."
+        ],
+        "user_distressed_no_llm": [
+          "괜찮아요, 천천히 하셔도 돼요.",
+          "급하지 않으니까 편하게 보세요."
+        ],
+        "allergy_unconfirmed": [
+          "알레르기 정보가 확실하지 않으니까 직원에게 직접 한 번 더 확인해주세요."
+        ],
+        "default": [
+          "네, 알겠습니다.",
+          "어떤 메뉴로 드릴까요?"
+        ]
+      }
+    }
+  ]
+}

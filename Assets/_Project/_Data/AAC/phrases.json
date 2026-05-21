@@ -1,0 +1,28 @@
+{
+  "_comment": "PLAN.MD v3 section 7.2.5~7.2.7 - Phrase Library. register: Polite/Casual, lengthClass: Short/Medium/Long",
+  "phrases": [
+    { "id": "phr_greeting", "text": "안녕하세요", "tts_text": "안녕하세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_med_headache", "text": "두통약 주세요", "tts_text": "두통약 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_med_cold", "text": "감기약 주세요", "tts_text": "감기약 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_med_indigest", "text": "소화제 주세요", "tts_text": "소화제 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_sym_stomach_pain", "text": "배가 아파요", "tts_text": "배가 아파요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_sym_indigestion", "text": "체한 것 같아요", "tts_text": "체한 것 같아요", "register": "Polite", "length_class": "Medium" },
+    { "id": "phr_sym_diarrhea", "text": "설사를 해요", "tts_text": "설사를 해요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_pay_card", "text": "카드로 낼게요", "tts_text": "카드로 결제할게요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_pay_cash", "text": "현금으로 낼게요", "tts_text": "현금으로 결제할게요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_thank_you", "text": "감사합니다", "tts_text": "감사합니다", "register": "Polite", "length_class": "Short" },
+
+    { "id": "phr_request_water", "text": "물 주세요", "tts_text": "물 한 병 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_ask_drink_loc", "text": "음료 어디 있어요?", "tts_text": "음료수는 어디에 있어요?", "register": "Polite", "length_class": "Medium" },
+    { "id": "phr_request_snack", "text": "과자 주세요", "tts_text": "이 과자 살게요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_bag_yes", "text": "봉투 주세요", "tts_text": "봉투 하나 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_bag_no", "text": "봉투 안 주셔도 돼요", "tts_text": "봉투는 괜찮습니다", "register": "Polite", "length_class": "Medium" },
+
+    { "id": "phr_menu_request", "text": "메뉴판 주세요", "tts_text": "메뉴판 좀 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_recommend", "text": "추천 메뉴 뭐예요?", "tts_text": "추천 메뉴가 뭐예요?", "register": "Polite", "length_class": "Medium" },
+    { "id": "phr_party_two", "text": "두 명이에요", "tts_text": "두 명입니다", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_less_spicy", "text": "덜 맵게 해주세요", "tts_text": "덜 맵게 해주실 수 있어요?", "register": "Polite", "length_class": "Medium" },
+    { "id": "phr_water_request", "text": "물 주세요", "tts_text": "물 한 잔 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_check_request", "text": "계산할게요", "tts_text": "계산할게요", "register": "Polite", "length_class": "Short" }
+  ]
+}

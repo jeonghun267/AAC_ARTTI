@@ -1,0 +1,23 @@
+{
+    "asset": "b226090e36bd7d84abb26638948a5534",
+    "fileName": "019e1a30-65d3-7dde-830b-ff53455d963b.glb",
+    "prompt": "A friendly stylized 3D store clerk character. High detail.",
+    "negativePrompt": "",
+    "model": "model3d-tripo-p1",
+    "modelName": "Tripo P1",
+    "customSeed": -1,
+    "w3CTraceId": "",
+    "feedback": 0,
+    "refinementMode": "Generation",
+    "promptImageReferenceGuid": "af457058eeafe9f44a028c6ef0705cb5",
+    "modelReferenceGuid": "",
+    "multiviewFrontGuid": "",
+    "multiviewBackGuid": "",
+    "multiviewLeftGuid": "",
+    "multiviewRightGuid": "",
+    "multiviewTopGuid": "",
+    "multiviewBottomGuid": "",
+    "multiviewLeftFrontGuid": "",
+    "multiviewRightFrontGuid": "",
+    "faceLimit": -1
+}

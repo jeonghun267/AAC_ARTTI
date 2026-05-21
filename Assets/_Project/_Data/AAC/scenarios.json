@@ -1,0 +1,89 @@
+{
+  "_comment": "PLAN.MD v3 section 7.3 - Scenario goal catalog. Loaded at scenario entry, passed to LLM with system prompt.",
+  "scenarios": [
+    {
+      "scenarioId": "pharmacy",
+      "displayName": "약국",
+      "turnLimit": 12,
+      "objectives": [
+        { "id": "greeting",       "description": "인사 교환",                        "completion": "사용자 인사 발화 1회 (phr_greeting 또는 유사)" },
+        { "id": "identify_needs", "description": "약 종류 또는 증상 파악",            "completion": "medicine_request 슬롯 또는 symptoms 슬롯 중 최소 1개 확정" },
+        { "id": "serve_meds",     "description": "약 제공 (필요 시 추가 권유)",      "completion": "식별된 모든 증상에 대한 약 제공 결정 완료 (additional_med_accepted 슬롯 채움)" },
+        { "id": "payment",        "description": "결제 수단 확인",                    "completion": "payment_method 슬롯 확정" },
+        { "id": "farewell",       "description": "작별",                              "completion": "사용자 작별 발화 또는 NPC 작별 응답 후 종료" }
+      ],
+      "slots": [
+        { "key": "medicine_request",        "type": "string[]", "description": "명시적으로 요청한 약 종류" },
+        { "key": "symptoms",                "type": "string[]", "description": "사용자가 말한 증상" },
+        { "key": "additional_med_offered",  "type": "string[]", "description": "NPC가 권유한 추가 약 목록" },
+        { "key": "additional_med_accepted", "type": "string[]", "description": "사용자가 수락한 추가 약" },
+        { "key": "payment_method",          "type": "string",   "description": "card 또는 cash" }
+      ],
+      "subflows": [
+        { "id": "stomach_subflow", "trigger": "사용자가 모호한 복통 표현 (예: 배 아파요)", "handling": "체함/설사/복통 등 증상 구체화 카드 제시. 1~2 turn 내 종료" },
+        { "id": "cold_subflow",    "trigger": "사용자가 감기 관련 증상 복합 표현",         "handling": "증상별 약 권유로 분기" },
+        { "id": "dosage_subflow",  "trigger": "사용자가 약 사용법 질문 (예: 어떻게 먹어요?)","handling": "복약 안내 후 메인 결제 흐름 복귀" }
+      ],
+      "fallbacks": [
+        { "condition": "llm_call_failed",      "action": "NPC가 '잠시만요, 다시 한 번 말씀해주세요' 사전 정의 응답 후 같은 turn 재시도" },
+        { "condition": "turn_limit_reached",   "action": "NPC가 '오늘은 여기까지 도와드릴게요. 두통약 드릴게요' 정중한 마무리 후 종료" },
+        { "condition": "stt_empty",            "action": "카드 시각 강조 + '카드를 다시 골라보세요' 안내" }
+      ]
+    },
+    {
+      "scenarioId": "convenience",
+      "displayName": "편의점",
+      "turnLimit": 12,
+      "objectives": [
+        { "id": "greeting",     "description": "인사 또는 입장",         "completion": "사용자 입장 발화 또는 카드 터치 1회" },
+        { "id": "select_items", "description": "물건 찾기 / 요청",       "completion": "items_requested 슬롯 1개 이상 채움" },
+        { "id": "checkout",     "description": "결제 진행",              "completion": "payment_method 슬롯 확정" },
+        { "id": "extras",       "description": "봉투, 영수증 등 부가 요청","completion": "bag_needed 슬롯 확정 (필요/불필요)" },
+        { "id": "farewell",     "description": "작별",                   "completion": "사용자 작별 발화 또는 NPC 작별 응답 후 종료" }
+      ],
+      "slots": [
+        { "key": "items_requested",   "type": "string[]", "description": "사용자가 찾는/요청한 물건" },
+        { "key": "location_asked_for","type": "string",   "description": "위치 문의한 물건" },
+        { "key": "payment_method",    "type": "string",   "description": "card 또는 cash" },
+        { "key": "bag_needed",        "type": "boolean",  "description": "봉투 필요 여부" }
+      ],
+      "subflows": [
+        { "id": "location_subflow", "trigger": "사용자가 물건 위치를 물음 (예: 음료수 어디 있어요?)", "handling": "점원이 위치 안내, 사용자가 다시 물건을 들고 오는 가정으로 진행" },
+        { "id": "promo_subflow",    "trigger": "사용자가 행사 상품 언급 (예: 1+1 있어요?)",        "handling": "단순 정보 제공 후 메인 흐름 복귀" }
+      ],
+      "fallbacks": [
+        { "condition": "llm_call_failed",    "action": "NPC가 정중하게 안내 응답 후 같은 turn 재시도" },
+        { "condition": "turn_limit_reached", "action": "결제 완료 후 종료. items_requested에 최소 1개 항목 보장" }
+      ]
+    },
+    {
+      "scenarioId": "restaurant",
+      "displayName": "음식점",
+      "turnLimit": 12,
+      "objectives": [
+        { "id": "greeting",            "description": "인사 및 자리 안내",                         "completion": "인원수 슬롯(party_size) 확정 또는 자리 안내 받음" },
+        { "id": "menu_browse",         "description": "메뉴 확인",                                  "completion": "사용자가 메뉴를 확인했음을 명시 또는 주문 의사 표명" },
+        { "id": "order",               "description": "주문",                                       "completion": "items_ordered 슬롯 1개 이상 채움" },
+        { "id": "order_modifications", "description": "추가 요청 (덜 맵게, 알레르기, 추가/제외)",    "completion": "필요 시 modifications 슬롯 채움. 없으면 즉시 통과" },
+        { "id": "payment",             "description": "결제",                                       "completion": "payment_method 슬롯 확정" },
+        { "id": "farewell",            "description": "작별",                                       "completion": "사용자 작별 발화 또는 NPC 작별 응답 후 종료" }
+      ],
+      "slots": [
+        { "key": "party_size",     "type": "number",   "description": "일행 인원수" },
+        { "key": "items_ordered",  "type": "string[]", "description": "주문한 메뉴" },
+        { "key": "modifications",  "type": "object[]", "description": "추가 요청 객체 배열" },
+        { "key": "payment_method", "type": "string",   "description": "card 또는 cash" }
+      ],
+      "subflows": [
+        { "id": "recommend_subflow",    "trigger": "사용자가 추천 요청 (예: 뭐가 맛있어요?)",      "handling": "인기 메뉴 1~2개 제시 후 다시 주문 단계로 복귀" },
+        { "id": "allergy_subflow",      "trigger": "사용자가 알레르기 언급 (예: 땅콩 빼주세요)",    "handling": "메뉴 가능 여부 확인 후 modifications 슬롯에 기록" },
+        { "id": "spice_adjust_subflow", "trigger": "사용자가 매운맛 조절 요청 (예: 덜 맵게)",       "handling": "modifications 슬롯에 즉시 기록 후 메인 흐름 복귀" }
+      ],
+      "fallbacks": [
+        { "condition": "llm_call_failed",       "action": "NPC가 '잠시만요, 다시 한 번 말씀해주세요' 응답 후 재시도" },
+        { "condition": "turn_limit_reached",    "action": "가장 빈도 높은 디폴트 메뉴(김치찌개)로 주문 마무리 후 결제 단계로 강제 진행" },
+        { "condition": "allergy_unconfirmed",   "action": "NPC가 한 번 더 확인 질문, 그래도 불명확하면 '확인이 어려우니 직원에게 직접 물어보세요' 안내" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aed2f5bb1c652ef41a09f8269941acf8, type: 3}
+  m_Name: sym_bag
+  m_EditorClassIdentifier: Assembly-CSharp::Artti.AAC.AACSymbol
+  id: sym_bag
+  sprite: {fileID: 21300000, guid: 58a0b53693d79424fb0de3fb0ba1842b, type: 3}
+  semanticTags:
+  - object
+  - bag
+  description: "\uBE44\uB2D0\uBD09\uD22C. \uBD09\uD22C \uD544\uC694/\uBD88\uD544\uC694
+    \uCE74\uB4DC \uACF5\uD1B5."
+  licenseInfo: 'Pictograms author: Sergio Palao. Origin: ARASAAC. License: CC BY-NC-SA'

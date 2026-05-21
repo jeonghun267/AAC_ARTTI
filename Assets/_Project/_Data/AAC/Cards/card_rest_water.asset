@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c12b4f431134aa0418b1ad7f0114e362, type: 3}
+  m_Name: card_rest_water
+  m_EditorClassIdentifier: Assembly-CSharp::Artti.AAC.AACCard
+  id: card_rest_water
+  symbol: {fileID: 11400000, guid: 784fbe429d406c2438792fa6aa0b7365, type: 2}
+  phrase: {fileID: 11400000, guid: d9af0aab681ec4a45b31dcbe3c758c8e, type: 2}
+  applicableScenarios:
+  - restaurant
+  applicableObjectives:
+  - order
+  - order_modifications
+  tags:
+  - item
+  - drink
+  - water
+  branchId: 
+  priorityHint: 0

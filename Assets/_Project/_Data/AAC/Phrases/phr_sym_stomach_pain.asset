@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4880991797211141a1465456e7c056d, type: 3}
+  m_Name: phr_sym_stomach_pain
+  m_EditorClassIdentifier: Assembly-CSharp::Artti.AAC.AACPhrase
+  id: phr_sym_stomach_pain
+  text: "\uBC30\uAC00 \uC544\uD30C\uC694"
+  ttsText: "\uBC30\uAC00 \uC544\uD30C\uC694"
+  register: 0
+  lengthClass: 0

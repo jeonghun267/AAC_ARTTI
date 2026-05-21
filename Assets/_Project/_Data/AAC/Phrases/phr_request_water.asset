@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4880991797211141a1465456e7c056d, type: 3}
+  m_Name: phr_request_water
+  m_EditorClassIdentifier: Assembly-CSharp::Artti.AAC.AACPhrase
+  id: phr_request_water
+  text: "\uBB3C \uC8FC\uC138\uC694"
+  ttsText: "\uBB3C \uD55C \uBCD1 \uC8FC\uC138\uC694"
+  register: 0
+  lengthClass: 0

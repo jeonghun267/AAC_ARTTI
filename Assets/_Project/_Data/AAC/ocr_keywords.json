@@ -1,0 +1,56 @@
+{
+  "_comment": "PLAN.MD v3 section 5.3 - AR현장모드 OCR 키워드 사전. 부분 일치 매칭. 국내 주요 체인 + 일반 명칭.",
+  "places": [
+    {
+      "place_id": "convenience",
+      "display_name": "편의점",
+      "keywords": [
+        "편의점",
+        "GS25", "GS 25",
+        "CU",
+        "세븐일레븐", "7-Eleven", "7일레븐",
+        "이마트24", "emart24",
+        "미니스톱", "MINISTOP",
+        "365PLUS"
+      ]
+    },
+    {
+      "place_id": "pharmacy",
+      "display_name": "약국",
+      "keywords": [
+        "약국",
+        "약",
+        "pharmacy",
+        "온누리약국", "온누리",
+        "메디팜", "MEDIPHARM",
+        "위드팜",
+        "건강드림약국",
+        "처방"
+      ]
+    },
+    {
+      "place_id": "restaurant",
+      "display_name": "음식점",
+      "keywords": [
+        "식당",
+        "음식점",
+        "맛집",
+        "분식",
+        "한식",
+        "중식", "중국집",
+        "일식",
+        "양식",
+        "찌개",
+        "국밥",
+        "냉면",
+        "파스타",
+        "피자", "PIZZA",
+        "치킨", "CHICKEN",
+        "백반",
+        "김밥천국", "김밥나라",
+        "본죽",
+        "교촌치킨", "BHC", "BBQ"
+      ]
+    }
+  ]
+}
