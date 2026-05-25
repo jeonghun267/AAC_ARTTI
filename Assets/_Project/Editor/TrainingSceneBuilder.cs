@@ -59,16 +59,8 @@ namespace Artti.Editor
             npcRect.anchorMin = new Vector2(0.5f, 1f);
             npcRect.anchorMax = new Vector2(0.5f, 1f);
             npcRect.pivot = new Vector2(0.5f, 1f);
-            if (scenarioId == "pharmacy")
-            {
-                npcRect.anchoredPosition = new Vector2(0, -160);  // 뒤로 버튼(top -32, h 88) 아래에서 시작
-                npcRect.sizeDelta = new Vector2(720, 280);
-            }
-            else
-            {
-                npcRect.anchoredPosition = new Vector2(0, -80);
-                npcRect.sizeDelta = new Vector2(960, 340);
-            }
+            npcRect.anchoredPosition = new Vector2(0, -80);
+            npcRect.sizeDelta = new Vector2(960, 340);
             npcPanel.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.95f);
             var npcText = SceneBuilderUtils.CreateTMPText("NPCText", npcPanel.transform, "안녕하세요!", 56);
             var npcTextRect = npcText.rectTransform;
@@ -80,17 +72,17 @@ namespace Artti.Editor
             // Card slots — 약국은 세로 스크롤 4장 풀 + 기타 버튼/모달, 그 외는 가로 2장
             AACCardButton cardSlot1 = null;
             AACCardButton cardSlot2 = null;
-            AACCardButton[] pharmacyCardSlots = null;
-            Button pharmacyExtraButton = null;
-            GameObject pharmacyExtraModal = null;
-            AACCardButton[] pharmacyExtraSlots = null;
-            Button pharmacyExtraCloseBtn = null;
+            AACCardButton[] mainSlots = null;
+            AACCardButton fallbackSlot = null;
 
             if (scenarioId == "pharmacy")
             {
-                pharmacyCardSlots = BuildPharmacyScrollPool(canvasGo.transform);
-                pharmacyExtraButton = BuildPharmacyExtraButton(canvasGo.transform);
-                (pharmacyExtraModal, pharmacyExtraSlots, pharmacyExtraCloseBtn) = BuildPharmacyExtraModal(canvasGo.transform);
+                mainSlots = new AACCardButton[]
+                {
+                    CreateCardSlotButton("MainSlot_01", canvasGo.transform, new Vector2(0, 980)),
+                    CreateCardSlotButton("MainSlot_02", canvasGo.transform, new Vector2(0, 480)),
+                };
+                fallbackSlot = CreateCardSlotButton("FallbackSlot", canvasGo.transform, new Vector2(0, 20));
             }
             else
             {
@@ -140,27 +132,15 @@ namespace Artti.Editor
             soView.FindProperty("cardSlot1").objectReferenceValue = cardSlot1;
             soView.FindProperty("cardSlot2").objectReferenceValue = cardSlot2;
 
-            if (pharmacyCardSlots != null)
+            if (mainSlots != null)
             {
-                var slotsProp = soView.FindProperty("pharmacyCardSlots");
-                slotsProp.arraySize = pharmacyCardSlots.Length;
-                for (int i = 0; i < pharmacyCardSlots.Length; i++)
-                    slotsProp.GetArrayElementAtIndex(i).objectReferenceValue = pharmacyCardSlots[i];
+                var mainSlotsProp = soView.FindProperty("mainCardSlots");
+                mainSlotsProp.arraySize = mainSlots.Length;
+                for (int i = 0; i < mainSlots.Length; i++)
+                    mainSlotsProp.GetArrayElementAtIndex(i).objectReferenceValue = mainSlots[i];
             }
-
-            if (pharmacyExtraButton != null)
-                soView.FindProperty("extraButton").objectReferenceValue = pharmacyExtraButton;
-            if (pharmacyExtraModal != null)
-                soView.FindProperty("extraModal").objectReferenceValue = pharmacyExtraModal;
-            if (pharmacyExtraCloseBtn != null)
-                soView.FindProperty("extraCloseButton").objectReferenceValue = pharmacyExtraCloseBtn;
-            if (pharmacyExtraSlots != null)
-            {
-                var exSlots = soView.FindProperty("extraCardSlots");
-                exSlots.arraySize = pharmacyExtraSlots.Length;
-                for (int i = 0; i < pharmacyExtraSlots.Length; i++)
-                    exSlots.GetArrayElementAtIndex(i).objectReferenceValue = pharmacyExtraSlots[i];
-            }
+            if (fallbackSlot != null)
+                soView.FindProperty("fallbackCardSlot").objectReferenceValue = fallbackSlot;
 
             soView.FindProperty("npcDialoguePanel").objectReferenceValue = npcText;
             soView.FindProperty("sttOverlay").objectReferenceValue = sttOverlay;

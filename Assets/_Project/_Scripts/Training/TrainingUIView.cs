@@ -22,6 +22,10 @@ namespace Artti.Training
         [SerializeField] private AACCardButton[] extraCardSlots;
         [SerializeField] private Button extraCloseButton;
 
+        [Header("Main 2 + Fallback 1 (v5)")]
+        [SerializeField] private AACCardButton[] mainCardSlots;
+        [SerializeField] private AACCardButton fallbackCardSlot;
+
         [Header("STT Overlay")]
         [SerializeField] private GameObject sttOverlay;       // 풀스크린 반투명 + 가운데 카드
         [SerializeField] private TMP_Text sttStatusText;      // "듣고 있어요..." / "이렇게 들렸어요" / "잘 못 들었어요"
@@ -49,6 +53,11 @@ namespace Artti.Training
             if (extraCardSlots != null)
                 foreach (var s in extraCardSlots)
                     if (s != null) s.OnCardSelected += HandleCardSelected;
+            if (mainCardSlots != null)
+                foreach (var s in mainCardSlots)
+                    if (s != null) s.OnCardSelected += HandleCardSelected;
+            if (fallbackCardSlot != null)
+                fallbackCardSlot.OnCardSelected += HandleCardSelected;
             if (extraButton != null) extraButton.onClick.AddListener(HandleExtraRequested);
             if (extraCloseButton != null) extraCloseButton.onClick.AddListener(HideExtraModal);
         }
@@ -63,6 +72,11 @@ namespace Artti.Training
             if (extraCardSlots != null)
                 foreach (var s in extraCardSlots)
                     if (s != null) s.OnCardSelected -= HandleCardSelected;
+            if (mainCardSlots != null)
+                foreach (var s in mainCardSlots)
+                    if (s != null) s.OnCardSelected -= HandleCardSelected;
+            if (fallbackCardSlot != null)
+                fallbackCardSlot.OnCardSelected -= HandleCardSelected;
             if (extraButton != null) extraButton.onClick.RemoveListener(HandleExtraRequested);
             if (extraCloseButton != null) extraCloseButton.onClick.RemoveListener(HideExtraModal);
         }
@@ -140,6 +154,31 @@ namespace Artti.Training
         }
 
         public bool HasPharmacyCardPool => pharmacyCardSlots != null && pharmacyCardSlots.Length > 0;
+
+        public bool HasMainFallbackPool =>
+            mainCardSlots != null && mainCardSlots.Length >= 2 && fallbackCardSlot != null;
+
+        public void SetMainAndFallback(AACCard main1, AACCard main2, AACCard fallback)
+        {
+            if (mainCardSlots != null)
+            {
+                if (mainCardSlots.Length > 0 && mainCardSlots[0] != null)
+                {
+                    mainCardSlots[0].gameObject.SetActive(main1 != null);
+                    if (main1 != null) mainCardSlots[0].SetCard(main1);
+                }
+                if (mainCardSlots.Length > 1 && mainCardSlots[1] != null)
+                {
+                    mainCardSlots[1].gameObject.SetActive(main2 != null);
+                    if (main2 != null) mainCardSlots[1].SetCard(main2);
+                }
+            }
+            if (fallbackCardSlot != null)
+            {
+                fallbackCardSlot.gameObject.SetActive(fallback != null);
+                if (fallback != null) fallbackCardSlot.SetCard(fallback);
+            }
+        }
 
         // 마이크 켜진 동안 호출 — 풀스크린 오버레이 ON, 펄스 애니메이션 시작
         public void ShowMicIndicator(bool visible)
