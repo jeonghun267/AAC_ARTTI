@@ -79,10 +79,10 @@ namespace Artti.Editor
             {
                 mainSlots = new AACCardButton[]
                 {
-                    CreateCardSlotButton("MainSlot_01", canvasGo.transform, new Vector2(-220, 280)),
-                    CreateCardSlotButton("MainSlot_02", canvasGo.transform, new Vector2(220, 280)),
+                    CreateCardSlotButton("MainSlot_01", canvasGo.transform, new Vector2(0, 980)),
+                    CreateCardSlotButton("MainSlot_02", canvasGo.transform, new Vector2(0, 480)),
                 };
-                fallbackSlot = CreateCardSlotButton("FallbackSlot", canvasGo.transform, new Vector2(0, 60));
+                fallbackSlot = CreateCardSlotButton("FallbackSlot", canvasGo.transform, new Vector2(0, 20));
             }
             else
             {
