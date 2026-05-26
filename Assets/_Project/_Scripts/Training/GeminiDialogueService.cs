@@ -3,6 +3,7 @@ using System.Text;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 using Artti.AAC;
@@ -121,14 +122,9 @@ namespace Artti.Training
                     return null;
                 }
 
-                // 단계 5에서 functionCall 파싱 구현. 현재는 mock.
-                return new PresentCardsArgs
-                {
-                    main_card_ids = new[] { "card_01", "card_02" },
-                    fallback_card_id = "card_03",
-                    npc_speech = "네, 알겠습니다.",
-                    scaffold_level = 0
-                };
+                string responseText = request.downloadHandler.text;
+                Debug.Log($"[GeminiDialogueService] V5 response body: {responseText}");
+                return ParsePresentCardsResponse(responseText);
             }
         }
 
@@ -177,6 +173,84 @@ namespace Artti.Training
             };
         }
 
+        // V5 응답 파싱. candidates[0].content.parts 순회 → present_cards functionCall 추출 → PresentCardsArgs.
+        // 실패 시 모두 null 반환 + 경고 로그. caller가 fallback 처리.
+        static PresentCardsArgs ParsePresentCardsResponse(string responseText)
+        {
+            if (string.IsNullOrEmpty(responseText))
+            {
+                Debug.LogWarning("[GeminiDialogueService] V5 response empty");
+                return null;
+            }
+
+            GeminiResponse parsed;
+            try
+            {
+                parsed = JsonConvert.DeserializeObject<GeminiResponse>(responseText);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[GeminiDialogueService] V5 response JSON parse failed: {e.Message}");
+                return null;
+            }
+
+            if (parsed?.candidates == null || parsed.candidates.Length == 0)
+            {
+                Debug.LogWarning("[GeminiDialogueService] V5 response has no candidates");
+                return null;
+            }
+            var parts = parsed.candidates[0].content?.parts;
+            if (parts == null || parts.Length == 0)
+            {
+                Debug.LogWarning("[GeminiDialogueService] V5 response candidate has no parts");
+                return null;
+            }
+
+            GeminiFunctionCall target = null;
+            foreach (var part in parts)
+            {
+                if (part?.functionCall == null) continue;
+                if (part.functionCall.name == "present_cards")
+                {
+                    target = part.functionCall;
+                    break;
+                }
+                Debug.LogWarning($"[GeminiDialogueService] V5 ignored functionCall: name={part.functionCall.name}");
+            }
+
+            if (target == null)
+            {
+                Debug.LogWarning("[GeminiDialogueService] V5 no present_cards functionCall in response (text-only or other tools)");
+                return null;
+            }
+            if (target.args == null)
+            {
+                Debug.LogWarning("[GeminiDialogueService] V5 present_cards functionCall has null args");
+                return null;
+            }
+
+            PresentCardsArgs result;
+            try
+            {
+                result = target.args.ToObject<PresentCardsArgs>();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[GeminiDialogueService] V5 args deserialize failed: {e.Message}");
+                return null;
+            }
+
+            if (result == null)
+            {
+                Debug.LogWarning("[GeminiDialogueService] V5 args deserialized to null");
+                return null;
+            }
+
+            Debug.Log($"[GeminiDialogueService] V5 parsed: main_card_ids=[{string.Join(",", result.main_card_ids ?? new string[0])}], fallback={result.fallback_card_id}, scaffold={result.scaffold_level}");
+            Debug.Log($"[GeminiDialogueService] V5 parsed npc_speech: {result.npc_speech}");
+            return result;
+        }
+
         [Serializable] class GeminiRequest { public GeminiContent system_instruction; public GeminiContent[] contents; }
         [Serializable] class GeminiContent { public GeminiPart[] parts; }
         [Serializable] class GeminiPart    { public string text; }
@@ -205,5 +279,12 @@ namespace Artti.Training
             public GeminiSchema npc_speech;
             public GeminiSchema scaffold_level;
         }
+
+        // V5 응답 역직렬화 전용 POCO (Newtonsoft.Json 기준)
+        class GeminiResponse { public GeminiCandidate[] candidates; }
+        class GeminiCandidate { public GeminiResponseContent content; public string finishReason; }
+        class GeminiResponseContent { public GeminiResponsePart[] parts; public string role; }
+        class GeminiResponsePart { public string text; public GeminiFunctionCall functionCall; }
+        class GeminiFunctionCall { public string name; public JObject args; }
     }
 }
