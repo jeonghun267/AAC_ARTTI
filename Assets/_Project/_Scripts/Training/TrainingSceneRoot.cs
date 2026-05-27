@@ -61,7 +61,7 @@ namespace Artti.Training
             }
         }
 
-        private const int PoolSize = 4;
+        private const int PoolSize = 3; // 협업자 v5 UI: Main 2 + Fallback 1
 
         // 시나리오별 objective 순서 (scenarios.json과 동기화)
         private static readonly Dictionary<string, string[]> ObjectiveOrderByScenario = new Dictionary<string, string[]>
@@ -152,9 +152,9 @@ namespace Artti.Training
             uiView.SetCards(cards.Count > 0 ? cards[0] : null, cards.Count > 1 ? cards[1] : null);
         }
 
-        // 풀 모드: View에 카드 풀 슬롯이 와이어링되었고 시나리오의 objective 순서가 정의되어 있을 때
+        // 풀 모드: View가 v5 슬롯(Main 2 + Fallback 1) 와이어링됐고 시나리오 objective 순서가 정의됐을 때
         private bool IsPoolMode =>
-            uiView != null && uiView.HasPharmacyCardPool && ObjectiveOrderByScenario.ContainsKey(scenarioId);
+            uiView != null && uiView.HasMainFallbackPool && ObjectiveOrderByScenario.ContainsKey(scenarioId);
 
         private bool TryGetObjectivePrompt(string objectiveId, out string line)
         {
@@ -168,25 +168,22 @@ namespace Artti.Training
             if (aacDatabase == null) return;
             var objective = _dialogueManager.CurrentObjectiveId;
             _currentPool = aacDatabase.CardsForObjective(scenarioId, objective)
+                                      .OrderBy(c => c.priorityHint)
                                       .Take(PoolSize)
                                       .ToList();
             if (_currentPool.Count == 0)
             {
                 Debug.LogWarning($"[TrainingSceneRoot] {scenarioId}/{objective} objective 카드 없음 — 데이터 점검 필요");
             }
-            uiView.SetCardList(_currentPool);
+            // priority 높은(낮은 priorityHint) 2장을 Main, 그 다음 1장을 Fallback에 매핑
+            var main1 = _currentPool.Count > 0 ? _currentPool[0] : null;
+            var main2 = _currentPool.Count > 1 ? _currentPool[1] : null;
+            var fb    = _currentPool.Count > 2 ? _currentPool[2] : null;
+            uiView.SetMainAndFallback(main1, main2, fb);
         }
 
-        // "기타" 버튼 → 현재 풀에 포함되지 않은 같은 시나리오 카드 전체를 모달로 표시
-        private void HandleExtraRequested()
-        {
-            if (!IsPoolMode || aacDatabase == null) return;
-            var displayed = new HashSet<string>(_currentPool.Where(c => c != null).Select(c => c.id));
-            var others = aacDatabase.CardsForScenario(scenarioId)
-                                    .Where(c => !displayed.Contains(c.id))
-                                    .ToList();
-            uiView.ShowExtraModal(others);
-        }
+        // v5 디자인엔 "기타" 버튼 없음 — 풀 모드에선 아무 동작 안 함 (extraButton wire null이면 호출도 안 됨)
+        private void HandleExtraRequested() { }
 
         private void HandleObjectiveChanged(string newObjectiveId)
         {
