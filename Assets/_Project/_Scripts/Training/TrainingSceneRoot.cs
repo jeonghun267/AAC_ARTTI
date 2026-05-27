@@ -31,13 +31,19 @@ namespace Artti.Training
         {
             _dialogueManager = new DialogueManager();
 
-            // API 키는 .env (또는 StreamingAssets/api_keys.env) 에서 로드
-            var ttsKey    = ApiKeyLoader.GetOrFallback(ApiKeyLoader.GoogleTtsApi, ApiKeyLoader.GeminiApi);
-            var sttKey    = ApiKeyLoader.GetOrFallback(ApiKeyLoader.GoogleSttApi, ApiKeyLoader.GeminiApi);
+            // .env: GEMINI_API_KEY + GOOGLE_TTS_API_KEY 사용. STT는 OS 네이티브(키 불필요).
+            // Android 단말이 ko-KR TTS 언어 데이터를 지원 안 해서 TTS만 Cloud로 유지.
             var geminiKey = ApiKeyLoader.Get(ApiKeyLoader.GeminiApi);
+            var ttsKey    = ApiKeyLoader.GetOrFallback(ApiKeyLoader.GoogleTtsApi, ApiKeyLoader.GeminiApi);
 
             _ttsService = new CloudTtsService(ttsKey, GetComponent<AudioSource>());
-            _sttService = new CloudSttService(sttKey);
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            _sttService = new AndroidNativeSttService();
+#else
+            // Editor: STT는 더미 텍스트로 풀 모드 흐름만 검증
+            _sttService = new EditorMockSttService();
+#endif
             _geminiService = new GeminiDialogueService(geminiKey);
 
             // Load fallback responses — Resources/AAC/fallback_responses.json (Editor + 빌드 동일)
@@ -55,22 +61,47 @@ namespace Artti.Training
             }
         }
 
-        private const int PharmacyPoolSize = 4;
+        private const int PoolSize = 4;
 
-        // 약국 objective 순서 (scenarios.json과 동기화)
-        private static readonly string[] PharmacyObjectiveOrder =
+        // 시나리오별 objective 순서 (scenarios.json과 동기화)
+        private static readonly Dictionary<string, string[]> ObjectiveOrderByScenario = new Dictionary<string, string[]>
         {
-            "greeting", "identify_needs", "serve_meds", "payment", "farewell"
+            { "pharmacy",    new[] { "greeting", "identify_needs", "serve_meds", "payment", "farewell" } },
+            { "convenience", new[] { "greeting", "select_items", "checkout", "extras", "farewell" } },
+            { "restaurant",  new[] { "greeting", "menu_browse", "order", "order_modifications", "payment", "farewell" } }
         };
 
-        // 약국 v1: 각 objective 진입 시 NPC가 말하는 대사 (STT/Gemini 미사용 흐름)
-        private static readonly Dictionary<string, string> PharmacyObjectivePrompts = new Dictionary<string, string>
+        // v1 풀 모드: 각 objective 진입 시 NPC가 말하는 대사 (STT만 사용, Gemini 미사용 흐름)
+        private static readonly Dictionary<string, Dictionary<string, string>> ObjectivePromptsByScenario = new Dictionary<string, Dictionary<string, string>>
         {
-            { "greeting",       "안녕하세요! 약사예요." },
-            { "identify_needs", "어디가 아파서 오셨어요?" },
-            { "serve_meds",     "이 약을 드릴게요." },
-            { "payment",        "결제는 어떻게 하시겠어요?" },
-            { "farewell",       "안녕히 가세요!" }
+            { "pharmacy", new Dictionary<string, string>
+                {
+                    { "greeting",       "안녕하세요! 약사예요." },
+                    { "identify_needs", "어디가 아파서 오셨어요?" },
+                    { "serve_meds",     "이 약을 드릴게요." },
+                    { "payment",        "결제는 어떻게 하시겠어요?" },
+                    { "farewell",       "안녕히 가세요!" }
+                }
+            },
+            { "convenience", new Dictionary<string, string>
+                {
+                    { "greeting",     "어서 오세요!" },
+                    { "select_items", "찾으시는 물건 있으세요?" },
+                    { "checkout",     "결제는 어떻게 하시겠어요?" },
+                    { "extras",       "봉투 필요하세요?" },
+                    { "farewell",     "안녕히 가세요!" }
+                }
+            },
+            { "restaurant", new Dictionary<string, string>
+                {
+                    { "greeting",            "어서 오세요! 몇 분이세요?" },
+                    { "menu_browse",         "메뉴 보여드릴게요. 천천히 보세요." },
+                    { "order",               "주문하시겠어요?" },
+                    { "order_modifications", "추가로 더 필요한 거 있으세요?" },
+                    { "payment",             "결제는 어떻게 하시겠어요?" },
+                    { "farewell",            "맛있게 드세요! 안녕히 가세요." }
+                }
+            }
         };
 
         private void Start()
@@ -78,6 +109,7 @@ namespace Artti.Training
             _cts = new CancellationTokenSource();
 
             // 씬 진입 즉시 마이크 권한 다이얼로그 (STT 첫 호출 지연 방지 + 권한 거부 조기 노출)
+            // Native/Cloud 둘 다 동일한 RECORD_AUDIO 권한 사용 — CloudSttService의 정적 헬퍼 재사용
             CloudSttService.RequestMicPermissionAsync(_cts.Token).Forget();
 
             // scenarios.json의 첫 objective가 모든 시나리오에서 "greeting"
@@ -90,8 +122,8 @@ namespace Artti.Training
 
             _eventLogger?.LogObjectiveEntered("greeting");
 
-            // 약국: 첫 NPC 대사 + TTS (Initialize는 이벤트 안 쏘므로 수동 호출)
-            if (IsPharmacyPoolMode && PharmacyObjectivePrompts.TryGetValue("greeting", out var greetingLine))
+            // 풀 모드: 첫 NPC 대사 + TTS (Initialize는 이벤트 안 쏘므로 수동 호출)
+            if (IsPoolMode && TryGetObjectivePrompt("greeting", out var greetingLine))
             {
                 uiView.SetNPCDialogue(greetingLine);
                 if (_ttsService != null)
@@ -105,9 +137,9 @@ namespace Artti.Training
         {
             if (aacDatabase == null) return;
 
-            if (IsPharmacyPoolMode)
+            if (IsPoolMode)
             {
-                RefreshPharmacyPool();
+                RefreshPool();
                 return;
             }
 
@@ -120,15 +152,23 @@ namespace Artti.Training
             uiView.SetCards(cards.Count > 0 ? cards[0] : null, cards.Count > 1 ? cards[1] : null);
         }
 
-        // 약국 풀 모드: 시나리오==pharmacy && View에 pharmacyCardSlots가 와이어링됨
-        private bool IsPharmacyPoolMode => scenarioId == "pharmacy" && uiView != null && uiView.HasPharmacyCardPool;
+        // 풀 모드: View에 카드 풀 슬롯이 와이어링되었고 시나리오의 objective 순서가 정의되어 있을 때
+        private bool IsPoolMode =>
+            uiView != null && uiView.HasPharmacyCardPool && ObjectiveOrderByScenario.ContainsKey(scenarioId);
 
-        private void RefreshPharmacyPool()
+        private bool TryGetObjectivePrompt(string objectiveId, out string line)
+        {
+            line = null;
+            return ObjectivePromptsByScenario.TryGetValue(scenarioId, out var map)
+                   && map.TryGetValue(objectiveId, out line);
+        }
+
+        private void RefreshPool()
         {
             if (aacDatabase == null) return;
             var objective = _dialogueManager.CurrentObjectiveId;
             _currentPool = aacDatabase.CardsForObjective(scenarioId, objective)
-                                      .Take(PharmacyPoolSize)
+                                      .Take(PoolSize)
                                       .ToList();
             if (_currentPool.Count == 0)
             {
@@ -137,10 +177,10 @@ namespace Artti.Training
             uiView.SetCardList(_currentPool);
         }
 
-        // "기타" 버튼 → 현재 풀에 포함되지 않은 약국 카드 전체를 모달로 표시
+        // "기타" 버튼 → 현재 풀에 포함되지 않은 같은 시나리오 카드 전체를 모달로 표시
         private void HandleExtraRequested()
         {
-            if (!IsPharmacyPoolMode || aacDatabase == null) return;
+            if (!IsPoolMode || aacDatabase == null) return;
             var displayed = new HashSet<string>(_currentPool.Where(c => c != null).Select(c => c.id));
             var others = aacDatabase.CardsForScenario(scenarioId)
                                     .Where(c => !displayed.Contains(c.id))
@@ -151,15 +191,15 @@ namespace Artti.Training
         private void HandleObjectiveChanged(string newObjectiveId)
         {
             _eventLogger?.LogObjectiveEntered(newObjectiveId);
-            if (IsPharmacyPoolMode)
+            if (IsPoolMode)
             {
-                if (PharmacyObjectivePrompts.TryGetValue(newObjectiveId, out var npcLine))
+                if (TryGetObjectivePrompt(newObjectiveId, out var npcLine))
                 {
                     uiView.SetNPCDialogue(npcLine);
                     if (_ttsService != null)
                         _ttsService.SpeakAsync(npcLine, _cts.Token).Forget();
                 }
-                RefreshPharmacyPool();
+                RefreshPool();
             }
         }
 
@@ -171,9 +211,9 @@ namespace Artti.Training
 
         private async void HandleCardTapped(AACCard card)
         {
-            // 약국 풀 모드: 자유 발화 연습 (PLAN.MD 5.4.2 / 7.3.1)
+            // 풀 모드: 자유 발화 연습 (PLAN.MD 5.4.2 / 7.3.1)
             // 카드 phrase TTS는 없음. STT로 사용자 발화 수집 후 다음 objective로 진행.
-            if (IsPharmacyPoolMode)
+            if (IsPoolMode)
             {
                 uiView.HideExtraModal();
 
@@ -192,7 +232,7 @@ namespace Artti.Training
                     return;
                 }
 
-                AdvancePharmacyObjective();
+                AdvanceObjective();
                 return;
             }
 
@@ -240,18 +280,23 @@ namespace Artti.Training
         }
 
         // 다음 objective(카드 풀이 비어있지 않은 것)로 이동. 끝까지 가면 무동작.
-        private void AdvancePharmacyObjective()
+        private void AdvanceObjective()
         {
-            var current = _dialogueManager.CurrentObjectiveId;
-            int idx = System.Array.IndexOf(PharmacyObjectiveOrder, current);
-            if (idx < 0)
+            if (!ObjectiveOrderByScenario.TryGetValue(scenarioId, out var order))
             {
-                Debug.LogWarning($"[TrainingSceneRoot] 알 수 없는 약국 objective: {current}");
+                Debug.LogWarning($"[TrainingSceneRoot] '{scenarioId}' 시나리오 objective 순서 미정의");
                 return;
             }
-            for (int i = idx + 1; i < PharmacyObjectiveOrder.Length; i++)
+            var current = _dialogueManager.CurrentObjectiveId;
+            int idx = System.Array.IndexOf(order, current);
+            if (idx < 0)
             {
-                var next = PharmacyObjectiveOrder[i];
+                Debug.LogWarning($"[TrainingSceneRoot] 알 수 없는 {scenarioId} objective: {current}");
+                return;
+            }
+            for (int i = idx + 1; i < order.Length; i++)
+            {
+                var next = order[i];
                 var hasCards = aacDatabase != null && aacDatabase.CardsForObjective(scenarioId, next).Any();
                 if (hasCards)
                 {
@@ -260,7 +305,7 @@ namespace Artti.Training
                 }
                 Debug.Log($"[TrainingSceneRoot] '{next}' objective 카드 없음 — 건너뜀");
             }
-            Debug.Log("[TrainingSceneRoot] 약국 시나리오 마지막 objective 도달");
+            Debug.Log($"[TrainingSceneRoot] {scenarioId} 시나리오 마지막 objective 도달");
         }
 
 
@@ -270,8 +315,8 @@ namespace Artti.Training
             _ttsService.SpeakAsync(npcText, _cts.Token).Forget();
             _eventLogger?.LogNpcTurn(npcText, tool);
 
-            // 약국 풀 모드: 카드 갱신은 OnObjectiveChanged에서 처리. Gemini의 args 무시
-            if (IsPharmacyPoolMode) return;
+            // 풀 모드: 카드 갱신은 OnObjectiveChanged에서 처리. Gemini의 args 무시
+            if (IsPoolMode) return;
 
             if (args != null && args.Length >= 2)
             {

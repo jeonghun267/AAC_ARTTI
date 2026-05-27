@@ -22,7 +22,15 @@ namespace Artti.Training
         [SerializeField] private AACCardButton[] extraCardSlots;
         [SerializeField] private Button extraCloseButton;
 
-        [Header("STT Overlay")]
+        [Header("STT inline (NPC 패널 외곽 진행 테두리)")]
+        [SerializeField] private GameObject npcBorderRoot;    // 4 edge 부모 — 듣는 동안만 SetActive
+        [SerializeField] private Image npcBorderTop;          // Filled Horizontal, Origin Left
+        [SerializeField] private Image npcBorderRight;        // Filled Vertical,   Origin Top
+        [SerializeField] private Image npcBorderBottom;       // Filled Horizontal, Origin Right
+        [SerializeField] private Image npcBorderLeft;         // Filled Vertical,   Origin Bottom
+        [SerializeField] private float npcBorderCycleSeconds = 1.6f; // 한 바퀴 시간
+
+        [Header("STT Overlay (legacy — 약국씬 호환용. 신규 씬은 비워두면 자동 무시)")]
         [SerializeField] private GameObject sttOverlay;       // 풀스크린 반투명 + 가운데 카드
         [SerializeField] private TMP_Text sttStatusText;      // "듣고 있어요..." / "이렇게 들렸어요" / "잘 못 들었어요"
         [SerializeField] private TMP_Text sttResultText;      // 인식된 텍스트
@@ -37,6 +45,7 @@ namespace Artti.Training
 
         private bool _isListening;
         private float _pulseTime;
+        private float _borderTime;
         private Coroutine _hideRoutine;
 
         private void OnEnable()
@@ -100,10 +109,43 @@ namespace Artti.Training
 
         private void Update()
         {
-            if (!_isListening || sttPulseCircle == null) return;
-            _pulseTime += Time.deltaTime;
-            float s = 1f + 0.18f * Mathf.Sin(_pulseTime * 5.5f);
-            sttPulseCircle.localScale = new Vector3(s, s, 1f);
+            if (!_isListening) return;
+
+            // 신규: NPC 패널 외곽 테두리 진행 — 시계방향으로 top→right→bottom→left 순차 채움, 한 바퀴마다 리셋
+            if (npcBorderRoot != null && npcBorderRoot.activeInHierarchy)
+            {
+                _borderTime += Time.deltaTime;
+                float cycle = Mathf.Max(0.1f, npcBorderCycleSeconds);
+                float t = (_borderTime % cycle) / cycle; // 0..1
+
+                // 각 변은 0.25 구간씩 0→1로 채움. 이전 변은 1 유지. 한 바퀴 끝나면 다음 cycle에서 모두 0부터.
+                float top, right, bottom, left;
+                if (t < 0.25f) { top = t / 0.25f;          right = 0f; bottom = 0f; left = 0f; }
+                else if (t < 0.5f) { top = 1f; right = (t - 0.25f) / 0.25f; bottom = 0f; left = 0f; }
+                else if (t < 0.75f) { top = 1f; right = 1f; bottom = (t - 0.5f) / 0.25f; left = 0f; }
+                else { top = 1f; right = 1f; bottom = 1f; left = (t - 0.75f) / 0.25f; }
+
+                if (npcBorderTop != null)    npcBorderTop.fillAmount    = top;
+                if (npcBorderRight != null)  npcBorderRight.fillAmount  = right;
+                if (npcBorderBottom != null) npcBorderBottom.fillAmount = bottom;
+                if (npcBorderLeft != null)   npcBorderLeft.fillAmount   = left;
+            }
+
+            // 레거시: 풀스크린 펄스 (약국씬 등에 와이어링돼 있을 때만)
+            if (sttPulseCircle != null)
+            {
+                _pulseTime += Time.deltaTime;
+                float s = 1f + 0.18f * Mathf.Sin(_pulseTime * 5.5f);
+                sttPulseCircle.localScale = new Vector3(s, s, 1f);
+            }
+        }
+
+        private void ResetBorderFill()
+        {
+            if (npcBorderTop != null)    npcBorderTop.fillAmount    = 0f;
+            if (npcBorderRight != null)  npcBorderRight.fillAmount  = 0f;
+            if (npcBorderBottom != null) npcBorderBottom.fillAmount = 0f;
+            if (npcBorderLeft != null)   npcBorderLeft.fillAmount   = 0f;
         }
 
         private void HandleCardSelected(AACCard card) => OnCardTapped?.Invoke(card);
@@ -141,43 +183,62 @@ namespace Artti.Training
 
         public bool HasPharmacyCardPool => pharmacyCardSlots != null && pharmacyCardSlots.Length > 0;
 
-        // 마이크 켜진 동안 호출 — 풀스크린 오버레이 ON, 펄스 애니메이션 시작
+        // 마이크 켜진 동안 호출 — NPC 패널 외곽 진행 테두리 ON + 텍스트 갱신
         public void ShowMicIndicator(bool visible)
         {
             if (_hideRoutine != null) { StopCoroutine(_hideRoutine); _hideRoutine = null; }
 
             _isListening = visible;
             _pulseTime = 0f;
+            _borderTime = 0f;
 
+            // 신규: 외곽 테두리 진행
+            if (npcBorderRoot != null) npcBorderRoot.SetActive(visible);
+            if (!visible) ResetBorderFill();
+            if (visible && npcDialoguePanel != null) npcDialoguePanel.text = "듣고 있어요...";
+
+            // 레거시: 풀스크린 오버레이 (약국씬 등에 와이어링됐을 때만)
             if (sttOverlay != null) sttOverlay.SetActive(visible);
             if (sttStatusText != null) sttStatusText.text = "듣고 있어요...";
             if (sttResultText != null) sttResultText.text = "";
             if (sttPulseCircle != null) sttPulseCircle.localScale = Vector3.one;
 
-            // legacy (있으면 같이 토글)
             if (micIndicator != null) micIndicator.SetActive(visible);
         }
 
-        // STT 결과 — 잠시 표시 후 자동 숨김
+        // STT 결과 — 빈 결과면 NPC 텍스트로 "잘 못 들었어요" 잠깐 표시. 정상 결과면 다음 NPC 대사가 곧 덮음.
         public void ShowSttResult(string text, float displaySeconds = 2.0f)
         {
             if (_hideRoutine != null) { StopCoroutine(_hideRoutine); _hideRoutine = null; }
 
             _isListening = false;
+
+            // 신규: 테두리 OFF + 빈 결과만 NPC 텍스트로 안내
+            if (npcBorderRoot != null) npcBorderRoot.SetActive(false);
+            ResetBorderFill();
+            if (string.IsNullOrWhiteSpace(text) && npcBorderRoot != null && npcDialoguePanel != null)
+            {
+                npcDialoguePanel.text = "잘 못 들었어요";
+            }
+
+            // 레거시: 풀스크린 오버레이 (sttOverlay 와이어링됐을 때만)
             if (sttPulseCircle != null) sttPulseCircle.localScale = Vector3.one;
-
-            if (sttOverlay != null) sttOverlay.SetActive(true);
-            bool empty = string.IsNullOrWhiteSpace(text);
-            if (sttStatusText != null) sttStatusText.text = empty ? "잘 못 들었어요" : "이렇게 들렸어요";
-            if (sttResultText != null) sttResultText.text = empty ? "" : $"“{text}”";
-
-            _hideRoutine = StartCoroutine(HideAfter(displaySeconds));
+            if (sttOverlay != null)
+            {
+                sttOverlay.SetActive(true);
+                bool empty = string.IsNullOrWhiteSpace(text);
+                if (sttStatusText != null) sttStatusText.text = empty ? "잘 못 들었어요" : "이렇게 들렸어요";
+                if (sttResultText != null) sttResultText.text = empty ? "" : $"“{text}”";
+                _hideRoutine = StartCoroutine(HideAfter(displaySeconds));
+            }
         }
 
         public void HideSttOverlay()
         {
             if (_hideRoutine != null) { StopCoroutine(_hideRoutine); _hideRoutine = null; }
             _isListening = false;
+            if (npcBorderRoot != null) npcBorderRoot.SetActive(false);
+            ResetBorderFill();
             if (sttOverlay != null) sttOverlay.SetActive(false);
             if (micIndicator != null) micIndicator.SetActive(false);
         }
