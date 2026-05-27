@@ -33,6 +33,23 @@ namespace Artti.AAC
         ForceCompleteScenario // turn 상한 또는 반복 실패 시 강제 마무리
     }
 
+    /// <summary>
+    /// Gemini의 present_cards 도구 호출 시 전달되는 파라미터 DTO.
+    /// PLAN.md 5.5.2절, v5 변경 요약 참조.
+    /// </summary>
+    [System.Serializable]
+    public sealed class PresentCardsArgs
+    {
+        /// <summary>현재 목표에 부합하는 메인 카드 2장의 ID 배열.</summary>
+        public string[] main_card_ids;
+        /// <summary>메인 2장에 해당하지 않을 경우를 위한 기타 카드 1장의 ID.</summary>
+        public string fallback_card_id;
+        /// <summary>NPC가 말할 대사 텍스트.</summary>
+        public string npc_speech;
+        /// <summary>도움 강화 수준 (0=None, 1=MildHint, 2=StrongHint).</summary>
+        public int scaffold_level;
+    }
+
     // Common scenario IDs (mirror scenarios.json scenarioId field)
     public static class ScenarioIds
     {

@@ -22,7 +22,11 @@ namespace Artti.Training
         [SerializeField] private AACCardButton[] extraCardSlots;
         [SerializeField] private Button extraCloseButton;
 
-        [Header("STT inline (NPC 패널 외곽 진행 테두리)")]
+        [Header("Main 2 + Fallback 1 (v5 약국)")]
+        [SerializeField] private AACCardButton[] mainCardSlots;
+        [SerializeField] private AACCardButton fallbackCardSlot;
+
+        [Header("STT inline (NPC 패널 외곽 진행 테두리 — 편의점/음식점)")]
         [SerializeField] private GameObject npcBorderRoot;    // 4 edge 부모 — 듣는 동안만 SetActive
         [SerializeField] private Image npcBorderTop;          // Filled Horizontal, Origin Left
         [SerializeField] private Image npcBorderRight;        // Filled Vertical,   Origin Top
@@ -58,6 +62,11 @@ namespace Artti.Training
             if (extraCardSlots != null)
                 foreach (var s in extraCardSlots)
                     if (s != null) s.OnCardSelected += HandleCardSelected;
+            if (mainCardSlots != null)
+                foreach (var s in mainCardSlots)
+                    if (s != null) s.OnCardSelected += HandleCardSelected;
+            if (fallbackCardSlot != null)
+                fallbackCardSlot.OnCardSelected += HandleCardSelected;
             if (extraButton != null) extraButton.onClick.AddListener(HandleExtraRequested);
             if (extraCloseButton != null) extraCloseButton.onClick.AddListener(HideExtraModal);
         }
@@ -72,6 +81,11 @@ namespace Artti.Training
             if (extraCardSlots != null)
                 foreach (var s in extraCardSlots)
                     if (s != null) s.OnCardSelected -= HandleCardSelected;
+            if (mainCardSlots != null)
+                foreach (var s in mainCardSlots)
+                    if (s != null) s.OnCardSelected -= HandleCardSelected;
+            if (fallbackCardSlot != null)
+                fallbackCardSlot.OnCardSelected -= HandleCardSelected;
             if (extraButton != null) extraButton.onClick.RemoveListener(HandleExtraRequested);
             if (extraCloseButton != null) extraCloseButton.onClick.RemoveListener(HideExtraModal);
         }
@@ -183,7 +197,32 @@ namespace Artti.Training
 
         public bool HasPharmacyCardPool => pharmacyCardSlots != null && pharmacyCardSlots.Length > 0;
 
-        // 마이크 켜진 동안 호출 — NPC 패널 외곽 진행 테두리 ON + 텍스트 갱신
+        public bool HasMainFallbackPool =>
+            mainCardSlots != null && mainCardSlots.Length >= 2 && fallbackCardSlot != null;
+
+        public void SetMainAndFallback(AACCard main1, AACCard main2, AACCard fallback)
+        {
+            if (mainCardSlots != null)
+            {
+                if (mainCardSlots.Length > 0 && mainCardSlots[0] != null)
+                {
+                    mainCardSlots[0].gameObject.SetActive(main1 != null);
+                    if (main1 != null) mainCardSlots[0].SetCard(main1);
+                }
+                if (mainCardSlots.Length > 1 && mainCardSlots[1] != null)
+                {
+                    mainCardSlots[1].gameObject.SetActive(main2 != null);
+                    if (main2 != null) mainCardSlots[1].SetCard(main2);
+                }
+            }
+            if (fallbackCardSlot != null)
+            {
+                fallbackCardSlot.gameObject.SetActive(fallback != null);
+                if (fallback != null) fallbackCardSlot.SetCard(fallback);
+            }
+        }
+
+        // 마이크 켜진 동안 호출 — NPC 패널 외곽 진행 테두리 ON (편의점/음식점) + 약국 풀스크린 오버레이 ON (레거시)
         public void ShowMicIndicator(bool visible)
         {
             if (_hideRoutine != null) { StopCoroutine(_hideRoutine); _hideRoutine = null; }
