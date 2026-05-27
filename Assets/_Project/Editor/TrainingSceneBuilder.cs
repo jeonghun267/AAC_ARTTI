@@ -59,18 +59,9 @@ namespace Artti.Editor
             npcRect.anchorMin = new Vector2(0.5f, 1f);
             npcRect.anchorMax = new Vector2(0.5f, 1f);
             npcRect.pivot = new Vector2(0.5f, 1f);
-            if (scenarioId == "pharmacy")
-            {
-                // v5 약국: Main 2 + Fallback 1 슬롯 레이아웃과 어울리는 큰 패널
-                npcRect.anchoredPosition = new Vector2(0, -80);
-                npcRect.sizeDelta = new Vector2(960, 340);
-            }
-            else
-            {
-                // 편의점/음식점: 풀 4장 + 기타 모달 레이아웃에 맞춰 작은 패널
-                npcRect.anchoredPosition = new Vector2(0, -160);
-                npcRect.sizeDelta = new Vector2(720, 280);
-            }
+            // 협업자 v5 디자인 — 모든 훈련 씬 동일
+            npcRect.anchoredPosition = new Vector2(0, -80);
+            npcRect.sizeDelta = new Vector2(960, 340);
             npcPanel.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.95f);
             var npcText = SceneBuilderUtils.CreateTMPText("NPCText", npcPanel.transform, "안녕하세요!", 56);
             var npcTextRect = npcText.rectTransform;
@@ -79,50 +70,62 @@ namespace Artti.Editor
             npcTextRect.offsetMin = new Vector2(40, 40);
             npcTextRect.offsetMax = new Vector2(-40, -40);
 
-            // STT 듣는 중 — NPC 패널 외곽 4변을 시계방향으로 순차 채우는 진행 테두리
-            var (borderRoot, borderTop, borderRight, borderBottom, borderLeft) = BuildNpcBorderProgress(npcPanel.transform);
-
-            // Card slots — 모든 훈련 시나리오에 세로 스크롤 4장 풀 + 기타 버튼/모달 적용 (PLAN.MD 5.4.2 / 7.3.1)
+            // Card slots — 협업자 v5 디자인: 모든 훈련 씬에 Main 2 + Fallback 1 동일 적용
             AACCardButton cardSlot1 = null;
             AACCardButton cardSlot2 = null;
-            AACCardButton[] mainSlots = null;
-            AACCardButton fallbackSlot = null;
+            AACCardButton[] mainSlots = new AACCardButton[]
+            {
+                CreateCardSlotButton("MainSlot_01", canvasGo.transform, new Vector2(0, 980)),
+                CreateCardSlotButton("MainSlot_02", canvasGo.transform, new Vector2(0, 480)),
+            };
+            AACCardButton fallbackSlot = CreateCardSlotButton("FallbackSlot", canvasGo.transform, new Vector2(0, 20));
+
+            // 풀 4장/기타 모달은 더 이상 빌드 안 함 (보조 변수만 유지 — wiring null)
             AACCardButton[] pharmacyCardSlots = null;
             Button pharmacyExtraButton = null;
             GameObject pharmacyExtraModal = null;
             AACCardButton[] pharmacyExtraSlots = null;
             Button pharmacyExtraCloseBtn = null;
 
-            if (scenarioId == "pharmacy")
-            {
-                // v5 약국: Main 2 + Fallback 1 슬롯 (협업자 구현)
-                mainSlots = new AACCardButton[]
-                {
-                    CreateCardSlotButton("MainSlot_01", canvasGo.transform, new Vector2(0, 980)),
-                    CreateCardSlotButton("MainSlot_02", canvasGo.transform, new Vector2(0, 480)),
-                };
-                fallbackSlot = CreateCardSlotButton("FallbackSlot", canvasGo.transform, new Vector2(0, 20));
-            }
-            else
-            {
-                // 편의점/음식점: 풀 4장 스크롤 + 기타 모달
-                pharmacyCardSlots = BuildPharmacyScrollPool(canvasGo.transform);
-                pharmacyExtraButton = BuildPharmacyExtraButton(canvasGo.transform);
-                (pharmacyExtraModal, pharmacyExtraSlots, pharmacyExtraCloseBtn) = BuildPharmacyExtraModal(canvasGo.transform);
-            }
+            // STT 풀스크린 오버레이 — 약국과 동일 디자인 (반투명 배경 + 가운데 카드 + 펄스 원 + 상태/결과 텍스트)
+            var sttOverlay = SceneBuilderUtils.CreatePanel("SttOverlay", canvasGo.transform);
+            sttOverlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
 
-            // STT 표시는 NPC 패널 내부 인라인 스피너로 일원화 — 풀스크린 오버레이 제거
+            var sttCard = new GameObject("Card");
+            sttCard.transform.SetParent(sttOverlay.transform, false);
+            var sttCardRect = sttCard.AddComponent<RectTransform>();
+            sttCardRect.anchorMin = new Vector2(0f, 0.5f);
+            sttCardRect.anchorMax = new Vector2(1f, 0.5f);
+            sttCardRect.pivot = new Vector2(0.5f, 0.5f);
+            sttCardRect.anchoredPosition = Vector2.zero;
+            sttCardRect.sizeDelta = new Vector2(-120, 720);
+            sttCard.AddComponent<Image>().color = Color.white;
+            SceneBuilderUtils.AddVerticalLayout(sttCard, spacing: 32, padding: new RectOffset(60, 60, 60, 60), alignment: TextAnchor.MiddleCenter);
+
+            var pulseGo = new GameObject("Pulse");
+            pulseGo.transform.SetParent(sttCard.transform, false);
+            var pulseRect = pulseGo.AddComponent<RectTransform>();
+            pulseRect.sizeDelta = new Vector2(220, 220);
+            var pulseImg = pulseGo.AddComponent<Image>();
+            pulseImg.color = new Color(0.2f, 0.75f, 0.4f, 1f);
+            pulseImg.raycastTarget = false;
+            SceneBuilderUtils.AddLayoutElement(pulseGo, preferredHeight: 220, preferredWidth: 220);
+
+            var sttStatus = SceneBuilderUtils.CreateTMPText("StatusText", sttCard.transform, "듣고 있어요...", 64);
+            sttStatus.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
+            SceneBuilderUtils.AddLayoutElement(sttStatus.gameObject, preferredHeight: 100);
+
+            var sttResultTmp = SceneBuilderUtils.CreateTMPText("ResultText", sttCard.transform, "", 48);
+            sttResultTmp.color = new Color(0.25f, 0.25f, 0.25f, 1f);
+            SceneBuilderUtils.AddLayoutElement(sttResultTmp.gameObject, preferredHeight: 140);
+
+            sttOverlay.SetActive(false);
 
             // TrainingUIView on Canvas
             var uiView = canvasGo.AddComponent<TrainingUIView>();
             var soView = new SerializedObject(uiView);
             soView.FindProperty("cardSlot1").objectReferenceValue = cardSlot1;
             soView.FindProperty("cardSlot2").objectReferenceValue = cardSlot2;
-            soView.FindProperty("npcBorderRoot").objectReferenceValue   = borderRoot;
-            soView.FindProperty("npcBorderTop").objectReferenceValue    = borderTop;
-            soView.FindProperty("npcBorderRight").objectReferenceValue  = borderRight;
-            soView.FindProperty("npcBorderBottom").objectReferenceValue = borderBottom;
-            soView.FindProperty("npcBorderLeft").objectReferenceValue   = borderLeft;
 
             if (mainSlots != null)
             {
@@ -135,12 +138,10 @@ namespace Artti.Editor
                 soView.FindProperty("fallbackCardSlot").objectReferenceValue = fallbackSlot;
 
             soView.FindProperty("npcDialoguePanel").objectReferenceValue = npcText;
-            // 레거시 풀스크린 오버레이 슬롯은 명시적 null — 약국씬 수동 와이어링과는 별개로,
-            // 빌더가 만든 씬에서는 인라인 스피너 경로만 활성화됨
-            soView.FindProperty("sttOverlay").objectReferenceValue = null;
-            soView.FindProperty("sttStatusText").objectReferenceValue = null;
-            soView.FindProperty("sttResultText").objectReferenceValue = null;
-            soView.FindProperty("sttPulseCircle").objectReferenceValue = null;
+            soView.FindProperty("sttOverlay").objectReferenceValue       = sttOverlay;
+            soView.FindProperty("sttStatusText").objectReferenceValue    = sttStatus;
+            soView.FindProperty("sttResultText").objectReferenceValue    = sttResultTmp;
+            soView.FindProperty("sttPulseCircle").objectReferenceValue   = pulseRect;
             soView.ApplyModifiedProperties();
 
             // Wire TrainingSceneRoot
@@ -389,71 +390,6 @@ namespace Artti.Editor
 
             modal.SetActive(false);
             return (modal, slots, closeBtn);
-        }
-
-        const int BorderThickness = 8;
-        static readonly Color BorderColor = new Color(0.2f, 0.75f, 0.4f, 1f); // STT 진행 강조색
-
-        // NPC 패널 내부 stretch 자식으로 4 edge Image 배치 — top→right→bottom→left 시계방향 진행
-        static (GameObject root, Image top, Image right, Image bottom, Image left)
-            BuildNpcBorderProgress(Transform npcPanel)
-        {
-            var root = new GameObject("NPCSttBorder");
-            root.transform.SetParent(npcPanel, false);
-            var rootRect = root.AddComponent<RectTransform>();
-            rootRect.anchorMin = Vector2.zero;
-            rootRect.anchorMax = Vector2.one;
-            rootRect.offsetMin = Vector2.zero;
-            rootRect.offsetMax = Vector2.zero;
-
-            var top    = CreateBorderEdge(root.transform, "Top",
-                anchorMin: new Vector2(0, 1), anchorMax: new Vector2(1, 1), pivot: new Vector2(0, 0.5f),
-                size: new Vector2(0, BorderThickness),
-                fillMethod: Image.FillMethod.Horizontal, fillOrigin: (int)Image.OriginHorizontal.Left);
-
-            var right  = CreateBorderEdge(root.transform, "Right",
-                anchorMin: new Vector2(1, 0), anchorMax: new Vector2(1, 1), pivot: new Vector2(0.5f, 1),
-                size: new Vector2(BorderThickness, 0),
-                fillMethod: Image.FillMethod.Vertical, fillOrigin: (int)Image.OriginVertical.Top);
-
-            var bottom = CreateBorderEdge(root.transform, "Bottom",
-                anchorMin: new Vector2(0, 0), anchorMax: new Vector2(1, 0), pivot: new Vector2(1, 0.5f),
-                size: new Vector2(0, BorderThickness),
-                fillMethod: Image.FillMethod.Horizontal, fillOrigin: (int)Image.OriginHorizontal.Right);
-
-            var left   = CreateBorderEdge(root.transform, "Left",
-                anchorMin: new Vector2(0, 0), anchorMax: new Vector2(0, 1), pivot: new Vector2(0.5f, 0),
-                size: new Vector2(BorderThickness, 0),
-                fillMethod: Image.FillMethod.Vertical, fillOrigin: (int)Image.OriginVertical.Bottom);
-
-            root.SetActive(false);
-            return (root, top, right, bottom, left);
-        }
-
-        static Image CreateBorderEdge(Transform parent, string name,
-            Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 size,
-            Image.FillMethod fillMethod, int fillOrigin)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            var rect = go.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.pivot = pivot;
-            rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = size;
-
-            var img = go.AddComponent<Image>();
-            // Image.Type.Filled는 sprite가 있어야 fillAmount가 동작 — Unity 빌트인 UISprite 사용
-            var sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
-            if (sprite != null) img.sprite = sprite;
-            img.color = BorderColor;
-            img.raycastTarget = false;
-            img.type = Image.Type.Filled;
-            img.fillMethod = fillMethod;
-            img.fillOrigin = fillOrigin;
-            img.fillAmount = 0f;
-            return img;
         }
     }
 }
