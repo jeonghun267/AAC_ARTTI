@@ -80,13 +80,6 @@ namespace Artti.Editor
             };
             AACCardButton fallbackSlot = CreateCardSlotButton("FallbackSlot", canvasGo.transform, new Vector2(0, 20));
 
-            // 풀 4장/기타 모달은 더 이상 빌드 안 함 (보조 변수만 유지 — wiring null)
-            AACCardButton[] pharmacyCardSlots = null;
-            Button pharmacyExtraButton = null;
-            GameObject pharmacyExtraModal = null;
-            AACCardButton[] pharmacyExtraSlots = null;
-            Button pharmacyExtraCloseBtn = null;
-
             // STT 풀스크린 오버레이 — 약국과 동일 디자인 (반투명 배경 + 가운데 카드 + 펄스 원 + 상태/결과 텍스트)
             var sttOverlay = SceneBuilderUtils.CreatePanel("SttOverlay", canvasGo.transform);
             sttOverlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
@@ -390,6 +383,48 @@ namespace Artti.Editor
 
             modal.SetActive(false);
             return (modal, slots, closeBtn);
+        }
+
+        // 협업자 v5: Main 2 + Fallback 1 슬롯용 카드 버튼 빌더 (origin/main에서 복원)
+        static AACCardButton CreateCardSlotButton(string name, Transform parent, Vector2 anchoredPos)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0f);
+            rect.anchorMax = new Vector2(0.5f, 0f);
+            rect.pivot = new Vector2(0.5f, 0f);
+            rect.anchoredPosition = anchoredPos;
+            rect.sizeDelta = new Vector2(380, 460);
+            var bg = go.AddComponent<Image>();
+            bg.color = new Color(1f, 1f, 1f, 1f);
+            var btn = go.AddComponent<Button>();
+
+            var icon = SceneBuilderUtils.CreateImage("Icon", go.transform);
+            icon.color = new Color(0.9f, 0.9f, 0.9f, 1f);
+            var iconRect = icon.rectTransform;
+            iconRect.anchorMin = new Vector2(0.5f, 1f);
+            iconRect.anchorMax = new Vector2(0.5f, 1f);
+            iconRect.pivot = new Vector2(0.5f, 1f);
+            iconRect.anchoredPosition = new Vector2(0, -32);
+            iconRect.sizeDelta = new Vector2(280, 280);
+
+            var label = SceneBuilderUtils.CreateTMPText("Label", go.transform, "", 52);
+            var labelRect = label.rectTransform;
+            labelRect.anchorMin = new Vector2(0, 0);
+            labelRect.anchorMax = new Vector2(1, 0);
+            labelRect.pivot = new Vector2(0.5f, 0);
+            labelRect.anchoredPosition = new Vector2(0, 24);
+            labelRect.sizeDelta = new Vector2(0, 80);
+
+            var cardButton = go.AddComponent<AACCardButton>();
+            var so = new SerializedObject(cardButton);
+            so.FindProperty("iconImage").objectReferenceValue = icon;
+            so.FindProperty("phraseText").objectReferenceValue = label;
+            so.FindProperty("button").objectReferenceValue = btn;
+            so.ApplyModifiedProperties();
+
+            return cardButton;
         }
     }
 }
