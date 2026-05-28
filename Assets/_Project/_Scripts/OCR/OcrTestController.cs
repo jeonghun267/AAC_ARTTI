@@ -5,7 +5,7 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// OCR 테스트 화면 컨트롤러 (Panel 전환 + 사진 표시)
+/// OCR 테스트 화면 컨트롤러 (네이버 API 다중 검색 로직 적용 완료)
 /// </summary>
 public class OcrTestController : MonoBehaviour
 {
@@ -30,6 +30,9 @@ public class OcrTestController : MonoBehaviour
     [SerializeField] private TextMeshProUGUI categoryText;
     [SerializeField] private TextMeshProUGUI descriptionText;
 
+    [Header("네이버 API 검색 컴포넌트")]
+    [SerializeField] private NaverLocalSearcher naverSearcher;
+
     // 카테고리별 배지 색상 (한글 키)
     private readonly System.Collections.Generic.Dictionary<string, Color> _categoryColors =
         new System.Collections.Generic.Dictionary<string, Color>
@@ -51,6 +54,12 @@ public class OcrTestController : MonoBehaviour
         if (pickImageButton != null) pickImageButton.onClick.AddListener(OnPickImageClicked);
         if (takePhotoButton != null) takePhotoButton.onClick.AddListener(OnTakePhotoClicked);
         if (backButton != null) backButton.onClick.AddListener(OnBackClicked);
+
+        // 컴포넌트 자동 할당
+        if (naverSearcher == null)
+        {
+            naverSearcher = GetComponent<NaverLocalSearcher>();
+        }
 
         ShowHomePanel();
 
@@ -162,7 +171,7 @@ public class OcrTestController : MonoBehaviour
     private void OnOcrSuccess(string text, string imagePath)
     {
         _isProcessing = false;
-        Debug.Log("[OcrTest] OCR result: " + text);
+        Debug.Log("[OcrTest] OCR result: \n" + text);
 
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -170,15 +179,83 @@ public class OcrTestController : MonoBehaviour
             return;
         }
 
-        KeywordMatch match = _dict.Match(text);
+        StartCoroutine(ProcessClassificationRoutine(text, imagePath));
+    }
 
-        if (match == null)
+    /// <summary>
+    /// 여러 줄의 텍스트를 순서대로 네이버에 검색하여 유효한 상호명을 찾아내는 핵심 로직
+    /// </summary>
+    private IEnumerator ProcessClassificationRoutine(string ocrText, string imagePath)
+    {
+        SetStatus("장소 카테고리 분석 중...");
+
+        // 1. 줄바꿈을 기준으로 텍스트를 배열로 쪼갭니다.
+        string[] lines = ocrText.Split(new char[] { '\n', '\r' }, System.StringSplitOptions.RemoveEmptyEntries);
+
+        KeywordMatch finalMatch = null;
+        string successfulKeyword = "";
+
+        // 2. 네이버 API를 줄 단위로 순회하며 다중 검색 진행
+        if (naverSearcher != null)
         {
-            SetStatus("분류 가능한 카테고리가 없습니다.\nOCR 결과: " + text);
-            return;
+            foreach (string rawLine in lines)
+            {
+                string keyword = rawLine.Trim();
+
+                // 1글자짜리 오인식 문자열이나 빈 문자열은 네이버에 검색하지 않고 패스하여 API 호출을 아낍니다.
+                if (keyword.Length < 2) continue;
+
+                Debug.Log($"[OcrTest] 네이버 API 검색 시도: {keyword}");
+
+                string naverJsonResult = null;
+                bool isNetworkError = false;
+
+                // 통신 대기
+                yield return StartCoroutine(naverSearcher.SearchPlaceCoroutine(
+                    keyword,
+                    onComplete: (json) => naverJsonResult = json,
+                    onError: (error) => {
+                        isNetworkError = true;
+                    }
+                ));
+
+                // 응답이 오면 파싱 시도
+                if (!isNetworkError && !string.IsNullOrEmpty(naverJsonResult))
+                {
+                    string rawCategory = naverSearcher.ParseCategoryFromJson(naverJsonResult);
+                    string appCategory = naverSearcher.MapToAppCategory(rawCategory);
+
+                    // 네이버가 유효한 카테고리(음식점, 카페 등)를 뱉어주었다면!
+                    if (!string.IsNullOrEmpty(appCategory))
+                    {
+                        finalMatch = _dict.Match(appCategory);
+                        if (finalMatch != null)
+                        {
+                            successfulKeyword = keyword;
+                            Debug.Log($"[OcrTest] 빙고! '{keyword}'(으)로 [{appCategory}] 매칭 성공. 나머지 줄 검색을 중단합니다.");
+                            break; // 정답을 찾았으므로 남은 줄은 더 이상 검색하지 않고 반복문을 즉시 탈출합니다.
+                        }
+                    }
+                }
+            }
         }
 
-        ShowResultPanel(match, imagePath);
+        // 3. [Plan B] 모든 줄을 다 검색했는데도 실패했다면 기존의 로컬 사전 매칭 실행
+        if (finalMatch == null)
+        {
+            Debug.Log("[OcrTest] 네이버 다중 검색 실패. 로컬 사전을 전체 텍스트로 검색합니다.");
+            finalMatch = _dict.Match(ocrText);
+        }
+
+        // 4. 최종 결과 화면 표시
+        if (finalMatch != null)
+        {
+            ShowResultPanel(finalMatch, imagePath);
+        }
+        else
+        {
+            SetStatus("분류 가능한 카테고리가 없습니다.\n마지막 인식 테스트: " + (lines.Length > 0 ? lines[0] : "없음"));
+        }
     }
 
     private void OnOcrError(string message)
