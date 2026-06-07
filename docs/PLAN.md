@@ -10,10 +10,11 @@
 | 제작학과 | 디지털융합제어과 / 컴퓨터공학과 |
 | 지도교수 | 윤혜인 |
 | 팀 구성 | 팀장 김연영 · 팀원 방승훈 · 팀원 오정훈 |
-| 작성일 | 2026. 05. 25. (v5) |
+| 작성일 | 2026. 06. 02. (v6) |
 | v3 변경 요약 | Tool Use 기반 대화 매니저 도입, AAC 카드 3-레이어 구조, 시나리오 목표 카탈로그, latency 단축 전략 우선순위 추가 |
 | v4 변경 요약 | Unity 2022 LTS → Unity 6.3 LTS (6000.3.14f1) 환경 전환, uGUI 2.0.0 채택 명시 (기존 UI Toolkit 표기 정정), URP 17.3.0·AR Foundation 6.3.4 패키지 도입, JSON 파싱 라이브러리 정책 명시 (Newtonsoft.Json + JsonUtility 분담), 데이터 자산·코드 골격 구축 완료에 따른 10장 갱신 |
 | v5 변경 요약 | 훈련모드 AAC 카드 슬롯 구조 정정 (2장 → 3장: 메인 2장 + 기타 1장), present_cards 도구 파라미터를 main_card_ids[] + fallback_card_id로 분리하여 메인/기타 구분 명시화 |
+| v6 변경 요약 | 1차 폼팩터를 가로(landscape) 모드로 통일 명시. 훈련모드와 AR현장모드 모두 가로 고정 (화면정의서 v2와 동기화). 4.3 사용 환경에 폼팩터 정책 한 줄 추가, 6.2 개발 환경의 대상 OS 셀에 화면 방향 명기. |
 
 ## 목차
 
@@ -176,6 +177,7 @@
 - 훈련모드는 특수학교, 가정, 복지관 등 인터넷 연결이 가능한 실내 환경에서 사용
 - AR현장모드는 이용자가 보호자 또는 활동지원사와 동행한 외부 현장에서 사용
 - 태블릿 거치대 및 외부 마이크 사용은 선택사항
+- 1차 폼팩터: 태블릿 가로(landscape) 모드 고정. 훈련모드·AR현장모드 모두 동일 방향 적용 (상세는 화면정의서 v2 1.3절 참조). AR현장모드는 AR Foundation의 ARCameraBackground가 가로 카메라 영상을 자동 출력한다.
 
 ---
 
@@ -410,7 +412,7 @@ v3에서는 LLM 활용 방식 변경에 따라 Gemini API 사용 모델과 옵�
 | 항목 | 내용 |
 |---|---|
 | IDE | Unity Editor 6000.3.14f1 (Unity 6.3 LTS), Visual Studio 2022 또는 VS Code |
-| 대상 OS | Android 11 이상 (Min SDK 30, ARM64, Scripting Backend IL2CPP, 실 기기 테스트 포함) |
+| 대상 OS | Android 11 이상 (Min SDK 30, ARM64, Scripting Backend IL2CPP). 화면 방향: 가로(landscape) 고정 (Player Settings의 Allowed Orientations에서 Landscape Left/Right만 허용). 실 기기 테스트 포함 |
 | 버전 관리 | Git + GitHub (팀 저장소) |
 | 협업 도구 | Notion (회의록·기획 문서), Discord (실시간 커뮤니케이션), mcp-unity (Claude ↔ Unity Editor 연동, 작업 보조용) |
 | 빌드 및 배포 | Android Gradle Build, 팀 내부 테스트 배포는 APK 직접 공유 |
