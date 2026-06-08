@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -17,6 +18,19 @@ namespace Artti.UI
         [SerializeField] private Button addButton;            // + 새로 등록하기
         [SerializeField] private Button backButton;
 
+        [Header("Delete Confirm Popup (가운데 모달)")]
+        [SerializeField] private GameObject deletePopup;
+        [SerializeField] private TMP_Text deleteMessageText;
+        [SerializeField] private TMP_InputField deleteInput;
+        [SerializeField] private Button deleteConfirmButton; // 삭제
+        [SerializeField] private Button deleteCancelButton;  // 취소
+        [SerializeField] private Button deleteCloseButton;   // X
+
+        private string _pendingDeleteId;
+        private const string ConfirmWord = "동의한다";
+        private const string DeletePrompt = "정말 삭제할까요?\n동의하시면 아래에 '동의한다'를 입력하세요.";
+        private const string DeleteHint = "'동의한다'를 정확히 입력해야 삭제됩니다.";
+
         [SerializeField] private string createScene = "ProfileCreateScene";
         [SerializeField] private string backScene = "SplashScene";
         // 비어있으면 카드 탭 시 선택만(강조+맨위). "MainScene" 등을 넣으면 탭 시 해당 씬으로 이동.
@@ -31,6 +45,11 @@ namespace Artti.UI
 
             if (addButton != null) addButton.onClick.AddListener(() => SceneManager.LoadScene(createScene));
             if (backButton != null) backButton.onClick.AddListener(() => SceneManager.LoadScene(backScene));
+
+            if (deleteConfirmButton != null) deleteConfirmButton.onClick.AddListener(OnDeleteConfirm);
+            if (deleteCancelButton != null) deleteCancelButton.onClick.AddListener(CloseDelete);
+            if (deleteCloseButton != null) deleteCloseButton.onClick.AddListener(CloseDelete);
+            if (deletePopup != null) deletePopup.SetActive(false);
 
             Refresh();
         }
@@ -82,10 +101,10 @@ namespace Artti.UI
                     card.editButton.onClick.RemoveAllListeners();
                     card.editButton.onClick.AddListener(() => OnEdit(pid));
                 }
-                if (card.reportButton != null)
+                if (card.deleteButton != null)
                 {
-                    card.reportButton.onClick.RemoveAllListeners();
-                    card.reportButton.onClick.AddListener(() => OnReport(pid));
+                    card.deleteButton.onClick.RemoveAllListeners();
+                    card.deleteButton.onClick.AddListener(() => OnDelete(pid));
                 }
             }
         }
@@ -108,9 +127,38 @@ namespace Artti.UI
             SceneManager.LoadScene(createScene);
         }
 
-        private void OnReport(string id)
+        // 삭제 버튼 → 가운데 모달 띄움 (타이핑 확인)
+        private void OnDelete(string id)
         {
-            Debug.Log($"[ProfileSelectView] 리포트 클릭 (id={id}) — 전환 대상 미설정 (리포트 화면 연결 예정)");
+            _pendingDeleteId = id;
+            if (deleteInput != null) deleteInput.text = "";
+            if (deleteMessageText != null) deleteMessageText.text = DeletePrompt;
+            if (deletePopup != null) deletePopup.SetActive(true);
+        }
+
+        // "동의한다" 정확히 입력해야 삭제
+        private void OnDeleteConfirm()
+        {
+            var typed = deleteInput != null ? deleteInput.text.Trim() : "";
+            if (typed != ConfirmWord)
+            {
+                if (deleteMessageText != null) deleteMessageText.text = DeleteHint;
+                return;
+            }
+
+            var boot = AppBootstrap.Instance;
+            if (boot != null && !string.IsNullOrEmpty(_pendingDeleteId))
+                boot.ProfileManager.DeleteProfile(_pendingDeleteId);
+
+            _pendingDeleteId = null;
+            CloseDelete();
+            Refresh();
+        }
+
+        private void CloseDelete()
+        {
+            _pendingDeleteId = null;
+            if (deletePopup != null) deletePopup.SetActive(false);
         }
 
         private static string FormatLastUsed(long ticks)
