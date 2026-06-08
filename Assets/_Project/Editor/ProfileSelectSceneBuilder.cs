@@ -1,16 +1,30 @@
+using System.Collections.Generic;
 using TMPro;
 using UnityEditor;
-using UnityEditor.Events;
 using UnityEngine;
-using UnityEngine.Events;
 using UnityEngine.UI;
 using Artti.Common;
 using Artti.UI;
 
 namespace Artti.Editor
 {
+    // 사용자 선택 화면. 가로 1920x1080.
+    // 카드 목록(선택 카드 맨 위 + primary 테두리 + 좌상단 체크) / 빈 상태(0명).
     public static class ProfileSelectSceneBuilder
     {
+        static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
+
+        static readonly Color Slate    = new Color32(63, 74, 94, 255);
+        static readonly Color BtnBlue  = new Color32(42, 109, 224, 255); // primary
+        static readonly Color DateGray = new Color32(140, 150, 165, 255);
+        static readonly Color CardBtnBg = new Color32(238, 240, 244, 255);
+        static readonly Color BgColor  = new Color32(245, 246, 250, 255);
+        static readonly Color White    = Color.white;
+
+        const string KoreanFontPath = "Assets/Fonts/NotoSansKR-Medium SDF.asset";
+        const string RoundedPath = "Assets/_Project/Art/UI/RoundedRect.png";
+        const string CardPrefabPath = "Assets/_Project/Prefabs/Profile/ProfileCard.prefab";
+
         [MenuItem("Artti/Build ProfileSelectScene Hierarchy")]
         public static void BuildMenu() => Build();
 
@@ -19,293 +33,338 @@ namespace Artti.Editor
             SceneBuilderUtils.OpenScene(ScenePaths.ProfileSelect);
             SceneBuilderUtils.ClearRootObjects();
 
-            // AppBootstrap (DontDestroyOnLoad in Awake)
             var bootstrap = new GameObject("[AppBootstrap]");
             bootstrap.AddComponent<AppBootstrap>();
 
-            // EventSystem
             SceneBuilderUtils.CreateEventSystem();
             SceneBuilderUtils.EnsureAudioListener();
+            var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution);
 
-            // Canvas
-            var canvasGo = SceneBuilderUtils.CreateCanvas();
+            var font = LoadFont();
+            EnsureAvatarLibrary();
+            var cardPrefab = EnsureProfileCardPrefab(font);
 
-            // Canvas 배경
-            var bgPanel = SceneBuilderUtils.CreatePanel("Background", canvasGo.transform);
-            bgPanel.AddComponent<Image>().color = new Color(0.96f, 0.96f, 0.98f, 1f);
+            var bg = SceneBuilderUtils.CreatePanel("Background", canvasGo.transform);
+            bg.AddComponent<Image>().color = BgColor;
 
-            // Title
-            var title = SceneBuilderUtils.CreateTMPText("Title", canvasGo.transform, "프로필 선택", 80);
-            var titleRect = title.rectTransform;
-            titleRect.anchorMin = new Vector2(0.5f, 1f);
-            titleRect.anchorMax = new Vector2(0.5f, 1f);
-            titleRect.pivot = new Vector2(0.5f, 1f);
-            titleRect.anchoredPosition = new Vector2(0, -120);
-            titleRect.sizeDelta = new Vector2(800, 140);
+            // 뒤로 (좌상단)
+            SceneBuilderUtils.CreateBackButton("SplashScene", canvasGo.transform, "← 뒤로");
 
-            // ProfileButton 프리팹 자동 생성
-            var profileButtonPrefab = EnsureProfileButtonPrefab();
-
-            // "+ 프로필 추가" 버튼 (우상단)
-            var addBtn = SceneBuilderUtils.CreateButton("+ 추가", canvasGo.transform, 36);
-            addBtn.gameObject.name = "AddProfileBtn";
+            // + 새로 등록하기 (우상단)
+            var addBtn = MakeButton("AddButton", canvasGo.transform, "+ 새로 등록하기", 36, BtnBlue, White, font);
             var addRect = addBtn.GetComponent<RectTransform>();
-            addRect.anchorMin = new Vector2(1f, 1f);
-            addRect.anchorMax = new Vector2(1f, 1f);
-            addRect.pivot = new Vector2(1f, 1f);
-            addRect.anchoredPosition = new Vector2(-32, -32);
-            addRect.sizeDelta = new Vector2(200, 100);
+            addRect.anchorMin = addRect.anchorMax = new Vector2(1, 1);
+            addRect.pivot = new Vector2(1, 1);
+            addRect.anchoredPosition = new Vector2(-40, -40);
+            addRect.sizeDelta = new Vector2(380, 96);
 
-            // AvatarGrid
-            var gridGo = new GameObject("AvatarGrid");
-            gridGo.transform.SetParent(canvasGo.transform, false);
-            var gridRect = gridGo.AddComponent<RectTransform>();
-            gridRect.anchorMin = new Vector2(0.5f, 0.5f);
-            gridRect.anchorMax = new Vector2(0.5f, 0.5f);
-            gridRect.sizeDelta = new Vector2(900, 1200);
-            var grid = gridGo.AddComponent<GridLayoutGroup>();
-            grid.cellSize = new Vector2(280, 320);
-            grid.spacing = new Vector2(24, 24);
-            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            grid.constraintCount = 3;
+            // ===== 목록 루트 (제목 + 스크롤) =====
+            var listRoot = MakeRect("ListRoot", canvasGo.transform, Vector2.zero, Vector2.zero);
+            StretchFull(listRoot, 0);
 
-            // TeacherModeModal — 반투명 오버레이 + 가운데 카드 컨테이너
-            var modal = SceneBuilderUtils.CreatePanel("TeacherModeModal", canvasGo.transform);
-            modal.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f); // 반투명 오버레이
+            var listTitle = MakeText("Title", listRoot.transform, "사용자를 선택하세요", 72, Slate, font);
+            listTitle.rectTransform.anchorMin = listTitle.rectTransform.anchorMax = new Vector2(0.5f, 1f);
+            listTitle.rectTransform.pivot = new Vector2(0.5f, 1f);
+            listTitle.rectTransform.anchoredPosition = new Vector2(0, -70);
+            listTitle.rectTransform.sizeDelta = new Vector2(1000, 100);
 
-            // 카드 컨테이너 — 화면 좌우 80px 마진, 세로 중앙, 높이 720 고정
-            // 화면 비율이 어떻든(폴드/플립/일반) 가로폭을 충분히 확보
-            var card = new GameObject("Card");
-            card.transform.SetParent(modal.transform, false);
-            var cardRect = card.AddComponent<RectTransform>();
-            cardRect.anchorMin = new Vector2(0f, 0.5f);
-            cardRect.anchorMax = new Vector2(1f, 0.5f);
-            cardRect.pivot = new Vector2(0.5f, 0.5f);
-            cardRect.anchoredPosition = Vector2.zero;
-            cardRect.sizeDelta = new Vector2(-160, 720); // -160 = 좌우 80px 마진
-            card.AddComponent<Image>().color = new Color(1f, 1f, 1f, 1f);
-            SceneBuilderUtils.AddVerticalLayout(card, spacing: 32, padding: new RectOffset(60, 60, 60, 60), alignment: UnityEngine.TextAnchor.UpperCenter);
+            var scroll = MakeRect("CardScroll", listRoot.transform, new Vector2(0, -70), new Vector2(1320, 760));
+            var scrollRect = scroll.gameObject.AddComponent<ScrollRect>();
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.scrollSensitivity = 30;
 
-            var modalTitle = SceneBuilderUtils.CreateTMPText("ModalTitle", card.transform, "첫 프로필 만들기", 56);
-            modalTitle.textWrappingMode = TextWrappingModes.NoWrap;
-            modalTitle.overflowMode = TextOverflowModes.Overflow;
-            SceneBuilderUtils.AddLayoutElement(modalTitle.gameObject, preferredHeight: 100);
+            var viewport = ChildRect("Viewport", scroll.transform);
+            StretchFull(viewport, 0);
+            viewport.gameObject.AddComponent<Image>().color = new Color(0, 0, 0, 0);
+            viewport.gameObject.AddComponent<RectMask2D>();
 
-            // InputField (TMP) — 표준 구조: Input → TextArea(RectMask2D) → (Placeholder, Text)
-            // 비활성 상태로 빌드 → 모든 참조 할당 후 활성화 (OnEnable 시점에 ref가 null이면 placeholder가 안 잡힘)
-            var inputGo = new GameObject("NicknameInput");
-            inputGo.SetActive(false);
-            inputGo.transform.SetParent(card.transform, false);
-            inputGo.AddComponent<RectTransform>();
-            inputGo.AddComponent<Image>().color = new Color(0.95f, 0.95f, 0.97f, 1f);
-            SceneBuilderUtils.AddLayoutElement(inputGo, preferredHeight: 140);
+            var content = ChildRect("Content", viewport.transform);
+            content.anchorMin = new Vector2(0, 1);
+            content.anchorMax = new Vector2(1, 1);
+            content.pivot = new Vector2(0.5f, 1f);
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta = Vector2.zero;
+            var vlg = content.gameObject.AddComponent<VerticalLayoutGroup>();
+            vlg.spacing = 24;
+            vlg.padding = new RectOffset(20, 20, 10, 10);
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = true;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
+            vlg.childAlignment = TextAnchor.UpperCenter;
+            var fitter = content.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-            var textAreaGo = new GameObject("Text Area");
-            textAreaGo.transform.SetParent(inputGo.transform, false);
-            textAreaGo.AddComponent<RectTransform>();
-            textAreaGo.AddComponent<RectMask2D>();
-            SceneBuilderUtils.FillStretch(textAreaGo.GetComponent<RectTransform>(), padding: 24);
+            scrollRect.viewport = viewport;
+            scrollRect.content = content;
 
-            var placeholder = SceneBuilderUtils.CreateTMPText("Placeholder", textAreaGo.transform, "닉네임 입력", 44);
-            placeholder.color = new Color(0.5f, 0.5f, 0.5f, 1f);
-            placeholder.alignment = TextAlignmentOptions.MidlineLeft;
-            placeholder.textWrappingMode = TextWrappingModes.NoWrap;
-            placeholder.overflowMode = TextOverflowModes.Ellipsis;
-            placeholder.raycastTarget = false;
-            SceneBuilderUtils.FillStretch(placeholder.rectTransform);
+            // ===== 빈 상태 (0명) =====
+            var emptyState = MakeRect("EmptyState", canvasGo.transform, Vector2.zero, Vector2.zero);
+            StretchFull(emptyState, 0);
 
-            var inputTextGo = SceneBuilderUtils.CreateTMPText("Text", textAreaGo.transform, "", 44);
-            inputTextGo.alignment = TextAlignmentOptions.MidlineLeft;
-            inputTextGo.textWrappingMode = TextWrappingModes.NoWrap;
-            inputTextGo.overflowMode = TextOverflowModes.Ellipsis;
-            inputTextGo.raycastTarget = false;
-            SceneBuilderUtils.FillStretch(inputTextGo.rectTransform);
+            var emptyTitle = MakeText("EmptyTitle", emptyState.transform, "등록된 사용자가 없습니다.", 64, Slate, font);
+            emptyTitle.rectTransform.anchorMin = emptyTitle.rectTransform.anchorMax = new Vector2(0.5f, 1f);
+            emptyTitle.rectTransform.pivot = new Vector2(0.5f, 1f);
+            emptyTitle.rectTransform.anchoredPosition = new Vector2(0, -90);
+            emptyTitle.rectTransform.sizeDelta = new Vector2(1100, 100);
 
-            var input = inputGo.AddComponent<TMP_InputField>();
-            input.textViewport = textAreaGo.GetComponent<RectTransform>();
-            input.textComponent = (TextMeshProUGUI)inputTextGo;
-            input.placeholder = placeholder;
-            input.lineType = TMP_InputField.LineType.SingleLine;
-            input.fontAsset = SceneBuilderUtils.GetKoreanFont();
-            input.pointSize = 44;
-            input.text = "";
-            inputGo.SetActive(true);
-            input.ForceLabelUpdate();
+            var promptCard = MakeRect("PromptCard", emptyState.transform, new Vector2(0, 200), new Vector2(900, 200));
+            var pcImg = promptCard.gameObject.AddComponent<Image>();
+            pcImg.sprite = Rounded(); pcImg.type = Image.Type.Sliced; pcImg.pixelsPerUnitMultiplier = 1f;
+            pcImg.color = White;
+            var pAvatar = ChildRect("Avatar", promptCard.transform);
+            pAvatar.anchorMin = pAvatar.anchorMax = new Vector2(0, 0.5f);
+            pAvatar.pivot = new Vector2(0, 0.5f);
+            pAvatar.anchoredPosition = new Vector2(48, 0);
+            pAvatar.sizeDelta = new Vector2(110, 110);
+            var pAvImg = pAvatar.gameObject.AddComponent<Image>();
+            pAvImg.sprite = Builtin("UI/Skin/Knob.psd"); pAvImg.color = new Color32(200, 206, 214, 255);
+            var pText = MakeText("Text", promptCard.transform, "새로운 사용자를 등록해보세요!", 38, Slate, font);
+            pText.alignment = TextAlignmentOptions.Left;
+            pText.rectTransform.anchorMin = pText.rectTransform.anchorMax = new Vector2(0, 0.5f);
+            pText.rectTransform.pivot = new Vector2(0, 0.5f);
+            pText.rectTransform.anchoredPosition = new Vector2(190, 0);
+            pText.rectTransform.sizeDelta = new Vector2(660, 80);
 
-            // 생성 버튼
-            var createBtn = SceneBuilderUtils.CreateButton("프로필 생성", card.transform, 48);
-            createBtn.gameObject.name = "CreateProfileBtn";
-            SceneBuilderUtils.AddLayoutElement(createBtn.gameObject, preferredHeight: 140);
-            var createBtnText = createBtn.GetComponentInChildren<TextMeshProUGUI>();
-            if (createBtnText != null)
-            {
-                createBtnText.textWrappingMode = TextWrappingModes.NoWrap;
-                createBtnText.overflowMode = TextOverflowModes.Overflow;
-            }
+            // 기본 상태: 목록 ON / 빈 상태 OFF (런타임에 View가 프로필 수에 따라 토글)
+            emptyState.gameObject.SetActive(false);
 
-            modal.SetActive(false);
-
-            // DeleteConfirmModal — 삭제 확인 다이얼로그
-            var delModal = SceneBuilderUtils.CreatePanel("DeleteConfirmModal", canvasGo.transform);
-            delModal.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
-
-            var delCard = new GameObject("Card");
-            delCard.transform.SetParent(delModal.transform, false);
-            var delCardRect = delCard.AddComponent<RectTransform>();
-            delCardRect.anchorMin = new Vector2(0f, 0.5f);
-            delCardRect.anchorMax = new Vector2(1f, 0.5f);
-            delCardRect.pivot = new Vector2(0.5f, 0.5f);
-            delCardRect.anchoredPosition = Vector2.zero;
-            delCardRect.sizeDelta = new Vector2(-160, 560);
-            delCard.AddComponent<Image>().color = Color.white;
-            SceneBuilderUtils.AddVerticalLayout(delCard, spacing: 36, padding: new RectOffset(48, 48, 60, 48), alignment: TextAnchor.MiddleCenter);
-
-            var delMsg = SceneBuilderUtils.CreateTMPText("Message", delCard.transform, "프로필을 삭제할까요?", 52);
-            delMsg.textWrappingMode = TextWrappingModes.Normal;
-            SceneBuilderUtils.AddLayoutElement(delMsg.gameObject, preferredHeight: 220);
-
-            var delBtnRow = new GameObject("ButtonRow");
-            delBtnRow.transform.SetParent(delCard.transform, false);
-            delBtnRow.AddComponent<RectTransform>();
-            var rowH = delBtnRow.AddComponent<HorizontalLayoutGroup>();
-            rowH.spacing = 32;
-            rowH.childControlWidth = true;
-            rowH.childControlHeight = true;
-            rowH.childForceExpandWidth = true;
-            rowH.childForceExpandHeight = true;
-            rowH.childAlignment = TextAnchor.MiddleCenter;
-            SceneBuilderUtils.AddLayoutElement(delBtnRow, preferredHeight: 140);
-
-            var cancelDelBtn = SceneBuilderUtils.CreateButton("취소", delBtnRow.transform, 44);
-            cancelDelBtn.gameObject.name = "CancelDeleteBtn";
-
-            var confirmDelBtn = SceneBuilderUtils.CreateButton("삭제", delBtnRow.transform, 44);
-            confirmDelBtn.gameObject.name = "ConfirmDeleteBtn";
-            var confirmImg = confirmDelBtn.GetComponent<Image>();
-            if (confirmImg != null) confirmImg.color = new Color(0.9f, 0.25f, 0.25f, 1f);
-            var confirmTextTmp = confirmDelBtn.GetComponentInChildren<TextMeshProUGUI>();
-            if (confirmTextTmp != null) confirmTextTmp.color = Color.white;
-
-            delModal.SetActive(false);
-
-            // ProfileSelectView
+            // ===== View 와이어링 =====
             var view = canvasGo.AddComponent<ProfileSelectView>();
             var so = new SerializedObject(view);
-            so.FindProperty("avatarGrid").objectReferenceValue = gridRect;
-            so.FindProperty("teacherModeModal").objectReferenceValue = modal;
-            so.FindProperty("nicknameInput").objectReferenceValue = input;
-            so.FindProperty("deleteConfirmModal").objectReferenceValue = delModal;
-            so.FindProperty("deleteConfirmText").objectReferenceValue = delMsg;
-            so.FindProperty("confirmDeleteButton").objectReferenceValue = confirmDelBtn;
-            so.FindProperty("cancelDeleteButton").objectReferenceValue = cancelDelBtn;
-            if (profileButtonPrefab != null)
-                so.FindProperty("profileButtonPrefab").objectReferenceValue = profileButtonPrefab;
+            so.FindProperty("cardContainer").objectReferenceValue = content;
+            so.FindProperty("cardPrefab").objectReferenceValue = cardPrefab;
+            so.FindProperty("cardScroll").objectReferenceValue = listRoot.gameObject;
+            so.FindProperty("emptyState").objectReferenceValue = emptyState.gameObject;
+            so.FindProperty("addButton").objectReferenceValue = addBtn;
             so.ApplyModifiedProperties();
-
-            // 생성 버튼 → CreateProfileFromInput
-            WireViewMethod(createBtn, view, nameof(ProfileSelectView.CreateProfileFromInput));
-            // "+ 추가" 버튼 → ShowCreateProfileModal
-            WireViewMethod(addBtn, view, nameof(ProfileSelectView.ShowCreateProfileModal));
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
             Debug.Log("[ProfileSelectSceneBuilder] 완료");
         }
 
-        static void WireViewMethod(Button btn, ProfileSelectView view, string methodName)
+        // ===== 카드 프리팹 =====
+        static GameObject EnsureProfileCardPrefab(TMP_FontAsset font)
         {
-            var method = typeof(ProfileSelectView).GetMethod(methodName);
-            if (method == null) { Debug.LogError($"[ProfileSelectSceneBuilder] {methodName} not found"); return; }
-            var action = (UnityAction)System.Delegate.CreateDelegate(typeof(UnityAction), view, method);
-            UnityEventTools.AddPersistentListener(btn.onClick, action);
-        }
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(CardPrefabPath) != null)
+                AssetDatabase.DeleteAsset(CardPrefabPath);
+            EnsureFolder("Assets/_Project/Prefabs");
+            EnsureFolder("Assets/_Project/Prefabs/Profile");
 
-        const string ProfileButtonPrefabPath = "Assets/_Project/Prefabs/Profile/ProfileButton.prefab";
+            var root = new GameObject("ProfileCard");
+            var rootRect = root.AddComponent<RectTransform>();
+            rootRect.sizeDelta = new Vector2(1100, 200);
+            var rootImg = root.AddComponent<Image>();
+            rootImg.color = new Color(0, 0, 0, 0); // 투명 레이캐스트 (카드 선택)
+            var selectBtn = root.AddComponent<Button>();
+            selectBtn.targetGraphic = rootImg;
+            var le = root.AddComponent<LayoutElement>();
+            le.preferredHeight = 200;
 
-        static GameObject EnsureProfileButtonPrefab()
-        {
-            // 항상 새로 빌드 (ProfileButtonView 컴포넌트 추가 등 구조 변경에 대응)
-            if (AssetDatabase.LoadAssetAtPath<GameObject>(ProfileButtonPrefabPath) != null)
-                AssetDatabase.DeleteAsset(ProfileButtonPrefabPath);
+            // 선택 테두리 (primary, 전체)
+            var border = ChildRect("SelectedBorder", root.transform);
+            StretchFull(border, 0);
+            var bImg = border.gameObject.AddComponent<Image>();
+            bImg.sprite = Rounded(); bImg.type = Image.Type.Sliced; bImg.pixelsPerUnitMultiplier = 1f;
+            bImg.color = BtnBlue; bImg.raycastTarget = false;
 
-            if (!AssetDatabase.IsValidFolder("Assets/_Project/Prefabs"))
-                AssetDatabase.CreateFolder("Assets/_Project", "Prefabs");
-            if (!AssetDatabase.IsValidFolder("Assets/_Project/Prefabs/Profile"))
-                AssetDatabase.CreateFolder("Assets/_Project/Prefabs", "Profile");
+            // 본문 (흰, 6px inset → 테두리가 프레임)
+            var body = ChildRect("Body", root.transform);
+            StretchFull(body, 6);
+            var bodyImg = body.gameObject.AddComponent<Image>();
+            bodyImg.sprite = Rounded(); bodyImg.type = Image.Type.Sliced; bodyImg.pixelsPerUnitMultiplier = 1f;
+            bodyImg.color = White; bodyImg.raycastTarget = false;
 
-            var temp = new GameObject("ProfileButton");
-            temp.AddComponent<RectTransform>();
-            var bg = temp.AddComponent<Image>();
-            bg.color = new Color(0.9f, 0.93f, 0.98f, 1f);
-            var selectBtn = temp.AddComponent<Button>();
-            selectBtn.targetGraphic = bg;
-            var btnColors = selectBtn.colors;
-            btnColors.normalColor = new Color(0.9f, 0.93f, 0.98f, 1f);
-            btnColors.highlightedColor = new Color(0.8f, 0.88f, 1f, 1f);
-            btnColors.pressedColor = new Color(0.6f, 0.78f, 1f, 1f);
-            selectBtn.colors = btnColors;
+            // 아바타
+            var avatar = ChildRect("Avatar", body.transform);
+            avatar.anchorMin = avatar.anchorMax = new Vector2(0, 0.5f);
+            avatar.pivot = new Vector2(0, 0.5f);
+            avatar.anchoredPosition = new Vector2(48, 0);
+            avatar.sizeDelta = new Vector2(140, 140);
+            var avatarImg = avatar.gameObject.AddComponent<Image>();
+            avatarImg.preserveAspect = true; avatarImg.raycastTarget = false;
 
-            var font = SceneBuilderUtils.GetKoreanFont();
+            // 이름 / 날짜
+            var nameText = MakeText("Name", body.transform, "닉네임", 48, Slate, font);
+            nameText.alignment = TextAlignmentOptions.Left;
+            AnchorLeft(nameText.rectTransform, new Vector2(220, 30), new Vector2(520, 70));
 
-            var nickGo = new GameObject("Nickname");
-            nickGo.transform.SetParent(temp.transform, false);
-            var nickRect = nickGo.AddComponent<RectTransform>();
-            nickRect.anchorMin = Vector2.zero;
-            nickRect.anchorMax = Vector2.one;
-            nickRect.offsetMin = new Vector2(16, 16);
-            nickRect.offsetMax = new Vector2(-16, -16);
-            var tmp = nickGo.AddComponent<TextMeshProUGUI>();
-            tmp.text = "닉네임";
-            tmp.fontSize = 40;
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color = Color.black;
-            tmp.raycastTarget = false;
-            if (font != null) tmp.font = font;
+            var dateText = MakeText("Date", body.transform, "마지막 사용: 오늘", 30, DateGray, font);
+            dateText.alignment = TextAlignmentOptions.Left;
+            AnchorLeft(dateText.rectTransform, new Vector2(222, -34), new Vector2(520, 46));
 
-            // 우상단 삭제(X) 버튼
-            var delGo = new GameObject("DeleteButton");
-            delGo.transform.SetParent(temp.transform, false);
-            var delRect = delGo.AddComponent<RectTransform>();
-            delRect.anchorMin = new Vector2(1f, 1f);
-            delRect.anchorMax = new Vector2(1f, 1f);
-            delRect.pivot = new Vector2(1f, 1f);
-            delRect.anchoredPosition = new Vector2(-8, -8);
-            delRect.sizeDelta = new Vector2(72, 72);
-            var delImg = delGo.AddComponent<Image>();
-            delImg.color = new Color(0.9f, 0.25f, 0.25f, 1f);
-            var deleteBtn = delGo.AddComponent<Button>();
-            deleteBtn.targetGraphic = delImg;
-            var delColors = deleteBtn.colors;
-            delColors.normalColor = Color.white;
-            delColors.highlightedColor = new Color(1f, 0.85f, 0.85f, 1f);
-            delColors.pressedColor = new Color(1f, 0.6f, 0.6f, 1f);
-            deleteBtn.colors = delColors;
+            // 수정 / 리포트
+            var editBtn = MakeCardButton("EditButton", body.transform, "수정", font, new Vector2(-210, 0), new Vector2(160, 84));
+            var reportBtn = MakeCardButton("ReportButton", body.transform, "리포트", font, new Vector2(-30, 0), new Vector2(160, 84));
 
-            var delTextGo = new GameObject("X");
-            delTextGo.transform.SetParent(delGo.transform, false);
-            var delTextRect = delTextGo.AddComponent<RectTransform>();
-            delTextRect.anchorMin = Vector2.zero;
-            delTextRect.anchorMax = Vector2.one;
-            delTextRect.offsetMin = Vector2.zero;
-            delTextRect.offsetMax = Vector2.zero;
-            var delTmp = delTextGo.AddComponent<TextMeshProUGUI>();
-            delTmp.text = "×";
-            delTmp.fontSize = 56;
-            delTmp.fontStyle = FontStyles.Bold;
-            delTmp.alignment = TextAlignmentOptions.Center;
-            delTmp.color = Color.white;
-            delTmp.raycastTarget = false;
-            if (font != null) delTmp.font = font;
+            // 체크 (좌측 상단)
+            var check = ChildRect("CheckMark", root.transform);
+            check.anchorMin = check.anchorMax = new Vector2(0, 1);
+            check.pivot = new Vector2(0.5f, 0.5f);
+            check.anchoredPosition = new Vector2(12, -12);
+            check.sizeDelta = new Vector2(58, 58);
+            var checkBg = check.gameObject.AddComponent<Image>();
+            checkBg.sprite = Builtin("UI/Skin/Knob.psd"); checkBg.color = BtnBlue; checkBg.raycastTarget = false;
+            var checkIcon = ChildRect("Icon", check.transform);
+            checkIcon.anchorMin = new Vector2(0.5f, 0.5f); checkIcon.anchorMax = new Vector2(0.5f, 0.5f);
+            checkIcon.pivot = new Vector2(0.5f, 0.5f); checkIcon.anchoredPosition = Vector2.zero;
+            checkIcon.sizeDelta = new Vector2(34, 34);
+            var checkImg = checkIcon.gameObject.AddComponent<Image>();
+            checkImg.sprite = Builtin("UI/Skin/Checkmark.psd"); checkImg.color = White; checkImg.raycastTarget = false;
 
-            var pbv = temp.AddComponent<Artti.UI.ProfileButtonView>();
-            pbv.selectButton = selectBtn;
-            pbv.deleteButton = deleteBtn;
-            pbv.nicknameText = tmp;
+            var pcv = root.AddComponent<ProfileCardView>();
+            pcv.nameText = nameText;
+            pcv.dateText = dateText;
+            pcv.avatarImage = avatarImg;
+            pcv.selectedBorder = border.gameObject;
+            pcv.checkMark = check.gameObject;
+            pcv.selectButton = selectBtn;
+            pcv.editButton = editBtn;
+            pcv.reportButton = reportBtn;
 
-            var prefab = PrefabUtility.SaveAsPrefabAsset(temp, ProfileButtonPrefabPath);
-            Object.DestroyImmediate(temp);
+            var prefab = PrefabUtility.SaveAsPrefabAsset(root, CardPrefabPath);
+            Object.DestroyImmediate(root);
             return prefab;
         }
 
+        static Button MakeCardButton(string name, Transform parent, string label, TMP_FontAsset font, Vector2 pos, Vector2 size)
+        {
+            var rect = ChildRect(name, parent);
+            rect.anchorMin = rect.anchorMax = new Vector2(1, 0.5f);
+            rect.pivot = new Vector2(1, 0.5f);
+            rect.anchoredPosition = pos;
+            rect.sizeDelta = size;
+            var img = rect.gameObject.AddComponent<Image>();
+            img.sprite = Rounded(); img.type = Image.Type.Sliced; img.pixelsPerUnitMultiplier = 1f;
+            img.color = CardBtnBg;
+            var btn = rect.gameObject.AddComponent<Button>();
+            btn.targetGraphic = img;
+            var t = MakeText("Text", rect, label, 32, Slate, font);
+            StretchFull(t.rectTransform, 6);
+            return btn;
+        }
+
+        // ===== 공통 UI 헬퍼 =====
+        static Button MakeButton(string name, Transform parent, string label, int fontSize, Color bg, Color textColor, TMP_FontAsset font)
+        {
+            var rect = MakeRect(name, parent, Vector2.zero, new Vector2(300, 100));
+            var img = rect.gameObject.AddComponent<Image>();
+            img.sprite = Rounded(); img.type = Image.Type.Sliced; img.pixelsPerUnitMultiplier = 1f;
+            img.color = bg;
+            var btn = rect.gameObject.AddComponent<Button>();
+            btn.targetGraphic = img;
+            var t = MakeText("Text", rect, label, fontSize, textColor, font);
+            StretchFull(t.rectTransform, 6);
+            return btn;
+        }
+
+        static TMP_Text MakeText(string name, Transform parent, string text, int fontSize, Color color, TMP_FontAsset font)
+        {
+            var tmp = SceneBuilderUtils.CreateTMPText(name, parent, text, fontSize);
+            tmp.color = color;
+            tmp.fontStyle = FontStyles.Bold;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.textWrappingMode = TextWrappingModes.NoWrap;
+            tmp.raycastTarget = false;
+            if (font != null) tmp.font = font;
+            return tmp;
+        }
+
+        static RectTransform MakeRect(string name, Transform parent, Vector2 pos, Vector2 size)
+        {
+            var rect = ChildRect(name, parent);
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = pos;
+            rect.sizeDelta = size;
+            return rect;
+        }
+
+        static RectTransform ChildRect(string name, Transform parent)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            return go.AddComponent<RectTransform>();
+        }
+
+        static void AnchorLeft(RectTransform rect, Vector2 pos, Vector2 size)
+        {
+            rect.anchorMin = rect.anchorMax = new Vector2(0, 0.5f);
+            rect.pivot = new Vector2(0, 0.5f);
+            rect.anchoredPosition = pos;
+            rect.sizeDelta = size;
+        }
+
+        static void StretchFull(RectTransform rect, float padding)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(padding, padding);
+            rect.offsetMax = new Vector2(-padding, -padding);
+        }
+
+        static Sprite Builtin(string path) => AssetDatabase.GetBuiltinExtraResource<Sprite>(path);
+
+        static Sprite Rounded()
+        {
+            var s = AssetDatabase.LoadAssetAtPath<Sprite>(RoundedPath);
+            return s != null ? s : Builtin("UI/Skin/UISprite.psd");
+        }
+
+        // ===== 아바타 라이브러리 (Resources) =====
+        static void EnsureAvatarLibrary()
+        {
+            const string dir = "Assets/_Project/Resources";
+            const string path = dir + "/AvatarLibrary.asset";
+            EnsureFolder(dir);
+
+            var lib = AssetDatabase.LoadAssetAtPath<AvatarLibrary>(path);
+            if (lib == null)
+            {
+                lib = ScriptableObject.CreateInstance<AvatarLibrary>();
+                AssetDatabase.CreateAsset(lib, path);
+            }
+
+            var sprites = new List<Sprite>();
+            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/_Project/Art/Avatars" }))
+            {
+                var p = AssetDatabase.GUIDToAssetPath(guid);
+                EnsureSprite(p);
+                var sp = AssetDatabase.LoadAssetAtPath<Sprite>(p);
+                if (sp != null) sprites.Add(sp);
+            }
+            lib.sprites = sprites.ToArray();
+            EditorUtility.SetDirty(lib);
+            AssetDatabase.SaveAssets();
+        }
+
+        static void EnsureSprite(string p)
+        {
+            if (AssetImporter.GetAtPath(p) is TextureImporter ti &&
+                (ti.textureType != TextureImporterType.Sprite || ti.spriteImportMode != SpriteImportMode.Single))
+            {
+                ti.textureType = TextureImporterType.Sprite;
+                ti.spriteImportMode = SpriteImportMode.Single;
+                ti.SaveAndReimport();
+            }
+        }
+
+        static void EnsureFolder(string path)
+        {
+            if (AssetDatabase.IsValidFolder(path)) return;
+            var parent = System.IO.Path.GetDirectoryName(path).Replace('\\', '/');
+            var leaf = System.IO.Path.GetFileName(path);
+            if (!AssetDatabase.IsValidFolder(parent)) EnsureFolder(parent);
+            AssetDatabase.CreateFolder(parent, leaf);
+        }
+
+        static TMP_FontAsset LoadFont()
+        {
+            var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(KoreanFontPath);
+            if (font == null) font = SceneBuilderUtils.GetKoreanFont();
+            return font;
+        }
     }
 }

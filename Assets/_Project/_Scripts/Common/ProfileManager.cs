@@ -13,6 +13,9 @@ namespace Artti.Common
         public string avatarId;
         public string colorHex;
         public bool isTeacherMode;
+        public int birthYear;
+        public int birthMonth;
+        public long lastUsedAtTicks; // 마지막 사용일자 (DateTime.Ticks)
 
         public ProfileData()
         {
@@ -82,6 +85,17 @@ namespace Artti.Common
         public void SetActiveProfile(string id)
         {
             ActiveProfile = Profiles.Find(p => p.id == id);
+        }
+
+        // 마지막 사용일자 갱신 (사용자 선택/생성 시)
+        public void UpdateLastUsed(string id)
+        {
+            var p = Profiles.Find(x => x.id == id);
+            if (p != null)
+            {
+                p.lastUsedAtTicks = DateTime.Now.Ticks;
+                Save();
+            }
         }
         
         public void DeleteProfile(string id)
