@@ -19,6 +19,7 @@ namespace Artti.Editor
         static readonly Color DateGray = new Color32(140, 150, 165, 255);
         static readonly Color CardBtnBg = new Color32(238, 240, 244, 255);
         static readonly Color BgColor  = new Color32(245, 246, 250, 255);
+        static readonly Color Danger   = new Color32(224, 64, 64, 255); // 삭제
         static readonly Color White    = Color.white;
 
         const string KoreanFontPath = "Assets/Fonts/NotoSansKR-Medium SDF.asset";
@@ -130,6 +131,21 @@ namespace Artti.Editor
             // 기본 상태: 목록 ON / 빈 상태 OFF (런타임에 View가 프로필 수에 따라 토글)
             emptyState.gameObject.SetActive(false);
 
+            // ===== 삭제 확인 팝업 (가운데 모달, "동의한다" 타이핑 확인) =====
+            var delRes = BuildTmpResources();
+            var deletePopup = MakePopup("DeleteConfirmPopup", canvasGo.transform, new Vector2(860, 460), out var delCard);
+            var delMsg = MakeText("Message", delCard, "정말 삭제할까요?\n동의하시면 아래에 '동의한다'를 입력하세요.", 38, Slate, font);
+            delMsg.alignment = TextAlignmentOptions.Center;
+            delMsg.textWrappingMode = TextWrappingModes.Normal;
+            Place(delMsg.rectTransform, new Vector2(0, 120), new Vector2(760, 180));
+            var delInput = MakeInput("DeleteInput", delCard, delRes, font, "동의한다", new Vector2(0, -10), new Vector2(620, 88));
+            var delCancel = MakeButton("CancelButton", delCard, "취소", 38, CardBtnBg, Slate, font);
+            Place(delCancel.GetComponent<RectTransform>(), new Vector2(-180, -150), new Vector2(250, 96));
+            var delConfirm = MakeButton("ConfirmDeleteButton", delCard, "삭제", 38, Danger, White, font);
+            Place(delConfirm.GetComponent<RectTransform>(), new Vector2(180, -150), new Vector2(250, 96));
+            var delX = MakeIconButton("Close", delCard, "×", new Vector2(380, 180), new Vector2(64, 64), font);
+            deletePopup.SetActive(false);
+
             // ===== View 와이어링 =====
             var view = canvasGo.AddComponent<ProfileSelectView>();
             var so = new SerializedObject(view);
@@ -138,6 +154,12 @@ namespace Artti.Editor
             so.FindProperty("cardScroll").objectReferenceValue = listRoot.gameObject;
             so.FindProperty("emptyState").objectReferenceValue = emptyState.gameObject;
             so.FindProperty("addButton").objectReferenceValue = addBtn;
+            so.FindProperty("deletePopup").objectReferenceValue = deletePopup;
+            so.FindProperty("deleteMessageText").objectReferenceValue = delMsg;
+            so.FindProperty("deleteInput").objectReferenceValue = delInput;
+            so.FindProperty("deleteConfirmButton").objectReferenceValue = delConfirm;
+            so.FindProperty("deleteCancelButton").objectReferenceValue = delCancel;
+            so.FindProperty("deleteCloseButton").objectReferenceValue = delX;
             so.ApplyModifiedProperties();
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
@@ -195,9 +217,9 @@ namespace Artti.Editor
             dateText.alignment = TextAlignmentOptions.Left;
             AnchorLeft(dateText.rectTransform, new Vector2(222, -34), new Vector2(520, 46));
 
-            // 수정 / 리포트
-            var editBtn = MakeCardButton("EditButton", body.transform, "수정", font, new Vector2(-210, 0), new Vector2(160, 84));
-            var reportBtn = MakeCardButton("ReportButton", body.transform, "리포트", font, new Vector2(-30, 0), new Vector2(160, 84));
+            // 수정 / 삭제
+            var editBtn = MakeCardButton("EditButton", body.transform, "수정", Slate, font, new Vector2(-210, 0), new Vector2(160, 84));
+            var deleteBtn = MakeCardButton("DeleteButton", body.transform, "삭제", Danger, font, new Vector2(-30, 0), new Vector2(160, 84));
 
             // 체크 (좌측 상단)
             var check = ChildRect("CheckMark", root.transform);
@@ -222,14 +244,14 @@ namespace Artti.Editor
             pcv.checkMark = check.gameObject;
             pcv.selectButton = selectBtn;
             pcv.editButton = editBtn;
-            pcv.reportButton = reportBtn;
+            pcv.deleteButton = deleteBtn;
 
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, CardPrefabPath);
             Object.DestroyImmediate(root);
             return prefab;
         }
 
-        static Button MakeCardButton(string name, Transform parent, string label, TMP_FontAsset font, Vector2 pos, Vector2 size)
+        static Button MakeCardButton(string name, Transform parent, string label, Color textColor, TMP_FontAsset font, Vector2 pos, Vector2 size)
         {
             var rect = ChildRect(name, parent);
             rect.anchorMin = rect.anchorMax = new Vector2(1, 0.5f);
@@ -241,7 +263,7 @@ namespace Artti.Editor
             img.color = CardBtnBg;
             var btn = rect.gameObject.AddComponent<Button>();
             btn.targetGraphic = img;
-            var t = MakeText("Text", rect, label, 32, Slate, font);
+            var t = MakeText("Text", rect, label, 32, textColor, font);
             StretchFull(t.rectTransform, 6);
             return btn;
         }
@@ -287,6 +309,79 @@ namespace Artti.Editor
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             return go.AddComponent<RectTransform>();
+        }
+
+        static void Place(RectTransform rect, Vector2 pos, Vector2 size)
+        {
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = pos;
+            rect.sizeDelta = size;
+        }
+
+        // 가운데 모달: 반투명 오버레이 + 둥근 흰 카드
+        static GameObject MakePopup(string name, Transform parent, Vector2 cardSize, out RectTransform card)
+        {
+            var overlay = SceneBuilderUtils.CreatePanel(name, parent);
+            overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.5f);
+            card = MakeRect("Card", overlay.transform, Vector2.zero, cardSize);
+            var img = card.gameObject.AddComponent<Image>();
+            img.sprite = Rounded(); img.type = Image.Type.Sliced; img.pixelsPerUnitMultiplier = 1f;
+            img.color = White;
+            return overlay;
+        }
+
+        static Button MakeIconButton(string name, Transform parent, string glyph, Vector2 pos, Vector2 size, TMP_FontAsset font)
+        {
+            var rect = MakeRect(name, parent, pos, size);
+            var img = rect.gameObject.AddComponent<Image>();
+            img.color = new Color(0f, 0f, 0f, 0f); // 투명 (레이캐스트만)
+            var btn = rect.gameObject.AddComponent<Button>();
+            btn.targetGraphic = img;
+            var t = MakeText("Text", rect, glyph, 44, Slate, font);
+            StretchFull(t.rectTransform, 6);
+            return btn;
+        }
+
+        static TMP_InputField MakeInput(string name, Transform parent, TMP_DefaultControls.Resources res,
+            TMP_FontAsset font, string placeholder, Vector2 pos, Vector2 size)
+        {
+            var go = TMP_DefaultControls.CreateInputField(res);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            Place(go.GetComponent<RectTransform>(), pos, size);
+
+            var img = go.GetComponent<Image>();
+            if (img != null) { img.sprite = Rounded(); img.type = Image.Type.Sliced; img.pixelsPerUnitMultiplier = 1f; img.color = CardBtnBg; }
+
+            var input = go.GetComponent<TMP_InputField>();
+            input.lineType = TMP_InputField.LineType.SingleLine;
+            input.textComponent.fontSize = 42;
+            input.textComponent.color = Slate;
+            input.textComponent.alignment = TextAlignmentOptions.Center;
+            if (input.placeholder is TMP_Text ph) { ph.text = placeholder; ph.fontSize = 42; ph.alignment = TextAlignmentOptions.Center; }
+            ApplyFont(go, font);
+            return input;
+        }
+
+        static TMP_DefaultControls.Resources BuildTmpResources()
+        {
+            return new TMP_DefaultControls.Resources
+            {
+                standard   = Builtin("UI/Skin/UISprite.psd"),
+                background = Builtin("UI/Skin/Background.psd"),
+                inputField = Builtin("UI/Skin/InputFieldBackground.psd"),
+                knob       = Builtin("UI/Skin/Knob.psd"),
+                checkmark  = Builtin("UI/Skin/Checkmark.psd"),
+                dropdown   = Builtin("UI/Skin/DropdownArrow.psd"),
+                mask       = Builtin("UI/Skin/UIMask.psd"),
+            };
+        }
+
+        static void ApplyFont(GameObject go, TMP_FontAsset font)
+        {
+            if (font == null) return;
+            foreach (var t in go.GetComponentsInChildren<TMP_Text>(true)) t.font = font;
         }
 
         static void AnchorLeft(RectTransform rect, Vector2 pos, Vector2 size)

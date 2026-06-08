@@ -14,7 +14,7 @@ namespace Artti.UI
         public GameObject checkMark;      // primary 체크 (좌측 상단)
         public Button selectButton;       // 카드 본문 선택
         public Button editButton;         // 수정
-        public Button reportButton;       // 리포트
+        public Button deleteButton;       // 삭제
 
         public void SetSelected(bool on)
         {
