@@ -10,6 +10,8 @@ namespace Artti.Editor
 {
     public static class ScenePaths
     {
+        public const string Splash             = "Assets/_Project/Scenes/SplashScene.unity";
+        public const string ProfileCreate      = "Assets/_Project/Scenes/ProfileCreateScene.unity";
         public const string ProfileSelect      = "Assets/_Project/Scenes/ProfileSelectScene.unity";
         public const string Main               = "Assets/_Project/Scenes/MainScene.unity";
         public const string TrainingHub        = "Assets/_Project/Scenes/TrainingHubScene.unity";
@@ -21,7 +23,7 @@ namespace Artti.Editor
 
     public static class SceneBuilderUtils
     {
-        const string KoreanFontPath = "Assets/Fonts/NotoSansKR-Regular SDF.asset";
+        const string KoreanFontPath = "Assets/Fonts/NotoSansKR-Medium SDF.asset";
         static TMP_FontAsset _cachedKoreanFont;
 
         public static TMP_FontAsset GetKoreanFont()

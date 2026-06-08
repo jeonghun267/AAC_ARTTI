@@ -20,6 +20,8 @@ namespace Artti.Editor
 
             try
             {
+                SplashSceneBuilder.Build();
+                ProfileCreateSceneBuilder.Build();
                 ProfileSelectSceneBuilder.Build();
                 MainSceneBuilder.Build();
                 TrainingHubSceneBuilder.Build();
@@ -28,8 +30,8 @@ namespace Artti.Editor
                 TrainingSceneBuilder.Build(ScenePaths.TrainingRestaurant,  "restaurant");
                 ARFieldSceneBuilder.BuildScene();
 
-                Debug.Log("[AllScenesBuilder] 7개 씬 빌드 + Build Settings 등록 완료");
-                EditorUtility.DisplayDialog("완료", "7개 씬 빌드 완료\nBuild Settings 등록됨 (0=ProfileSelect)", "확인");
+                Debug.Log("[AllScenesBuilder] 9개 씬 빌드 + Build Settings 등록 완료");
+                EditorUtility.DisplayDialog("완료", "9개 씬 빌드 완료\nBuild Settings 등록됨 (0=Splash)", "확인");
             }
             catch (System.Exception e)
             {
@@ -45,6 +47,8 @@ namespace Artti.Editor
         {
             var scenes = new[]
             {
+                ScenePaths.Splash,
+                ScenePaths.ProfileCreate,
                 ScenePaths.ProfileSelect,
                 ScenePaths.Main,
                 ScenePaths.TrainingHub,
@@ -57,7 +61,7 @@ namespace Artti.Editor
             for (int i = 0; i < scenes.Length; i++)
                 list[i] = new EditorBuildSettingsScene(scenes[i], true);
             EditorBuildSettings.scenes = list;
-            Debug.Log("[AllScenesBuilder] Build Settings 등록 완료 (0=ProfileSelect)");
+            Debug.Log("[AllScenesBuilder] Build Settings 등록 완료 (0=Splash)");
         }
     }
 }
