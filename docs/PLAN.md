@@ -10,11 +10,12 @@
 | 제작학과 | 디지털융합제어과 / 컴퓨터공학과 |
 | 지도교수 | 윤혜인 |
 | 팀 구성 | 팀장 김연영 · 팀원 방승훈 · 팀원 오정훈 |
-| 작성일 | 2026. 06. 02. (v6) |
+| 작성일 | 2026. 06. 08. (v7) |
 | v3 변경 요약 | Tool Use 기반 대화 매니저 도입, AAC 카드 3-레이어 구조, 시나리오 목표 카탈로그, latency 단축 전략 우선순위 추가 |
-| v4 변경 요약 | Unity 2022 LTS → Unity 6.3 LTS (6000.3.14f1) 환경 전환, uGUI 2.0.0 채택 명시 (기존 UI Toolkit 표기 정정), URP 17.3.0·AR Foundation 6.3.4 패키지 도입, JSON 파싱 라이브러리 정책 명시 (Newtonsoft.Json + JsonUtility 분담), 데이터 자산·코드 골격 구축 완료에 따른 10장 갱신 |
+| v4 변경 요약 | Unity 6.3 LTS (6000.3.14f1) 환경 전환, uGUI 2.0.0·URP 17.3.0·AR Foundation 6.3.4 도입, JSON 파싱 정책 명시(Newtonsoft.Json), 10장 개발 현황 갱신 |
 | v5 변경 요약 | 훈련모드 AAC 카드 슬롯 구조 정정 (2장 → 3장: 메인 2장 + 기타 1장), present_cards 도구 파라미터를 main_card_ids[] + fallback_card_id로 분리하여 메인/기타 구분 명시화 |
 | v6 변경 요약 | 1차 폼팩터를 가로(landscape) 모드로 통일 명시. 훈련모드와 AR현장모드 모두 가로 고정 (화면정의서 v2와 동기화). 4.3 사용 환경에 폼팩터 정책 한 줄 추가, 6.2 개발 환경의 대상 OS 셀에 화면 방향 명기. |
+| v7 변경 요약 | 학습 기록 이벤트 셋 14종 → 6종 축소(8.4절). session_ended 단일 이벤트의 status 칸으로 완료/중단을 구분(session_abandoned 흡수). scenario_entered를 첫 card_selected 시점에 발화하여 시도 횟수와 일치 보장. card_selected·tts_played에 objectiveId 채우기 명시. 9.4 사용자 리포트 화면을 토글 구조(말하기 훈련 / AR)로 재설계 — 말하기 훈련의 도넛(완료 세션 / 전체 시도), 세션 카드 리스트, 세션 상세 진행 흐름. 보류된 8종은 "Phase 2 분석 후보"로 별도 보관. |
 
 ## 목차
 
@@ -780,28 +781,44 @@ AAC 카드는 본 앱의 핵심 콘텐츠 단위다. v2에서는 카드 1장에 
 
 ### 8.4 기록 저장 — 핵심 이벤트 정의
 
-시나리오 내에서 "어디서 발화를 힘들어하는지"를 파악하려면 어떤 이벤트를 어떤 구조로 저장할지 사전에 정의해야 한다. v3에서는 Tool Use 기반 대화 매니저 도입에 따라 이벤트를 보강하였다.
+시나리오 내에서 "어디서 발화를 힘들어하는지"를 파악하려면 어떤 이벤트를 어떤 구조로 저장할지 사전에 정의해야 한다. v3에서는 Tool Use 기반 대화 매니저 도입에 따라 이벤트를 14종으로 보강하였다. v7에서는 리포트 v1.0이 필요로 하는 지표(완료율, 진행 흐름 재구성, 개선 필요 단계 식별)에 집중하여 이벤트 셋을 6종으로 축소하였다. 보류된 8종은 본 절 끝의 "Phase 2 분석 후보(보류)"에 별도로 보관한다.
 
-| 이벤트 | 설명 및 분석 활용 |
-|---|---|
-| scenario_entered | 시나리오 진입 기록. 시나리오별 시도 횟수 산출. |
-| objective_entered | Objective 진입 기록 (v3 신규). 어느 목표에 언제 진입했는지 기록. 목표별 평균 체류 시간 산출에 활용. |
-| objective_completed | Objective 완료 기록 (v3 신규). 목표별 완료율 산출. |
-| card_selected | 어떤 카드를 몇 번 탭했는지 기록. 정답/오답 카드 선택 분포 분석. |
-| card_repeated | 같은 카드를 3회 이상 반복 선택한 경우 기록. 사용자가 어디서 막히는지를 나타내는 직접 지표. |
-| step_retry_attempt | 시도 회차와 scaffold 레벨 기록 (v3 신규). 어느 시도에서 어려움이 누적되는지 분석. |
-| topic_pending_added | 복합 의도 발화에서 부차 의도가 펜딩 큐에 추가된 시점 (v3 신규). 사용자가 자주 동시 표현하는 의도 패턴 분석. |
-| topic_pending_resolved | 펜딩 큐 항목이 후속 turn에서 해소된 시점 (v3 신규). |
-| subflow_entered | 분기 서브플로 진입 (v3 신규). 어느 시나리오에서 어떤 분기가 자주 발생하는지 분석. |
-| subflow_returned | 분기 서브플로 종료 (v3 신규). |
-| llm_call_failed | LLM 호출 실패/타임아웃 (v3 신규). 네트워크 안정성 모니터링. |
-| tool_call_failed | LLM이 호출한 도구의 검증 실패 (v3 신규). 카드 ID 오류 등. |
-| session_abandoned | 앱 종료 또는 다른 Scene 이동 기록. 중도 이탈 지점 파악. |
-| tts_played | TTS 재생 횟수 기록. AR현장모드에서 어떤 표현이 자주 사용되는지 파악. |
+| 이벤트 | 발생 시점 | payload 핵심 | 분석 활용 |
+|---|---|---|---|
+| scenario_entered | 세션에서 카드를 처음 1회 터치한 시점 (세션당 1회) | (없음) | 전체 시도 횟수(도넛 분모), 걸린 시간 시작점 |
+| objective_entered | 목표(objective) 진입 시 | (없음) | 진행 단계 구분, 중단 시 "마지막 진입 목표 = 개선 필요 단계" 후보 |
+| card_selected | 사용자가 카드를 터치한 시점 | cardId, sttText | 진행 흐름의 사용자 발화/STT 기록 |
+| tts_played | NPC 응답/TTS 재생 시점 | npcText | 진행 흐름의 NPC 대사 기록 |
+| step_retry_attempt | 같은 목표에서 재시도가 발생한 시점 | attemptCount | "n회 다시 시도했어요", 개선 필요 단계 산출 |
+| session_ended | 세션 종료 시 | status (completed / abandoned), reason (선택) | 완료/미완료 판정, 완료 세션 수(도넛 분자), 종료 시각, 걸린 시간 끝점 |
 
-저장 방식은 로컬 JSON 파일에 append-only 방식으로 기록한다. 각 이벤트에는 프로필 식별자(GUID), 세션 식별자, 이벤트 유형, 시나리오명, 목표 ID(v3), 이벤트별 부가 데이터, 타임스탬프가 포함된다. 이벤트별 부가 데이터를 유연하게 관리하기 위해 JSON 필드를 두며, 이를 통해 이벤트 종류가 추가되어도 저장 구조를 변경할 필요가 없도록 설계한다.
+**공통 필드 (전 이벤트 동일)**: profileId, sessionId, eventType, scenarioId, objectiveId, timestampUnixMs, payloadJson.
 
-저장 서비스는 ILogStore 인터페이스로 추상화하여, MVP 단계에서는 로컬 JSON 구현체를 사용하고, 발표 수준 확장 시 SQLite 또는 Firebase Firestore 구현체로 교체할 수 있도록 한다. 기록 저장을 아예 끄는 NullLogStore 구현체(보호자가 개인정보 우려로 끈 경우)도 지원한다.
+- objectiveId는 card_selected와 tts_played에도 반드시 채운다 (이전엔 null이라 목표 귀속이 안 됐음 — v7에서 수정).
+- 부가 데이터는 payloadJson(JSON 문자열)에 담아 이벤트 종류가 늘어도 저장 구조를 바꾸지 않는다.
+
+**scenario_entered 발화 규칙**: Scene 진입 순간이 아니라 첫 card_selected 시점에 1회 발화한다. 이렇게 하면 scenario_entered 개수 = 시도 횟수가 되어 리포트의 도넛 분모가 곧바로 맞는다.
+
+**session_ended payload 규약**:
+
+- status (필수): completed = 완료 버튼으로 마지막 목표까지 도달 / abandoned = 중단 다이얼로그·Scene 이탈·turn 상한(12) 도달.
+- reason (선택): button / pause / turn_limit / exit (왜 끝났는지 추적용, 리포트엔 미표시).
+- 앱이 강제 종료돼 session_ended가 아예 안 찍힌 세션은 리포트에서 "미완료" 처리하며, 종료 시각은 그 세션의 마지막 이벤트 시각으로 근사한다.
+
+저장 방식은 로컬 JSON 파일에 append-only 방식으로 기록한다. 저장 서비스는 ILogStore 인터페이스로 추상화하여, MVP 단계에서는 로컬 JSON 구현체를 사용하고, 발표 수준 확장 시 SQLite 또는 Firebase Firestore 구현체로 교체할 수 있도록 한다. 기록 저장을 아예 끄는 NullLogStore 구현체(보호자가 개인정보 우려로 끈 경우)도 지원한다.
+
+**Phase 2 분석 후보 (보류)**: 다음 8종은 v7 리포트에서 사용하지 않지만, 본 프로젝트 후속 단계에서 분석 지표로 활용 가능하므로 정의는 보존한다.
+
+- objective_completed: Objective 완료 시점. 목표별 완료율 산출.
+- card_repeated: 같은 카드 3회 이상 반복 선택. 막힘 지점 직접 지표.
+- topic_pending_added: 복합 의도에서 부차 의도가 펜딩 큐에 추가된 시점.
+- topic_pending_resolved: 펜딩 큐 항목이 후속 turn에서 해소된 시점.
+- subflow_entered: 분기 서브플로 진입.
+- subflow_returned: 분기 서브플로 종료.
+- llm_call_failed: LLM 호출 실패/타임아웃. 네트워크 안정성 모니터링.
+- tool_call_failed: LLM이 호출한 도구의 검증 실패. 카드 ID 오류 등.
+
+개발 중 디버깅이 필요하면 llm_call_failed / tool_call_failed만 임시로 켜두는 운용은 가능하다.
 
 ### 8.5 개인정보 보호 원칙
 
@@ -857,7 +874,26 @@ MainScene에서 AR현장모드 버튼 터치 → ARFieldScene 진입 → 카메�
 
 ### 9.4 사용자 리포트 화면
 
-모드 선택 화면(MainScene) 구석에 배치된 리포트 아이콘을 터치하면, 현재 프로필의 학습 기록 요약을 표시하는 화면으로 전환된다. MVP 단계에서는 저장된 이벤트 로그를 Unity Canvas 위의 TextMeshPro로 출력하며, 시나리오별 완료 횟수, 목표별 시도 횟수, scaffold 레벨 분포 등을 구조화된 텍스트로 보여준다. v3에서는 분기 서브플로 진입 빈도, 펜딩 토픽 발생 패턴 등 새로 추가된 이벤트 기반 지표도 표시 후보다. 이 화면의 접근 주체는 교사 또는 보호자이며, 발달장애인 이용자가 직접 보는 화면이 아니므로 큰 터치 영역이나 AAC 아이콘 배치 원칙을 적용하지 않는다.
+**진입**: 프로필 선택 화면의 프로필별 리포트 버튼(해당 프로필 기준) 또는 MainScene의 리포트 버튼(현재 프로필 기준)으로 진입한다. 이 화면의 접근 주체는 교사 또는 보호자이며, 발달장애인 이용자가 직접 보는 화면이 아니므로 큰 터치 영역이나 AAC 아이콘 배치 원칙을 적용하지 않는다.
+
+**구성**: 상단 토글로 "말하기 훈련" / "AR 음성도우미" 두 영역을 전환한다. AR 음성도우미 영역은 v7 범위에서 보류하며, 본 절은 말하기 훈련 영역만 정의한다.
+
+**말하기 훈련 — 상단 전체 통계**
+
+- 시나리오 완료율 도넛: 완료 세션 수 (session_ended.status = completed) / 전체 시도 수 (scenario_entered). 시나리오별 구분 없이 전체 합산.
+- 시나리오별 완료 횟수: 편의점·약국·음식점 각각의 완료 세션 수. 시나리오 제목은 chip 버튼, 오른쪽에 "N 회" 표기.
+
+**말하기 훈련 — 하단 세션 카드 리스트**
+
+- 세션 단위 카드 목록. 카드를 좌측으로 슬라이드하면 삭제 버튼이 활성화된다 (상세 구현은 팀 작업).
+- 카드 내용: 완료/미완료 chip, 시나리오 종류, 완료(또는 중단) 일자, 걸린 시간(분), 자세히 보기 버튼.
+
+**말하기 훈련 — 세션 상세 (자세히 보기)**
+
+- 상단 요약: 완료 일자, 시나리오 종류, 완료/미완료 chip, 개선이 필요한 단계 글머리 목록 (없으면 비움).
+- 진행 흐름: NPC 대사(tts_played)와 사용자 STT(card_selected)를 한 묶음으로 진입 ~ 완료 순으로 정렬한다. 같은 목표에서 재시도가 발생한 경우 "n회 다시 시도했어요" (step_retry_attempt) 표기를 추가한다.
+
+**지표 산출 근거**: 8.4절의 6종 이벤트만으로 모든 지표를 계산한다. "개선이 필요한 단계"는 step_retry_attempt 집계(재시도가 많은 목표)와 중단 세션의 마지막 objective_entered로 도출한다.
 
 ---
 
