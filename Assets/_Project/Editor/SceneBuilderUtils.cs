@@ -19,12 +19,59 @@ namespace Artti.Editor
         public const string TrainingConvenience = "Assets/_Project/Scenes/TrainingConvenienceScene.unity";
         public const string TrainingRestaurant = "Assets/_Project/Scenes/TrainingRestaurantScene.unity";
         public const string ARField            = "Assets/_Project/Scenes/ARFieldScene.unity";
+        public const string Report             = "Assets/_Project/Scenes/ReportScene.unity";
     }
 
     public static class SceneBuilderUtils
     {
         const string KoreanFontPath = "Assets/Fonts/NotoSansKR-Medium SDF.asset";
+        public const string GlowSpritePath = "Assets/_Project/Art/UI/CardGlow.png";
         static TMP_FontAsset _cachedKoreanFont;
+
+        // 둥근 사각 SDF 기반 글로우 텍스처를 1회 생성해 에셋으로 저장.
+        // 흰색 + 알파 falloff — Image color로 틴트해서 halo(후광)·그림자 양쪽에 사용.
+        public static Sprite EnsureGlowSprite()
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<Sprite>(GlowSpritePath);
+            if (existing != null) return existing;
+
+            const int size = 256;
+            const int margin = 80;  // 글로우 falloff 폭 (px)
+            const int radius = 36;  // 내부 둥근 사각 코너 반경
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            var px = new Color32[size * size];
+            float half = size * 0.5f;
+            var innerHalf = new Vector2(half - margin - radius, half - margin - radius);
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    var p = new Vector2(x + 0.5f - half, y + 0.5f - half);
+                    var q = new Vector2(Mathf.Abs(p.x), Mathf.Abs(p.y)) - innerHalf;
+                    float outside = new Vector2(Mathf.Max(q.x, 0f), Mathf.Max(q.y, 0f)).magnitude;
+                    float d = outside + Mathf.Min(Mathf.Max(q.x, q.y), 0f) - radius;
+                    float a = d <= 0f ? 1f : Mathf.Pow(Mathf.Clamp01(1f - d / margin), 2f);
+                    px[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
+                }
+            }
+            tex.SetPixels32(px);
+            tex.Apply();
+            System.IO.File.WriteAllBytes(GlowSpritePath, tex.EncodeToPNG());
+            Object.DestroyImmediate(tex);
+
+            AssetDatabase.ImportAsset(GlowSpritePath);
+            var ti = (TextureImporter)AssetImporter.GetAtPath(GlowSpritePath);
+            ti.textureType = TextureImporterType.Sprite;
+            ti.spriteImportMode = SpriteImportMode.Single;
+            float b = margin + radius + 8;
+            ti.spriteBorder = new Vector4(b, b, b, b);
+            ti.mipmapEnabled = false;
+            ti.alphaIsTransparency = true;
+            ti.textureCompression = TextureImporterCompression.Uncompressed;
+            ti.SaveAndReimport();
+            return AssetDatabase.LoadAssetAtPath<Sprite>(GlowSpritePath);
+        }
 
         public static TMP_FontAsset GetKoreanFont()
         {

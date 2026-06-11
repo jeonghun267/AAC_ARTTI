@@ -18,7 +18,9 @@ namespace Artti.AAC.Logging
         LlmCallFailed,
         ToolCallFailed,
         SessionAbandoned,
-        TtsPlayed
+        TtsPlayed,
+        // 레포트 화면용 추가 (PLAN 8.4의 14종 외): payloadJson에 completed 등 상태 기록
+        SessionEnded
     }
 
     [Serializable]

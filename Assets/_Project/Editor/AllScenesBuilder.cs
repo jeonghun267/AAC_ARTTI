@@ -56,6 +56,7 @@ namespace Artti.Editor
                 ScenePaths.TrainingConvenience,
                 ScenePaths.TrainingRestaurant,
                 ScenePaths.ARField,
+                ScenePaths.Report,
             };
             var list = new EditorBuildSettingsScene[scenes.Length];
             for (int i = 0; i < scenes.Length; i++)
