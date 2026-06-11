@@ -3,6 +3,9 @@
 # Get latest from https://github.com/github/gitignore/blob/main/Unity.gitignore
 #
 # API keys — never commit
+# Secret Keys
+/Assets/GCP_Secret_Key.asset
+/Assets/GCP_Secret_Key.asset.meta
 .env
 .env.local
 Assets/StreamingAssets/api_keys.env
