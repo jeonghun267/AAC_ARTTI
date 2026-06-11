@@ -16,6 +16,20 @@ namespace Artti.AAC
 
         public AACCard Card => card;
 
+        private CanvasGroup _group;
+
+        // STT 수집 중 다른 카드 터치 비활성 + 은은한 흐림 (편의점 시안)
+        public void SetLocked(bool locked, bool dim)
+        {
+            if (button != null) button.interactable = !locked;
+            if (_group == null)
+            {
+                _group = GetComponent<CanvasGroup>();
+                if (_group == null) _group = gameObject.AddComponent<CanvasGroup>();
+            }
+            _group.alpha = dim ? 0.4f : 1f;
+        }
+
         private void OnEnable()
         {
             if (button != null)

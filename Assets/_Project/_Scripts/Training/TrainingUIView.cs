@@ -183,6 +183,23 @@ namespace Artti.Training
 
         public bool HasPharmacyCardPool => pharmacyCardSlots != null && pharmacyCardSlots.Length > 0;
 
+        // STT 수집 중: 모든 카드 잠금, 선택 카드 외에는 은은히 흐림 (편의점 시안 3.png)
+        public void SetPoolLocked(AACCard selected)
+        {
+            if (pharmacyCardSlots == null) return;
+            foreach (var slot in pharmacyCardSlots)
+                if (slot != null && slot.gameObject.activeSelf)
+                    slot.SetLocked(true, dim: slot.Card != selected);
+        }
+
+        public void UnlockPool()
+        {
+            if (pharmacyCardSlots == null) return;
+            foreach (var slot in pharmacyCardSlots)
+                if (slot != null && slot.gameObject.activeSelf)
+                    slot.SetLocked(false, dim: false);
+        }
+
         // 마이크 켜진 동안 호출 — NPC 패널 외곽 진행 테두리 ON + 텍스트 갱신
         public void ShowMicIndicator(bool visible)
         {

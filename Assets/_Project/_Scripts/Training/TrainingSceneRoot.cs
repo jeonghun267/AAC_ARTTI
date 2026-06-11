@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using Artti.AAC;
 using Artti.Common.Speech;
 using Artti.Common;
@@ -17,6 +18,9 @@ namespace Artti.Training
 
         [Header("UI")]
         [SerializeField] private TrainingUIView uiView;
+
+        [Header("Convenience HUD (옵션 — 미와이어링 시 무동작)")]
+        [SerializeField] private ConvenienceHudView hud;
 
         private DialogueManager _dialogueManager;
         private ITtsService _ttsService;
@@ -58,6 +62,12 @@ namespace Artti.Training
             {
                 var profile = AppBootstrap.Instance.ProfileManager.ActiveProfile;
                 _eventLogger = new EventLogger(AppBootstrap.Instance.LogStore, profile?.id, scenarioId);
+                if (profile == null)
+                    Debug.LogWarning("[TrainingSceneRoot] 활성 프로필 없음 — 이 세션은 레포트에 기록되지 않습니다");
+            }
+            else
+            {
+                Debug.LogWarning("[TrainingSceneRoot] AppBootstrap 없음 — 프로필 선택을 거치지 않아 이 세션은 레포트에 기록되지 않습니다. SplashScene부터 Play 하세요");
             }
         }
 
@@ -70,6 +80,19 @@ namespace Artti.Training
             { "convenience", new[] { "greeting", "select_items", "checkout", "extras", "farewell" } },
             { "restaurant",  new[] { "greeting", "menu_browse", "order", "order_modifications", "payment", "farewell" } }
         };
+
+        // 진행 표시(스테퍼)용 objective 한국어 라벨 — 시안 기준 5단계 명칭
+        private static readonly Dictionary<string, string> StepperLabels = new Dictionary<string, string>
+        {
+            { "greeting", "인사하기" }, { "select_items", "물건 찾기" }, { "checkout", "계산하기" },
+            { "extras", "후속 처리" }, { "farewell", "작별" },
+            { "identify_needs", "증상 말하기" }, { "serve_meds", "물품 요구하기" }, { "payment", "계산하기" },
+            { "menu_browse", "메뉴 보기" }, { "order", "주문하기" }, { "order_modifications", "추가 주문" }
+        };
+
+        private string _lastNpcLine;
+        private int _objectivesEntered;
+        private System.DateTimeOffset _sessionStartUtc;
 
         // v1 풀 모드: 각 objective 진입 시 NPC가 말하는 대사 (STT만 사용, Gemini 미사용 흐름)
         private static readonly Dictionary<string, Dictionary<string, string>> ObjectivePromptsByScenario = new Dictionary<string, Dictionary<string, string>>
@@ -122,16 +145,51 @@ namespace Artti.Training
 
             _eventLogger?.LogScenarioEntered();
             _eventLogger?.LogObjectiveEntered("greeting");
+            _sessionStartUtc = System.DateTimeOffset.UtcNow;
+            _objectivesEntered = 1;
+
+            WireHud();
 
             // 풀 모드: 첫 NPC 대사 + TTS (Initialize는 이벤트 안 쏘므로 수동 호출)
             if (IsPoolMode && TryGetObjectivePrompt("greeting", out var greetingLine))
             {
-                uiView.SetNPCDialogue(greetingLine);
-                if (_ttsService != null)
-                    _ttsService.SpeakAsync(greetingLine, _cts.Token).Forget();
+                SpeakNpc(greetingLine);
             }
 
             ShowInitialCards();
+        }
+
+        // ===== Convenience HUD 연동 (hud 미와이어링 씬에서는 전부 무동작) =====
+
+        private void WireHud()
+        {
+            if (hud == null) return;
+            // 일시정지 종료 — 중단 기록은 OnDestroy의 SessionAbandoned 경로가 처리
+            hud.OnExitRequested += () => SceneManager.LoadScene("TrainingHubScene");
+            hud.OnReplayRequested += ReplayNpcLine;
+            hud.OnRetrySession += () => SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+            hud.OnGoHub += () => SceneManager.LoadScene("TrainingHubScene");
+            hud.OnGoHome += () => SceneManager.LoadScene("MainScene");
+            hud.SetObjective(0, StepperLabel("greeting"));
+        }
+
+        private static string StepperLabel(string objectiveId) =>
+            !string.IsNullOrEmpty(objectiveId) && StepperLabels.TryGetValue(objectiveId, out var l) ? l : objectiveId;
+
+        // NPC 대사 출력 공통 경로 — 말풍선 갱신 + TTS + 재청취용 보관
+        private void SpeakNpc(string line)
+        {
+            if (string.IsNullOrEmpty(line)) return;
+            _lastNpcLine = line;
+            uiView.SetNPCDialogue(line);
+            if (_ttsService != null)
+                _ttsService.SpeakAsync(line, _cts.Token).Forget();
+        }
+
+        private void ReplayNpcLine()
+        {
+            if (!string.IsNullOrEmpty(_lastNpcLine) && _ttsService != null)
+                _ttsService.SpeakAsync(_lastNpcLine, _cts.Token).Forget();
         }
 
         private void ShowInitialCards()
@@ -192,13 +250,20 @@ namespace Artti.Training
         private void HandleObjectiveChanged(string newObjectiveId)
         {
             _eventLogger?.LogObjectiveEntered(newObjectiveId);
+            _objectivesEntered++;
+
+            // 진행 표시는 objective를 따라감 (turn 아님)
+            if (hud != null && ObjectiveOrderByScenario.TryGetValue(scenarioId, out var order))
+            {
+                int idx = System.Array.IndexOf(order, newObjectiveId);
+                if (idx >= 0) hud.SetObjective(idx, StepperLabel(newObjectiveId));
+            }
+
             if (IsPoolMode)
             {
                 if (TryGetObjectivePrompt(newObjectiveId, out var npcLine))
                 {
-                    uiView.SetNPCDialogue(npcLine);
-                    if (_ttsService != null)
-                        _ttsService.SpeakAsync(npcLine, _cts.Token).Forget();
+                    SpeakNpc(npcLine);
                 }
                 RefreshPool();
             }
@@ -223,22 +288,26 @@ namespace Artti.Training
             {
                 uiView.HideExtraModal();
 
+                // 시안 3.png: 선택 카드 강조 + 나머지 터치 비활성·흐림, 사용자 발화 버블 표시
+                hud?.SetUserUtterance(card.phrase?.text);
+                uiView.SetPoolLocked(card);
+
                 uiView.ShowMicIndicator(true);
                 var sttResultP = await _sttService.ListenOnceAsync(_cts.Token);
                 uiView.ShowSttResult(sttResultP.text);
+                uiView.UnlockPool();
                 _eventLogger?.LogCardSelected(card.id, card.phrase?.text, sttResultP.text);
 
-                // 빈 결과 시 안내 후 같은 objective 유지 (PLAN.MD 7.3.1)
+                // 빈 결과 시 fallback 전용 대사 후 같은 objective 유지 — 2차 시도(scaffold_level=1)는 같은 카드 유지 (PLAN.MD 7.3.1)
                 if (string.IsNullOrWhiteSpace(sttResultP.text))
                 {
                     _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
-                    var line = PickFallback("stt_empty");
-                    uiView.SetNPCDialogue(line);
-                    if (_ttsService != null)
-                        _ttsService.SpeakAsync(line, _cts.Token).Forget();
+                    SpeakNpc(PickFallback("stt_empty"));
                     return;
                 }
 
+                // 성공: 짧은 긍정 피드백 (랜덤) 후 다음 단계
+                hud?.ShowPraise();
                 AdvanceObjective();
                 return;
             }
@@ -267,7 +336,10 @@ namespace Artti.Training
                 return;
             }
 
+            // LLM 처리 동안 "생각하는 중" 인디케이터 (응답 지연/무응답 fallback 패턴 공통)
+            hud?.ShowThinking(true);
             var result = await _geminiService.RequestNextTurnAsync("System Prompt", $"{card.phrase?.text} {sttResult.text}", _cts.Token);
+            hud?.ShowThinking(false);
 
             // Gemini 실패/키없음 → fallback 응답으로 대체
             if (!result.HasValue)
@@ -326,13 +398,25 @@ namespace Artti.Training
             _sessionCompleted = true;
             _eventLogger?.LogSessionEnded("completed");
             AppBootstrap.Instance?.LogStore?.FlushAsync().Forget();
+            ShowCompletionScreen();
+        }
+
+        // 완료 화면 — 평가성 요소 없이 시나리오/걸린 시간/진행 단계 수만 (시안 스펙)
+        private void ShowCompletionScreen()
+        {
+            if (hud == null) return;
+            var elapsed = System.DateTimeOffset.UtcNow - _sessionStartUtc;
+            string duration = elapsed.TotalSeconds < 60 ? "1분 이내" : $"{Mathf.RoundToInt((float)elapsed.TotalMinutes)}분";
+            hud.ShowCompletion(
+                Artti.Report.ReportLabels.ScenarioName(scenarioId),
+                duration,
+                $"{_objectivesEntered}단계 완료");
         }
 
 
         private void HandleToolCall(DialogueTool tool, string npcText, string[] args)
         {
-            uiView.SetNPCDialogue(npcText);
-            _ttsService.SpeakAsync(npcText, _cts.Token).Forget();
+            SpeakNpc(npcText);
             _eventLogger?.LogNpcTurn(npcText, tool);
 
             // Gemini 흐름의 시나리오 종료 — 풀 모드의 마지막 objective 도달과 동일하게 완료 처리
