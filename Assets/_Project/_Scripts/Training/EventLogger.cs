@@ -19,6 +19,27 @@ namespace Artti.Training
             _sessionId = Guid.NewGuid().ToString();
         }
 
+        public void LogScenarioEntered()
+        {
+            Log(AACEventType.ScenarioEntered);
+        }
+
+        // status: "completed" — 시나리오 마지막 objective 도달 시
+        public void LogSessionEnded(string status)
+        {
+            Log(AACEventType.SessionEnded, payload: status);
+        }
+
+        public void LogSessionAbandoned(string objectiveId)
+        {
+            Log(AACEventType.SessionAbandoned, objectiveId);
+        }
+
+        public void LogStepRetryAttempt(string objectiveId)
+        {
+            Log(AACEventType.StepRetryAttempt, objectiveId);
+        }
+
         public void LogObjectiveEntered(string objectiveId)
         {
             Log(AACEventType.ObjectiveEntered, objectiveId);

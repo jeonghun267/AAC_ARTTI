@@ -2,6 +2,7 @@
   "dependencies": {
     "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
     "com.gamelovers.mcp-unity": "https://github.com/CoderGamester/mcp-unity.git",
+    "com.readyplayerme.core": "https://github.com/readyplayerme/rpm-unity-sdk-core.git#f6ea3c4b0a8891b7c4c1d7b269cee545185549fb",
     "com.unity.collab-proxy": "2.12.4",
     "com.unity.device-simulator.devices": "1.0.1",
     "com.unity.ide.rider": "3.0.39",
