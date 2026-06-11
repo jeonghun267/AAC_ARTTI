@@ -120,6 +120,7 @@ namespace Artti.Training
             uiView.OnCardTapped += HandleCardTapped;
             uiView.OnExtraRequested += HandleExtraRequested;
 
+            _eventLogger?.LogScenarioEntered();
             _eventLogger?.LogObjectiveEntered("greeting");
 
             // 풀 모드: 첫 NPC 대사 + TTS (Initialize는 이벤트 안 쏘므로 수동 호출)
@@ -205,6 +206,11 @@ namespace Artti.Training
 
         private void OnDestroy()
         {
+            // 완료 없이 씬 이탈 → 중단 처리 (마지막 objective 기록). 레포트의 미완료/연습 필요 집계에 사용
+            if (!_sessionCompleted)
+                _eventLogger?.LogSessionAbandoned(_dialogueManager?.CurrentObjectiveId);
+            AppBootstrap.Instance?.LogStore?.FlushAsync().Forget();
+
             _cts?.Cancel();
             _cts?.Dispose();
         }
@@ -225,6 +231,7 @@ namespace Artti.Training
                 // 빈 결과 시 안내 후 같은 objective 유지 (PLAN.MD 7.3.1)
                 if (string.IsNullOrWhiteSpace(sttResultP.text))
                 {
+                    _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
                     var line = PickFallback("stt_empty");
                     uiView.SetNPCDialogue(line);
                     if (_ttsService != null)
@@ -254,6 +261,7 @@ namespace Artti.Training
             // STT 빈 결과면 Gemini 호출 없이 fallback 응답으로 안내
             if (string.IsNullOrWhiteSpace(sttResult.text))
             {
+                _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
                 var line = PickFallback("stt_empty");
                 _dialogueManager.ApplyToolCall(DialogueTool.RequestClarification, line, null);
                 return;
@@ -306,6 +314,18 @@ namespace Artti.Training
                 Debug.Log($"[TrainingSceneRoot] '{next}' objective 카드 없음 — 건너뜀");
             }
             Debug.Log($"[TrainingSceneRoot] {scenarioId} 시나리오 마지막 objective 도달");
+            MarkSessionCompleted();
+        }
+
+        private bool _sessionCompleted;
+
+        // 세션 완료 기록 + 즉시 flush — 레포트가 파일에서 바로 읽을 수 있게
+        private void MarkSessionCompleted()
+        {
+            if (_sessionCompleted) return;
+            _sessionCompleted = true;
+            _eventLogger?.LogSessionEnded("completed");
+            AppBootstrap.Instance?.LogStore?.FlushAsync().Forget();
         }
 
 
@@ -314,6 +334,10 @@ namespace Artti.Training
             uiView.SetNPCDialogue(npcText);
             _ttsService.SpeakAsync(npcText, _cts.Token).Forget();
             _eventLogger?.LogNpcTurn(npcText, tool);
+
+            // Gemini 흐름의 시나리오 종료 — 풀 모드의 마지막 objective 도달과 동일하게 완료 처리
+            if (tool == DialogueTool.ForceCompleteScenario)
+                MarkSessionCompleted();
 
             // 풀 모드: 카드 갱신은 OnObjectiveChanged에서 처리. Gemini의 args 무시
             if (IsPoolMode) return;

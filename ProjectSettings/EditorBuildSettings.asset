@@ -32,6 +32,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/_Project/Scenes/ARFieldScene.unity
     guid: fa93277fb21aec84e8fb787d7847e194
+  - enabled: 1
+    path: Assets/_Project/Scenes/ReportScene.unity
+    guid: 36013ef14f8fdde43afbf9a012911998
   m_configObjects:
     UnityEditor.XR.ARCore.ARCoreSettings: {fileID: 11400000, guid: 38b31ef2b9811aa4abd1d3981ae23429,
       type: 2}
