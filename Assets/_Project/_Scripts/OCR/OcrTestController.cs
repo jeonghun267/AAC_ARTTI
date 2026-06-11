@@ -1,11 +1,13 @@
-using System.Collections;
+﻿using System.Collections;
 using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// OCR 테스트 화면 컨트롤러 (네이버 API 다중 검색 로직 적용 완료)
+/// OCR 테스트 화면 컨트롤러
+/// Plan A: 카카오 좌표 기반 검색
+/// Plan B: 로컬 사전 매칭 (fallback)
 /// </summary>
 public class OcrTestController : MonoBehaviour
 {
@@ -30,17 +32,17 @@ public class OcrTestController : MonoBehaviour
     [SerializeField] private TextMeshProUGUI categoryText;
     [SerializeField] private TextMeshProUGUI descriptionText;
 
-    [Header("네이버 API 검색 컴포넌트")]
-    [SerializeField] private NaverLocalSearcher naverSearcher;
+    [Header("카카오 API 검색 컴포넌트")]
+    [SerializeField] private KakaoLocalSearcher kakaoSearcher;
 
     // 카테고리별 배지 색상 (한글 키)
     private readonly System.Collections.Generic.Dictionary<string, Color> _categoryColors =
         new System.Collections.Generic.Dictionary<string, Color>
     {
-        { "편의점", new Color(0.0f,    0.537f, 0.482f) },  // #00897B
-        { "약국",   new Color(0.0f,    0.412f, 0.388f) },  // #00695C
-        { "카페",   new Color(0.553f,  0.431f, 0.388f) },  // #8D6E63
-        { "음식점", new Color(0.902f,  0.318f, 0.0f)   },  // #E65100
+        { "편의점", new Color(0.0f,    0.537f, 0.482f) },
+        { "약국",   new Color(0.0f,    0.412f, 0.388f) },
+        { "카페",   new Color(0.553f,  0.431f, 0.388f) },
+        { "음식점", new Color(0.902f,  0.318f, 0.0f)   },
     };
 
     private readonly KeywordDictionary _dict = new KeywordDictionary();
@@ -55,23 +57,20 @@ public class OcrTestController : MonoBehaviour
         if (takePhotoButton != null) takePhotoButton.onClick.AddListener(OnTakePhotoClicked);
         if (backButton != null) backButton.onClick.AddListener(OnBackClicked);
 
-        // 컴포넌트 자동 할당
-        if (naverSearcher == null)
-        {
-            naverSearcher = GetComponent<NaverLocalSearcher>();
-        }
+        if (kakaoSearcher == null)
+            kakaoSearcher = GetComponent<KakaoLocalSearcher>();
 
         ShowHomePanel();
 
         if (statusText != null)
-        {
             statusText.text = "사전을 불러오는 중...";
-        }
     }
 
     private void Start()
     {
         StartCoroutine(LoadDictionaryRoutine());
+        // GPS 상태를 주기적으로 화면에 표시
+        StartCoroutine(UpdateGpsStatusRoutine());
     }
 
     private void OnDestroy()
@@ -95,6 +94,33 @@ public class OcrTestController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 홈 화면에 있을 때 GPS 상태를 1초마다 업데이트해서 표시
+    /// </summary>
+    private IEnumerator UpdateGpsStatusRoutine()
+    {
+        while (true)
+        {
+            yield return new WaitForSeconds(1f);
+
+            // 홈 패널이 활성화되어 있고 처리 중이 아닐 때만 GPS 상태 표시
+            if (homePanel != null && homePanel.activeSelf && !_isProcessing && _dict.IsLoaded)
+            {
+                if (statusText != null)
+                {
+                    if (GPSManager.IsReady)
+                    {
+                        statusText.text = $"✅ GPS 준비완료\n📍 위도: {GPSManager.Latitude:F6}\n경도: {GPSManager.Longitude:F6}\n\n버튼을 눌러 간판 사진을 선택하세요.";
+                    }
+                    else
+                    {
+                        statusText.text = $"⚠️ {GPSManager.StatusMessage}\n\n버튼을 눌러 간판 사진을 선택하세요.";
+                    }
+                }
+            }
+        }
+    }
+
     // ============================================================
     // 버튼 이벤트
     // ============================================================
@@ -103,7 +129,8 @@ public class OcrTestController : MonoBehaviour
     {
         if (!CanProcess()) return;
 
-        SetStatus("갤러리를 여는 중...");
+        GPSManager.UpdateCoords();
+        SetStatus($"📍 위도: {GPSManager.Latitude:F6}\n경도: {GPSManager.Longitude:F6}\n갤러리를 여는 중...");
 
         try
         {
@@ -124,7 +151,8 @@ public class OcrTestController : MonoBehaviour
     {
         if (!CanProcess()) return;
 
-        SetStatus("카메라를 여는 중...");
+        GPSManager.UpdateCoords();
+        SetStatus($"📍 위도: {GPSManager.Latitude:F6}\n경도: {GPSManager.Longitude:F6}\n카메라를 여는 중...");
 
         try
         {
@@ -173,88 +201,67 @@ public class OcrTestController : MonoBehaviour
         _isProcessing = false;
         Debug.Log("[OcrTest] OCR result: \n" + text);
 
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            SetStatus("글자를 인식하지 못했습니다. 더 선명한 사진을 시도해 주세요.");
-            return;
-        }
-
         StartCoroutine(ProcessClassificationRoutine(text, imagePath));
     }
 
     /// <summary>
-    /// 여러 줄의 텍스트를 순서대로 네이버에 검색하여 유효한 상호명을 찾아내는 핵심 로직
+    /// Plan A: 카카오 좌표 검색 → Plan B: 로컬 사전 매칭
     /// </summary>
     private IEnumerator ProcessClassificationRoutine(string ocrText, string imagePath)
     {
-        SetStatus("장소 카테고리 분석 중...");
-
-        // 1. 줄바꿈을 기준으로 텍스트를 배열로 쪼갭니다.
-        string[] lines = ocrText.Split(new char[] { '\n', '\r' }, System.StringSplitOptions.RemoveEmptyEntries);
+        SetStatus("위치 기반 검색 중...");
 
         KeywordMatch finalMatch = null;
-        string successfulKeyword = "";
 
-        // 2. 네이버 API를 줄 단위로 순회하며 다중 검색 진행
-        if (naverSearcher != null)
+        // ============================================================
+        // Plan A: 카카오 좌표 기반 검색
+        // ============================================================
+        if (kakaoSearcher != null)
         {
-            foreach (string rawLine in lines)
-            {
-                string keyword = rawLine.Trim();
+            bool kakaoFinished = false;
 
-                // 1글자짜리 오인식 문자열이나 빈 문자열은 네이버에 검색하지 않고 패스하여 API 호출을 아낍니다.
-                if (keyword.Length < 2) continue;
-
-                Debug.Log($"[OcrTest] 네이버 API 검색 시도: {keyword}");
-
-                string naverJsonResult = null;
-                bool isNetworkError = false;
-
-                // 통신 대기
-                yield return StartCoroutine(naverSearcher.SearchPlaceCoroutine(
-                    keyword,
-                    onComplete: (json) => naverJsonResult = json,
-                    onError: (error) => {
-                        isNetworkError = true;
-                    }
-                ));
-
-                // 응답이 오면 파싱 시도
-                if (!isNetworkError && !string.IsNullOrEmpty(naverJsonResult))
+            yield return StartCoroutine(kakaoSearcher.SearchByCoords(
+                GPSManager.Latitude,
+                GPSManager.Longitude,
+                onSuccess: (match) =>
                 {
-                    string rawCategory = naverSearcher.ParseCategoryFromJson(naverJsonResult);
-                    string appCategory = naverSearcher.MapToAppCategory(rawCategory);
-
-                    // 네이버가 유효한 카테고리(음식점, 카페 등)를 뱉어주었다면!
-                    if (!string.IsNullOrEmpty(appCategory))
-                    {
-                        finalMatch = _dict.Match(appCategory);
-                        if (finalMatch != null)
-                        {
-                            successfulKeyword = keyword;
-                            Debug.Log($"[OcrTest] 빙고! '{keyword}'(으)로 [{appCategory}] 매칭 성공. 나머지 줄 검색을 중단합니다.");
-                            break; // 정답을 찾았으므로 남은 줄은 더 이상 검색하지 않고 반복문을 즉시 탈출합니다.
-                        }
-                    }
+                    finalMatch = match;
+                    kakaoFinished = true;
+                    Debug.Log($"[OcrTest] Plan A 성공! [{match.Category}] 좌표 검색 매칭.");
+                },
+                onFail: () =>
+                {
+                    kakaoFinished = true;
+                    Debug.Log("[OcrTest] Plan A 실패. 로컬 사전으로 넘어갑니다.");
                 }
-            }
+            ));
+
+            yield return new WaitUntil(() => kakaoFinished);
         }
 
-        // 3. [Plan B] 모든 줄을 다 검색했는데도 실패했다면 기존의 로컬 사전 매칭 실행
+        // ============================================================
+        // Plan B: 로컬 사전 매칭 (fallback)
+        // ============================================================
         if (finalMatch == null)
         {
-            Debug.Log("[OcrTest] 네이버 다중 검색 실패. 로컬 사전을 전체 텍스트로 검색합니다.");
+            Debug.Log("[OcrTest] Plan B: 로컬 사전 검색.");
+            SetStatus("텍스트 기반 검색 중...");
             finalMatch = _dict.Match(ocrText);
+
+            if (finalMatch != null)
+                Debug.Log($"[OcrTest] Plan B 성공! [{finalMatch.Category}] 로컬 사전 매칭.");
         }
 
-        // 4. 최종 결과 화면 표시
+        // ============================================================
+        // 최종 결과 표시
+        // ============================================================
         if (finalMatch != null)
         {
             ShowResultPanel(finalMatch, imagePath);
         }
         else
         {
-            SetStatus("분류 가능한 카테고리가 없습니다.\n마지막 인식 테스트: " + (lines.Length > 0 ? lines[0] : "없음"));
+            SetStatus("분류 가능한 카테고리를 찾지 못했습니다.");
         }
     }
 
@@ -280,19 +287,13 @@ public class OcrTestController : MonoBehaviour
         LoadCapturedImage(imagePath);
 
         if (categoryText != null)
-        {
             categoryText.text = match.Category;
-        }
 
         if (categoryBadgeImage != null && _categoryColors.TryGetValue(match.Category, out Color color))
-        {
             categoryBadgeImage.color = color;
-        }
 
         if (descriptionText != null)
-        {
             descriptionText.text = match.Description;
-        }
 
         if (aacImageComponent != null && !string.IsNullOrEmpty(match.ImageName))
         {
@@ -327,7 +328,6 @@ public class OcrTestController : MonoBehaviour
             }
 
             byte[] imageData = File.ReadAllBytes(imagePath);
-
             DisposeCurrentTexture();
 
             _currentTexture = new Texture2D(2, 2);
@@ -359,9 +359,8 @@ public class OcrTestController : MonoBehaviour
     private void SetStatus(string text)
     {
         if (statusText != null)
-        {
             statusText.text = text;
-        }
+
         Debug.Log("[OcrTest] Status: " + text);
     }
 
