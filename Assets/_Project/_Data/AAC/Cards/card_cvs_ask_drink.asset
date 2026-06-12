@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: card_cvs_ask_drink
   m_EditorClassIdentifier: Assembly-CSharp::Artti.AAC.AACCard
   id: card_cvs_ask_drink
-  symbol: {fileID: 11400000, guid: 9961fd8362069dd4fb5f203465717667, type: 2}
+  symbol: {fileID: 11400000, guid: 835db40e7281f9a42b51e2ec150f47f3, type: 2}
   phrase: {fileID: 11400000, guid: 206221a57da7fc8469c0b36b22599de6, type: 2}
   applicableScenarios:
   - convenience

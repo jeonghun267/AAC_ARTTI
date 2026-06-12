@@ -176,14 +176,15 @@ namespace Artti.Training
         private static string StepperLabel(string objectiveId) =>
             !string.IsNullOrEmpty(objectiveId) && StepperLabels.TryGetValue(objectiveId, out var l) ? l : objectiveId;
 
-        // NPC 대사 출력 공통 경로 — 말풍선 갱신 + TTS + 재청취용 보관
-        private void SpeakNpc(string line)
+        // NPC 대사 출력 공통 경로 — 말풍선 갱신 + TTS + 재청취용 보관 + TtsPlayed 기록 (레포트 진행 흐름)
+        private void SpeakNpc(string line, Artti.AAC.DialogueTool tool = Artti.AAC.DialogueTool.PresentCards)
         {
             if (string.IsNullOrEmpty(line)) return;
             _lastNpcLine = line;
             uiView.SetNPCDialogue(line);
             if (_ttsService != null)
                 _ttsService.SpeakAsync(line, _cts.Token).Forget();
+            _eventLogger?.LogNpcTurn(line, tool);
         }
 
         private void ReplayNpcLine()
@@ -416,8 +417,7 @@ namespace Artti.Training
 
         private void HandleToolCall(DialogueTool tool, string npcText, string[] args)
         {
-            SpeakNpc(npcText);
-            _eventLogger?.LogNpcTurn(npcText, tool);
+            SpeakNpc(npcText, tool);
 
             // Gemini 흐름의 시나리오 종료 — 풀 모드의 마지막 objective 도달과 동일하게 완료 처리
             if (tool == DialogueTool.ForceCompleteScenario)

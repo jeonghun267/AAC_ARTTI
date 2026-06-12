@@ -53,7 +53,15 @@ namespace Artti.Common
             }
 #endif
 
-            // Runtime (build): read from StreamingAssets/api_keys.env
+            // Runtime (build): Resources/api_keys.txt — Android의 StreamingAssets는 APK 내부라 File IO 불가
+            var keyAsset = Resources.Load<TextAsset>("api_keys");
+            if (keyAsset != null)
+            {
+                ParseEnvFormat(keyAsset.text);
+                return;
+            }
+
+            // 구버전 빌드 호환: StreamingAssets/api_keys.env (Android에선 도달 불가)
             var saPath = Path.Combine(Application.streamingAssetsPath, "api_keys.env");
             if (File.Exists(saPath))
             {
@@ -61,7 +69,7 @@ namespace Artti.Common
                 return;
             }
 
-            Debug.LogWarning("[ApiKeyLoader] .env not found — API calls will fail. Place .env at project root for Editor, StreamingAssets/api_keys.env for builds.");
+            Debug.LogWarning("[ApiKeyLoader] .env not found — API calls will fail. Place .env at project root for Editor; builds use Resources/api_keys.txt (Artti/Copy .env to Resources).");
         }
 
         static void ParseEnvFormat(string content)

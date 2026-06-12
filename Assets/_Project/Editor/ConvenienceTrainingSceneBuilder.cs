@@ -25,6 +25,11 @@ namespace Artti.Editor
 
         const string RoundedPath   = "Assets/_Project/Art/UI/RoundedRect.png";
         const string BgPath        = "Assets/_Project/Art/UI/Scenario/bg_convenience.png";
+        const string CamilaFbxPath = "Assets/Convai SDK For Unity/Samples/LipSyncSample/Characters/Camila/Camila.Fbx";
+        const string IdleAnimFbxPath = "Assets/Convai SDK For Unity/Samples/BasicSample/Art/Animations/Convai_Anim_Sample_Locomotion_Idle_Loop.FBX";
+        const string IdleControllerPath = "Assets/_Project/Art/CamilaIdle.controller";
+        const string CharacterRTPath = "Assets/_Project/Art/UI/RT_Character.renderTexture";
+        const string LipSyncProfilePath = "Packages/com.hecomi.ulipsync/Assets/Profiles/uLipSync-Profile-Sample-Female.asset";
         const string PauseIconPath = "Assets/_Project/Art/UI/icon_pause.svg";
         const string SpeakerIconPath = "Assets/_Project/Art/UI/icon_volume_up.svg";
         const string AacDbPath     = "Assets/_Project/_Data/AAC/AACDatabase.asset";
@@ -44,6 +49,12 @@ namespace Artti.Editor
 
             SceneBuilderUtils.CreateEventSystem();
             SceneBuilderUtils.EnsureAudioListener();
+
+            // 3D 캐릭터(RenderTexture 합성)용 라이트 — 없으면 캐릭터가 검게 렌더됨
+            var lightGo = new GameObject("[Directional Light]");
+            var dirLight = lightGo.AddComponent<Light>();
+            dirLight.type = LightType.Directional;
+            lightGo.transform.rotation = Quaternion.Euler(50, -30, 0);
 
             var font = SceneBuilderUtils.GetKoreanFont();
 
@@ -67,7 +78,11 @@ namespace Artti.Editor
             PlaceCenter(charView, new Vector2(-170, -110), new Vector2(700, 880));
             var charRaw = charView.gameObject.AddComponent<RawImage>();
             charRaw.raycastTarget = false;
-            charView.gameObject.SetActive(false); // RT 연결 전까지 흰 사각형 방지
+            charView.gameObject.SetActive(false); // 캐릭터 리그 성공 시 활성화
+
+            var camila = BuildCharacterRig(charView.gameObject, charRaw);
+            if (camila != null)
+                WireLipSync(sceneRootGo, camila);
 
             // ===== 하단 AAC 카드 가로 풀 =====
             var cardRow = ChildRect("CardRow", canvasGo.transform);
@@ -334,7 +349,123 @@ namespace Artti.Editor
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[ConvenienceTrainingSceneBuilder] 완료 — CharacterView에 RenderTexture 연결 후 활성화하세요");
+            Debug.Log("[ConvenienceTrainingSceneBuilder] 완료 — Camila/카메라/RenderTexture 자동 구성됨");
+        }
+
+        // ===== 캐릭터 리그: Camila + Idle 애니 + RT 전용 카메라 + RawImage 연결 =====
+        static GameObject BuildCharacterRig(GameObject charViewGo, RawImage charRaw)
+        {
+            var fbx = AssetDatabase.LoadAssetAtPath<GameObject>(CamilaFbxPath);
+            if (fbx == null)
+            {
+                Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] Camila FBX 없음: {CamilaFbxPath} — CharacterView 비활성 유지");
+                return null;
+            }
+
+            var camila = (GameObject)PrefabUtility.InstantiatePrefab(fbx);
+            camila.name = "Camila";
+            camila.transform.position = Vector3.zero;
+            camila.transform.rotation = Quaternion.identity;
+
+            // Idle 애니메이션 (T포즈 방지)
+            var controller = EnsureIdleController();
+            var animator = camila.GetComponentInChildren<Animator>();
+            if (animator == null) animator = camila.AddComponent<Animator>();
+            if (controller != null) animator.runtimeAnimatorController = controller;
+
+            // RenderTexture 에셋 (1회 생성 후 재사용)
+            var rt = AssetDatabase.LoadAssetAtPath<RenderTexture>(CharacterRTPath);
+            if (rt == null)
+            {
+                rt = new RenderTexture(1024, 1280, 24) { name = "RT_Character" };
+                AssetDatabase.CreateAsset(rt, CharacterRTPath);
+            }
+
+            // RT 전용 카메라 — 화면 출력 없음, AudioListener 미부착(씬에 이미 존재)
+            var camGo = new GameObject("CharacterCamera");
+            var cam = camGo.AddComponent<Camera>();
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0f, 0f, 0f, 0f); // 알파 0 — 배경 사진 위 합성
+            cam.targetTexture = rt;
+            cam.fieldOfView = 40f;
+            cam.nearClipPlane = 0.1f;
+            camGo.transform.position = new Vector3(0f, 1.45f, 1.15f);
+            camGo.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+
+            charRaw.texture = rt;
+            charViewGo.SetActive(true);
+            return camila;
+        }
+
+        // ===== 립싱크: TTS AudioSource(uLipSync 분석) → Camila 비짐 블렌드셰이프 =====
+        static void WireLipSync(GameObject ttsGo, GameObject camila)
+        {
+            // 블렌드셰이프가 가장 많은 SkinnedMeshRenderer = 얼굴 메시
+            SkinnedMeshRenderer face = null;
+            foreach (var smr in camila.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                if (smr.sharedMesh != null && smr.sharedMesh.blendShapeCount > 0 &&
+                    (face == null || smr.sharedMesh.blendShapeCount > face.sharedMesh.blendShapeCount))
+                    face = smr;
+            if (face == null)
+            {
+                Debug.LogWarning("[ConvenienceTrainingSceneBuilder] Camila에 블렌드셰이프 메시 없음 — 립싱크 생략");
+                return;
+            }
+
+            var ls = ttsGo.AddComponent<uLipSync.uLipSync>();
+            ls.profile = AssetDatabase.LoadAssetAtPath<uLipSync.Profile>(LipSyncProfilePath);
+            if (ls.profile == null)
+                Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] uLipSync 프로파일 없음: {LipSyncProfilePath} — Inspector에서 수동 지정 필요");
+
+            var bs = camila.AddComponent<uLipSync.uLipSyncBlendShape>();
+            bs.skinnedMeshRenderer = face;
+
+            // CC(Character Creator) 비짐 우선, 일반 명칭 폴백
+            MapPhoneme(bs, face, "A", "V_Open", "Jaw_Open", "Mouth_Open", "A");
+            MapPhoneme(bs, face, "I", "V_Wide", "Mouth_Smile", "I");
+            MapPhoneme(bs, face, "U", "V_Tight_O", "Mouth_Pucker", "U");
+            MapPhoneme(bs, face, "E", "V_Dental_Lip", "V_Wide", "E");
+            MapPhoneme(bs, face, "O", "V_Tight_O", "V_Open", "O");
+
+            UnityEditor.Events.UnityEventTools.AddPersistentListener(ls.onLipSyncUpdate, bs.OnLipSyncUpdate);
+        }
+
+        static void MapPhoneme(uLipSync.uLipSyncBlendShape bs, SkinnedMeshRenderer face, string phoneme, params string[] candidates)
+        {
+            var mesh = face.sharedMesh;
+            foreach (var cand in candidates)
+            {
+                for (int i = 0; i < mesh.blendShapeCount; i++)
+                {
+                    var bsName = mesh.GetBlendShapeName(i);
+                    if (bsName == cand || bsName.EndsWith("." + cand))
+                    {
+                        bs.AddBlendShape(phoneme, bsName);
+                        return;
+                    }
+                }
+            }
+            Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] '{phoneme}' 음소 매핑 실패 — 후보 블렌드셰이프 없음: {string.Join(", ", candidates)}");
+        }
+
+        static RuntimeAnimatorController EnsureIdleController()
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(IdleControllerPath);
+            if (existing != null) return existing;
+
+            AnimationClip idle = null;
+            foreach (var obj in AssetDatabase.LoadAllAssetsAtPath(IdleAnimFbxPath))
+                if (obj is AnimationClip clip && !clip.name.StartsWith("__preview"))
+                {
+                    idle = clip;
+                    break;
+                }
+            if (idle == null)
+            {
+                Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] Idle 클립 없음: {IdleAnimFbxPath}");
+                return null;
+            }
+            return UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPathWithClip(IdleControllerPath, idle);
         }
 
         // ===== 가로형 AAC 카드 슬롯 (아이콘 좌 + 문구 우) =====
