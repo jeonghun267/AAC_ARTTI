@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c12b4f431134aa0418b1ad7f0114e362, type: 3}
+  m_Name: card_cvs_checkout_req
+  m_EditorClassIdentifier: Assembly-CSharp::Artti.AAC.AACCard
+  id: card_cvs_checkout_req
+  symbol: {fileID: 11400000, guid: 4bf70021b45d9d5448d685c543eca793, type: 2}
+  phrase: {fileID: 11400000, guid: 3ffd1ad28599dff49ba64fa19339542e, type: 2}
+  applicableScenarios:
+  - convenience
+  applicableObjectives:
+  - checkout
+  tags:
+  - checkout
+  - payment
+  branchId: 
+  priorityHint: 0

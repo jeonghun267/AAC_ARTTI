@@ -11,14 +11,16 @@ namespace Artti.Editor
         public int callbackOrder => 0;
 
         const string EnvFile = ".env";
-        const string StreamingFolder = "Assets/StreamingAssets";
-        const string TargetAssetPath = "Assets/StreamingAssets/api_keys.env";
+        const string ResourcesFolder = "Assets/Resources";
+        // Android의 StreamingAssets는 APK(jar) 내부라 File IO 불가 — Resources(TextAsset)로 포함
+        const string TargetAssetPath = "Assets/Resources/api_keys.txt";
+        const string LegacyStreamingPath = "Assets/StreamingAssets/api_keys.env";
 
-        [MenuItem("Artti/Copy .env to StreamingAssets")]
+        [MenuItem("Artti/Copy .env to Resources")]
         public static void CopyMenu()
         {
             if (CopyEnv())
-                EditorUtility.DisplayDialog(".env 복사", "StreamingAssets/api_keys.env로 복사 완료", "확인");
+                EditorUtility.DisplayDialog(".env 복사", "Resources/api_keys.txt로 복사 완료", "확인");
             else
                 EditorUtility.DisplayDialog(".env 복사 실패", ".env 파일이 프로젝트 루트에 없습니다", "확인");
         }
@@ -39,12 +41,17 @@ namespace Artti.Editor
                 return false;
             }
 
-            if (!AssetDatabase.IsValidFolder(StreamingFolder))
-                AssetDatabase.CreateFolder("Assets", "StreamingAssets");
+            if (!AssetDatabase.IsValidFolder(ResourcesFolder))
+                AssetDatabase.CreateFolder("Assets", "Resources");
 
             var targetPath = Path.Combine(projectRoot, TargetAssetPath);
             File.Copy(envPath, targetPath, true);
             AssetDatabase.ImportAsset(TargetAssetPath);
+
+            // 구버전 StreamingAssets 사본 정리 (Android에서 못 읽는 경로)
+            if (AssetDatabase.LoadAssetAtPath<Object>(LegacyStreamingPath) != null)
+                AssetDatabase.DeleteAsset(LegacyStreamingPath);
+
             Debug.Log($"[CopyApiKeysOnBuild] .env → {TargetAssetPath} 복사 완료");
             return true;
         }

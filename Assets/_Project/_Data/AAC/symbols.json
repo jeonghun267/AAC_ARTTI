@@ -1,26 +1,37 @@
 {
   "_comment": "PLAN.MD v3 section 7.2.5~7.2.7 - Symbol Library. png_source is relative to C:/Users/admin_14/Documents/AAC_Images/",
   "symbols": [
-    { "id": "sym_hello", "png_source": "05_request/안녕하세요.png", "semantic_tags": ["greeting"], "description": "인사하는 모습. 약국/편의점/음식점 공통." },
+    { "id": "sym_hello", "png_source": "99_custom/hello_1.png", "semantic_tags": ["greeting"], "description": "인사하는 모습. 약국/편의점/음식점 공통." },
     { "id": "sym_pill_box", "png_source": "03_pharmacy/약.png", "semantic_tags": ["medicine", "object"], "description": "약 상자. 일반 의약품을 나타냄." },
-    { "id": "sym_head_pain", "png_source": "03_pharmacy/두통.png", "semantic_tags": ["pain", "head"], "description": "머리를 감싸쥔 모습. 두통 증상." },
+    { "id": "sym_head_pain", "png_source": "99_custom/headache.png", "semantic_tags": ["pain", "head"], "description": "머리를 감싸쥔 모습. 두통 증상." },
     { "id": "sym_stomach_hold", "png_source": "03_pharmacy/복통.png", "semantic_tags": ["pain", "stomach", "discomfort"], "description": "배를 움켜쥔 모습. 복통/체함/설사 카드에 재사용." },
     { "id": "sym_runny_nose", "png_source": "03_pharmacy/콧물.png", "semantic_tags": ["symptom", "cold", "nose"], "description": "콧물 흐르는 모습. 감기 증상." },
-    { "id": "sym_card_payment", "png_source": "02_convenience_store/카드.png", "semantic_tags": ["payment", "card"], "description": "카드 결제. 약국/편의점/음식점 공통." },
-    { "id": "sym_cash_payment", "png_source": "02_convenience_store/현금.png", "semantic_tags": ["payment", "cash"], "description": "현금 결제. 약국/편의점 공통." },
+    { "id": "sym_card_payment", "png_source": "99_custom/pay_by_card.png", "semantic_tags": ["payment", "card"], "description": "카드 결제. 약국/편의점/음식점 공통." },
+    { "id": "sym_cash_payment", "png_source": "99_custom/cash.png", "semantic_tags": ["payment", "cash"], "description": "현금 결제. 약국/편의점 공통." },
     { "id": "sym_question", "png_source": "06_question/무엇.png", "semantic_tags": ["question", "uncertain"], "description": "물음표/모르겠음. 일반 질문 카드." },
-    { "id": "sym_thank_you", "png_source": "05_request/감사합니다.png", "semantic_tags": ["farewell", "gratitude"], "description": "감사 인사. 모든 시나리오 공통." },
+    { "id": "sym_thank_you", "png_source": "99_custom/thank_you.png", "semantic_tags": ["farewell", "gratitude"], "description": "감사 인사. 모든 시나리오 공통." },
 
-    { "id": "sym_water_bottle", "png_source": "01_restaurant/물.png", "semantic_tags": ["object", "drink"], "description": "물병. 편의점에서 물 요청." },
-    { "id": "sym_snack", "png_source": "02_convenience_store/과자.png", "semantic_tags": ["object", "snack"], "description": "과자 봉지." },
-    { "id": "sym_drink_general", "png_source": "02_convenience_store/음료수.png", "semantic_tags": ["object", "drink"], "description": "음료수." },
+    { "id": "sym_water_bottle", "png_source": "99_custom/water.png", "semantic_tags": ["object", "drink"], "description": "물병. 편의점에서 물 요청." },
+    { "id": "sym_snack", "png_source": "99_custom/snack_please.png", "semantic_tags": ["object", "snack"], "description": "과자 봉지." },
+    { "id": "sym_drink_general", "png_source": "99_custom/drink.png", "semantic_tags": ["object", "drink"], "description": "음료 두 잔. 음료 관련 질문/요청." },
     { "id": "sym_question_location", "png_source": "06_question/어디.png", "semantic_tags": ["question", "location"], "description": "어디? 위치 묻기." },
-    { "id": "sym_bag", "png_source": "02_convenience_store/봉투.png", "semantic_tags": ["object", "bag"], "description": "비닐봉투. 봉투 필요/불필요 카드 공통." },
+    { "id": "sym_bag", "png_source": "99_custom/plastic_bag.png", "semantic_tags": ["object", "bag"], "description": "비닐봉투. 봉투 필요/불필요 카드 공통." },
 
     { "id": "sym_menu", "png_source": "01_restaurant/메뉴판.png", "semantic_tags": ["object", "menu"], "description": "메뉴판." },
     { "id": "sym_fingers_count", "png_source": "01_restaurant/인원수.png", "semantic_tags": ["count", "people"], "description": "사람 무리. 일행 인원수 표시." },
     { "id": "sym_spicy", "png_source": "01_restaurant/매워요.png", "semantic_tags": ["taste", "spicy"], "description": "매운 맛 표시." },
-    { "id": "sym_water_cup", "png_source": "01_restaurant/컵.png", "semantic_tags": ["object", "drink", "water"], "description": "물 컵. 음식점 물 요청." },
-    { "id": "sym_check_bill", "png_source": "01_restaurant/계산.png", "semantic_tags": ["payment", "object"], "description": "계산서. 음식점 결제 요청." }
+    { "id": "sym_water_cup", "png_source": "99_custom/water_please.png", "semantic_tags": ["object", "drink", "water"], "description": "물 컵. 음식점 물 요청." },
+    { "id": "sym_check_bill", "png_source": "99_custom/checkout.png", "semantic_tags": ["payment", "object"], "description": "계산서. 음식점 결제 요청." },
+
+    { "id": "sym_goodbye", "png_source": "99_custom/goodbye.png", "semantic_tags": ["farewell", "greeting"], "description": "허리 굽혀 인사. 헤어질 때 인사. 모든 시나리오 공통." },
+    { "id": "sym_yes_ok", "png_source": "99_custom/yes.png", "semantic_tags": ["answer", "yes"], "description": "양팔로 O 표시. 긍정/알겠다는 대답." },
+    { "id": "sym_say_again", "png_source": "99_custom/say_again.png", "semantic_tags": ["question", "repeat"], "description": "반복 화살표 말풍선. 다시 말해달라는 요청." },
+    { "id": "sym_gimbap", "png_source": "99_custom/gimbap.png", "semantic_tags": ["food", "gimbap"], "description": "김밥. 음식점 주문." },
+    { "id": "sym_cider", "png_source": "99_custom/soda_1.png", "semantic_tags": ["object", "drink", "soda"], "description": "사이다 병. 음료 주문." },
+    { "id": "sym_add_sauce", "png_source": "99_custom/add_gochujang.png", "semantic_tags": ["food", "sauce", "spicy"], "description": "비빔밥에 고추장 추가. 소스 추가 요청." },
+    { "id": "sym_change_item", "png_source": "99_custom/another_one.png", "semantic_tags": ["modify", "exchange"], "description": "다른 것으로 바꿔 달라는 요청." },
+    { "id": "sym_checkout_request", "png_source": "99_custom/checkout_please_1.png", "semantic_tags": ["checkout", "payment"], "description": "장바구니와 돈. 계산 요청." },
+    { "id": "sym_cash_receipt", "png_source": "99_custom/cash_receipt_please.png", "semantic_tags": ["receipt", "payment"], "description": "현금영수증 요청." },
+    { "id": "sym_want_buy", "png_source": "99_custom/want_to_buy.png", "semantic_tags": ["buy", "item"], "description": "물건을 사겠다는 의사 표시." }
   ]
 }
