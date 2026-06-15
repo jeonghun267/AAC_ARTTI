@@ -22,6 +22,9 @@ namespace Artti.Training
         [Header("Convenience HUD (옵션 — 미와이어링 시 무동작)")]
         [SerializeField] private ConvenienceHudView hud;
 
+        [Header("Clerk 애니메이션 (옵션 — 미와이어링 시 무동작)")]
+        [SerializeField] private ClerkView clerkView;
+
         private DialogueManager _dialogueManager;
         private ITtsService _ttsService;
         private ISttService _sttService;
@@ -79,6 +82,14 @@ namespace Artti.Training
             { "pharmacy",    new[] { "greeting", "identify_needs", "serve_meds", "payment", "farewell" } },
             { "convenience", new[] { "greeting", "select_items", "checkout", "extras", "farewell" } },
             { "restaurant",  new[] { "greeting", "menu_browse", "order", "order_modifications", "payment", "farewell" } }
+        };
+
+        // 점원이 "물건을 건네는" 동작(HandOver)을 하는 objective. 그 외 성공은 끄덕임(Nod).
+        private static readonly HashSet<string> HandOverObjectives = new HashSet<string>
+        {
+            "select_items", // 편의점 — 콜라 등 물건 건네기
+            "serve_meds",   // 약국 — 약 건네기
+            "order"         // 음식점 — 주문 받기
         };
 
         // 진행 표시(스테퍼)용 objective 한국어 라벨 — 시안 기준 5단계 명칭
@@ -154,6 +165,7 @@ namespace Artti.Training
             if (IsPoolMode && TryGetObjectivePrompt("greeting", out var greetingLine))
             {
                 SpeakNpc(greetingLine);
+                clerkView?.PlayGreeting();
             }
 
             ShowInitialCards();
@@ -309,6 +321,14 @@ namespace Artti.Training
 
                 // 성공: 짧은 긍정 피드백 (랜덤) 후 다음 단계
                 hud?.ShowPraise();
+                // 점원 반응: 물건 요청 단계면 건네기, 그 외엔 끄덕임
+                if (clerkView != null)
+                {
+                    if (HandOverObjectives.Contains(_dialogueManager.CurrentObjectiveId))
+                        clerkView.PlayHandOver();
+                    else
+                        clerkView.PlayNod();
+                }
                 AdvanceObjective();
                 return;
             }
