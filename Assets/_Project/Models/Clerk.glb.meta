@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 94036a42184bced4e9c468aeae81147c
+guid: df423b479c48af148b460b726023aa67
 ScriptedImporter:
   internalIDToNameTable: []
   externalObjects: {}
@@ -23,6 +23,18 @@ ScriptedImporter:
     layer: 0
     skinUpdateWhenOffscreen: 1
     lightIntensityFactor: 1
-    sceneObjectCreation: 1
+    sceneObjectCreation: 2
   assetDependencies: []
-  reportItems: []
+  reportItems:
+  - type: 2
+    code: 20
+    messages:
+    - VRMC_vrm
+  - type: 2
+    code: 20
+    messages:
+    - VRMC_springBone
+  - type: 2
+    code: 20
+    messages:
+    - VRMC_materials_mtoon
