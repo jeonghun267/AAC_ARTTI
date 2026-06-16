@@ -32,7 +32,7 @@ public class TTSManager : MonoBehaviour
 #endif
     }
 
-    // ★ 수정된 부분: 클릭한 텍스트 카드를 매개변수로 직접 받습니다.
+    // 화면에 있는 텍스트 카드를 통째로 넘겨받아 읽는 함수 (기존)
     public void SpeakText(TMP_Text targetTextCard)
     {
         if (targetTextCard == null)
@@ -48,6 +48,22 @@ public class TTSManager : MonoBehaviour
         if (isInitialized && ttsObject != null)
         {
             ttsObject.Call<int>("speak", message, 0, null, "UtteranceID");
+        }
+#else
+        Debug.Log($"[TTS 시뮬레이션] 다음 문장을 읽습니다: \"{message}\"");
+#endif
+    }
+
+    // ★ 새로 추가된 부분: 주문 관리자 등에서 글자(string)를 직접 넘겨받아 읽는 함수
+    public void Speak(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return;
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        if (isInitialized && ttsObject != null)
+        {
+            AndroidJavaObject emptyParams = new AndroidJavaObject("java.util.HashMap");
+            ttsObject.Call<int>("speak", message, 0, emptyParams);
         }
 #else
         Debug.Log($"[TTS 시뮬레이션] 다음 문장을 읽습니다: \"{message}\"");
