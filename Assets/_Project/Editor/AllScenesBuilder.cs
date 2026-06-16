@@ -26,7 +26,7 @@ namespace Artti.Editor
                 MainSceneBuilder.Build();
                 TrainingHubSceneBuilder.Build();
                 TrainingSceneBuilder.Build(ScenePaths.TrainingPharmacy,   "pharmacy");
-                TrainingSceneBuilder.Build(ScenePaths.TrainingConvenience, "convenience");
+                ConvenienceTrainingSceneBuilder.Build();
                 TrainingSceneBuilder.Build(ScenePaths.TrainingRestaurant,  "restaurant");
                 ARFieldSceneBuilder.BuildScene();
 

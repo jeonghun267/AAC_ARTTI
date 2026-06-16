@@ -21,8 +21,7 @@ namespace Artti.Editor
             Build(ScenePaths.TrainingPharmacy, "pharmacy");
         }
 
-        [MenuItem("Artti/Build TrainingConvenienceScene Hierarchy")]
-        public static void BuildConvenienceMenu() => Build(ScenePaths.TrainingConvenience, "convenience");
+        // 편의점은 전용 빌더(ConvenienceTrainingSceneBuilder)로 분리 — 시안 1~10.png 레이아웃
 
         [MenuItem("Artti/Build TrainingRestaurantScene Hierarchy")]
         public static void BuildRestaurantMenu() => Build(ScenePaths.TrainingRestaurant, "restaurant");
