@@ -15,7 +15,17 @@ namespace Artti.Editor
     public static class ARFieldSceneBuilder
     {
         [MenuItem("Artti/Build ARFieldScene Hierarchy")]
-        public static void BuildMenu() => BuildScene();
+        public static void BuildMenu()
+        {
+            // ARFieldScene은 오정훈 담당 손배치 씬(HomePanel/OcrController 구조).
+            // 이 빌더는 구버전 레이아웃을 생성하므로 실행하면 손배치가 전부 사라짐.
+            bool ok = EditorUtility.DisplayDialog(
+                "ARFieldScene 재빌드 확인",
+                "ARFieldScene은 손배치된 씬입니다 (HomePanel/OcrController 구조).\n빌더로 다시 생성하면 현재 배치가 모두 사라집니다.\n정말 진행할까요?",
+                "덮어쓰기", "취소");
+            if (!ok) return;
+            BuildScene();
+        }
 
         public static void BuildScene()
         {

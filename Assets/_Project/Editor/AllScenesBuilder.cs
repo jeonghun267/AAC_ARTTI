@@ -28,7 +28,7 @@ namespace Artti.Editor
                 TrainingSceneBuilder.Build(ScenePaths.TrainingPharmacy,   "pharmacy");
                 ConvenienceTrainingSceneBuilder.Build();
                 TrainingSceneBuilder.Build(ScenePaths.TrainingRestaurant,  "restaurant");
-                ARFieldSceneBuilder.BuildScene();
+                // ARFieldScene은 손배치 씬(커밋이 원본) — 일괄 빌드에서 제외. 필요 시 개별 메뉴(확인 다이얼로그)로만
 
                 Debug.Log("[AllScenesBuilder] 9개 씬 빌드 + Build Settings 등록 완료");
                 EditorUtility.DisplayDialog("완료", "9개 씬 빌드 완료\nBuild Settings 등록됨 (0=Splash)", "확인");

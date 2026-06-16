@@ -23,6 +23,17 @@
     { "id": "phr_party_two", "text": "두 명이에요", "tts_text": "두 명입니다", "register": "Polite", "length_class": "Short" },
     { "id": "phr_less_spicy", "text": "덜 맵게 해주세요", "tts_text": "덜 맵게 해주실 수 있어요?", "register": "Polite", "length_class": "Medium" },
     { "id": "phr_water_request", "text": "물 주세요", "tts_text": "물 한 잔 주세요", "register": "Polite", "length_class": "Short" },
-    { "id": "phr_check_request", "text": "계산할게요", "tts_text": "계산할게요", "register": "Polite", "length_class": "Short" }
+    { "id": "phr_check_request", "text": "계산할게요", "tts_text": "계산할게요", "register": "Polite", "length_class": "Short" },
+
+    { "id": "phr_farewell", "text": "안녕히 계세요", "tts_text": "안녕히 계세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_yes_ok", "text": "네, 알겠어요", "tts_text": "네, 알겠습니다", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_say_again", "text": "다시 말해주세요", "tts_text": "다시 한번 말해주세요", "register": "Polite", "length_class": "Medium" },
+    { "id": "phr_gimbap", "text": "김밥 주세요", "tts_text": "김밥 하나 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_cider", "text": "사이다 주세요", "tts_text": "사이다 한 병 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_add_sauce", "text": "고추장 더 주세요", "tts_text": "고추장 좀 더 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_change_item", "text": "다른 걸로 주세요", "tts_text": "다른 걸로 바꿔 주세요", "register": "Polite", "length_class": "Medium" },
+    { "id": "phr_checkout_req", "text": "계산해주세요", "tts_text": "계산 부탁드려요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_cash_receipt", "text": "현금영수증 해주세요", "tts_text": "현금영수증 해주세요", "register": "Polite", "length_class": "Medium" },
+    { "id": "phr_buy_this", "text": "이거 살게요", "tts_text": "이거 계산해주세요", "register": "Polite", "length_class": "Short" }
   ]
 }

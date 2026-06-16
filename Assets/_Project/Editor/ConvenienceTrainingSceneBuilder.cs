@@ -24,10 +24,26 @@ namespace Artti.Editor
         static readonly Color   White      = Color.white;
 
         const string RoundedPath   = "Assets/_Project/Art/UI/RoundedRect.png";
-        const string BgPath        = "Assets/_Project/Art/UI/Scenario/bg_convenience.png";
+        const string ClerkPrefabPath = "Assets/_Project/Models/Clerk_Rigged.prefab"; // ClerkCharacterSetup 메뉴가 생성
+        const string EnvPrefabPath   = "Assets/_Project/Models/Env_Convenience.prefab";
+        const string LipSyncProfilePath = "Packages/com.hecomi.ulipsync/Assets/Profiles/uLipSync-Profile-Sample-Female.asset";
         const string PauseIconPath = "Assets/_Project/Art/UI/icon_pause.svg";
         const string SpeakerIconPath = "Assets/_Project/Art/UI/icon_volume_up.svg";
         const string AacDbPath     = "Assets/_Project/_Data/AAC/AACDatabase.asset";
+        const string StageMatDir   = "Assets/_Project/Art/Stage";
+
+        // 3D 무대 배치값 (첫 추정 — Unity에서 보고 조정한 뒤 이 값들을 갱신해 재빌드)
+        static readonly Vector3 ClerkPos    = new Vector3(0f, 0f, 0f);
+        static readonly Vector3 ClerkEuler  = new Vector3(0f, 180f, 0f);  // 카메라 바라보게 (기본 +Z향이면 180)
+        static readonly Vector3 EnvPos      = new Vector3(0f, 0f, 1.2f);
+        static readonly Vector3 EnvEuler    = new Vector3(0f, 0f, 0f);
+        static readonly Vector3 EnvScale    = new Vector3(1f, 1f, 1f);
+        static readonly Vector3 CamPos      = new Vector3(0f, 1.3f, -2.2f);
+        static readonly Vector3 CamEuler    = new Vector3(3f, 0f, 0f);    // +Z(점원) 바라봄
+        static readonly Vector3 CounterPos  = new Vector3(0f, 0.45f, -1.0f);
+        static readonly Vector3 CounterSize = new Vector3(1.8f, 0.9f, 0.6f);
+        static readonly Vector3 PosPos      = new Vector3(0.45f, 1.0f, -1.0f);
+        static readonly Vector3 PosSize     = new Vector3(0.32f, 0.26f, 0.36f);
 
         const int PoolSlotCount = 4;   // 풀 모드 카드 수 (TrainingSceneRoot.PoolSize와 동일)
         const int ExtraSlotCount = 10;
@@ -45,6 +61,12 @@ namespace Artti.Editor
             SceneBuilderUtils.CreateEventSystem();
             SceneBuilderUtils.EnsureAudioListener();
 
+            // 3D 캐릭터(RenderTexture 합성)용 라이트 — 없으면 캐릭터가 검게 렌더됨
+            var lightGo = new GameObject("[Directional Light]");
+            var dirLight = lightGo.AddComponent<Light>();
+            dirLight.type = LightType.Directional;
+            lightGo.transform.rotation = Quaternion.Euler(50, -30, 0);
+
             var font = SceneBuilderUtils.GetKoreanFont();
 
             // [Managers] — TrainingSceneRoot + TTS AudioSource
@@ -56,18 +78,8 @@ namespace Artti.Editor
 
             var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution);
 
-            // ===== 배경 사진 (po.png) =====
-            var bgPanel = SceneBuilderUtils.CreatePanel("Background", canvasGo.transform);
-            var bgImg = bgPanel.AddComponent<Image>();
-            bgImg.sprite = LoadSceneSprite(BgPath);
-            bgImg.color = Color.white;
-
-            // ===== 캐릭터 자리 (RenderTexture 수동 연결 후 활성화) =====
-            var charView = ChildRect("CharacterView", canvasGo.transform);
-            PlaceCenter(charView, new Vector2(-170, -110), new Vector2(700, 880));
-            var charRaw = charView.gameObject.AddComponent<RawImage>();
-            charRaw.raycastTarget = false;
-            charView.gameObject.SetActive(false); // RT 연결 전까지 흰 사각형 방지
+            // ===== 3D 무대 (메인 카메라가 직접 렌더 — 평면 사진 + RT 합성 폐기) =====
+            var clerkView = Build3DStage(sceneRootGo);
 
             // ===== 하단 AAC 카드 가로 풀 =====
             var cardRow = ChildRect("CardRow", canvasGo.transform);
@@ -330,11 +342,153 @@ namespace Artti.Editor
                 soRoot.FindProperty("aacDatabase").objectReferenceValue = aacDb;
             else
                 Debug.LogWarning("[ConvenienceTrainingSceneBuilder] AACDatabase.asset 없음 — Tools/AAC/Import Seed Data 먼저 실행");
+            if (clerkView != null)
+                soRoot.FindProperty("clerkView").objectReferenceValue = clerkView;
             soRoot.ApplyModifiedProperties();
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[ConvenienceTrainingSceneBuilder] 완료 — CharacterView에 RenderTexture 연결 후 활성화하세요");
+            Debug.Log("[ConvenienceTrainingSceneBuilder] 완료 — Camila/카메라/RenderTexture 자동 구성됨");
+        }
+
+        // ===== 3D 무대: 메인 카메라 + 편의점 환경 + 점원(Clerk) + 데스크/포스기 + 립싱크 =====
+        // 점원에 ClerkView를 붙여 반환 (TrainingSceneRoot 와이어링용). 프리팹 없으면 null.
+        static ClerkView Build3DStage(GameObject ttsGo)
+        {
+            // 메인 카메라 (URP가 UniversalAdditionalCameraData 자동 추가). AudioListener는 씬에 이미 존재
+            var camGo = new GameObject("Main Camera");
+            camGo.tag = "MainCamera";
+            var cam = camGo.AddComponent<Camera>();
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.86f, 0.89f, 0.94f, 1f);
+            cam.fieldOfView = 40f;
+            cam.nearClipPlane = 0.05f;
+            camGo.transform.position = CamPos;
+            camGo.transform.rotation = Quaternion.Euler(CamEuler);
+
+            // 편의점 환경 (Tripo 단일 메시 — 카운터 유무 불확실해서 데스크/포스기는 별도 보장)
+            var envPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(EnvPrefabPath);
+            if (envPrefab != null)
+            {
+                var env = (GameObject)PrefabUtility.InstantiatePrefab(envPrefab);
+                env.name = "Env_Convenience";
+                env.transform.position = EnvPos;
+                env.transform.rotation = Quaternion.Euler(EnvEuler);
+                env.transform.localScale = EnvScale;
+            }
+            else Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] 환경 프리팹 없음: {EnvPrefabPath}");
+
+            // 데스크 + 포스기 (프리미티브 — 환경 모델에 카운터가 없어도 보장)
+            CreateBox("Counter", CounterPos, CounterSize, new Color(0.55f, 0.40f, 0.28f));
+            CreateBox("POS", PosPos, PosSize, new Color(0.22f, 0.24f, 0.28f));
+
+            // 점원 (ClerkCharacterSetup가 만든 Humanoid+Idle 프리팹)
+            var clerkPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(ClerkPrefabPath);
+            if (clerkPrefab == null)
+            {
+                Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] 점원 프리팹 없음: {ClerkPrefabPath} — 메뉴 'Artti > Setup Clerk Character (Humanoid + Idle)' 먼저 실행");
+                return null;
+            }
+            var clerk = (GameObject)PrefabUtility.InstantiatePrefab(clerkPrefab);
+            clerk.name = "Clerk";
+            clerk.transform.position = ClerkPos;
+            clerk.transform.rotation = Quaternion.Euler(ClerkEuler);
+            WireLipSync(ttsGo, clerk);
+
+            // 점원 애니메이션 뷰 — 프로덕션 씬에서는 디버그 버튼 숨김
+            var clerkView = clerk.AddComponent<ClerkView>();
+            var soClerk = new SerializedObject(clerkView);
+            soClerk.FindProperty("showDebugButtons").boolValue = false;
+            soClerk.ApplyModifiedProperties();
+            return clerkView;
+        }
+
+        static void CreateBox(string name, Vector3 pos, Vector3 size, Color color)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.position = pos;
+            go.transform.localScale = size;
+            go.GetComponent<Renderer>().sharedMaterial = GetStageMaterial(name, color);
+        }
+
+        // URP/Lit 머티리얼을 에셋으로 1회 생성·재사용 (씬에 임베드되면 리로드 시 깨지므로 에셋화)
+        static Material GetStageMaterial(string key, Color color)
+        {
+            string path = $"{StageMatDir}/{key}.mat";
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (existing != null) return existing;
+
+            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            var mat = new Material(shader);
+            mat.color = color;
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+
+            if (!AssetDatabase.IsValidFolder(StageMatDir))
+            {
+                if (!AssetDatabase.IsValidFolder("Assets/_Project/Art"))
+                    AssetDatabase.CreateFolder("Assets/_Project", "Art");
+                AssetDatabase.CreateFolder("Assets/_Project/Art", "Stage");
+            }
+            AssetDatabase.CreateAsset(mat, path);
+            return mat;
+        }
+
+        // ===== 립싱크: TTS AudioSource(uLipSync 분석) → Clerk 얼굴 viseme 블렌드셰이프 =====
+        static void WireLipSync(GameObject ttsGo, GameObject clerk)
+        {
+            // 블렌드셰이프가 가장 많은 SkinnedMeshRenderer = 얼굴 메시
+            SkinnedMeshRenderer face = null;
+            foreach (var smr in clerk.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                if (smr.sharedMesh != null && smr.sharedMesh.blendShapeCount > 0 &&
+                    (face == null || smr.sharedMesh.blendShapeCount > face.sharedMesh.blendShapeCount))
+                    face = smr;
+            if (face == null)
+            {
+                Debug.LogWarning("[ConvenienceTrainingSceneBuilder] Clerk에 블렌드셰이프 메시 없음 — 립싱크 생략");
+                return;
+            }
+
+            var ls = ttsGo.GetComponent<uLipSync.uLipSync>();
+            if (ls == null) ls = ttsGo.AddComponent<uLipSync.uLipSync>();
+            ls.profile = AssetDatabase.LoadAssetAtPath<uLipSync.Profile>(LipSyncProfilePath);
+            if (ls.profile == null)
+                Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] uLipSync 프로파일 없음: {LipSyncProfilePath} — Inspector에서 수동 지정 필요");
+
+            var bs = face.gameObject.GetComponent<uLipSync.uLipSyncBlendShape>();
+            if (bs == null) bs = face.gameObject.AddComponent<uLipSync.uLipSyncBlendShape>();
+            bs.skinnedMeshRenderer = face;
+            // glTFast가 VRoid 모프를 과장 스케일로 임포트 → 기본 100/55면 입이 얼굴을 덮음.
+            // 실측 적정값 3 (2026-06-15). 모델/임포터 바뀌면 Inspector에서 재조정.
+            bs.maxBlendShapeValue = 3f;
+            bs.smoothness = 0.1f;
+
+            // VRoid viseme(Fcl_MTH_*) 우선, CC/일반 명칭 폴백
+            MapPhoneme(bs, face, "A", "Fcl_MTH_A", "V_Open", "Jaw_Open", "Mouth_Open", "A");
+            MapPhoneme(bs, face, "I", "Fcl_MTH_I", "V_Wide", "Mouth_Smile", "I");
+            MapPhoneme(bs, face, "U", "Fcl_MTH_U", "V_Tight_O", "Mouth_Pucker", "U");
+            MapPhoneme(bs, face, "E", "Fcl_MTH_E", "V_Dental_Lip", "E");
+            MapPhoneme(bs, face, "O", "Fcl_MTH_O", "V_Tight_O", "O");
+
+            UnityEditor.Events.UnityEventTools.AddPersistentListener(ls.onLipSyncUpdate, bs.OnLipSyncUpdate);
+        }
+
+        static void MapPhoneme(uLipSync.uLipSyncBlendShape bs, SkinnedMeshRenderer face, string phoneme, params string[] candidates)
+        {
+            var mesh = face.sharedMesh;
+            foreach (var cand in candidates)
+            {
+                for (int i = 0; i < mesh.blendShapeCount; i++)
+                {
+                    var bsName = mesh.GetBlendShapeName(i);
+                    if (bsName == cand || bsName.EndsWith("." + cand))
+                    {
+                        bs.AddBlendShape(phoneme, bsName);
+                        return;
+                    }
+                }
+            }
+            Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] '{phoneme}' 음소 매핑 실패 — 후보 블렌드셰이프 없음: {string.Join(", ", candidates)}");
         }
 
         // ===== 가로형 AAC 카드 슬롯 (아이콘 좌 + 문구 우) =====

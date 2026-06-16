@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c12b4f431134aa0418b1ad7f0114e362, type: 3}
+  m_Name: card_rest_add_sauce
+  m_EditorClassIdentifier: Assembly-CSharp::Artti.AAC.AACCard
+  id: card_rest_add_sauce
+  symbol: {fileID: 11400000, guid: 30724804f53f77341ba84ca511ef2ca4, type: 2}
+  phrase: {fileID: 11400000, guid: 18d10eb0a52bcb541a1f1bfe72f60713, type: 2}
+  applicableScenarios:
+  - restaurant
+  applicableObjectives:
+  - order_modifications
+  tags:
+  - sauce
+  - modify
+  branchId: 
+  priorityHint: 1
