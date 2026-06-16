@@ -7604,6 +7604,7 @@ GameObject:
   - component: {fileID: 1923380958}
   - component: {fileID: 1923380960}
   - component: {fileID: 1923380961}
+  - component: {fileID: 1923380962}
   m_Layer: 5
   m_Name: TakePhotoButton
   m_TagString: Untagged
@@ -7740,6 +7741,21 @@ MonoBehaviour:
   m_ChildScaleWidth: 0
   m_ChildScaleHeight: 0
   m_ReverseArrangement: 0
+--- !u!114 &1923380962
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1923380956}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Outline
+  m_EffectColor: {r: 0.101960786, g: 0.3372549, b: 0.85882354, a: 0.19607843}
+  m_EffectDistance: {x: 5, y: -5}
+  m_UseGraphicAlpha: 1
 --- !u!1 &1929034307
 GameObject:
   m_ObjectHideFlags: 0
@@ -8288,6 +8304,7 @@ GameObject:
   - component: {fileID: 2031007780}
   - component: {fileID: 2031007782}
   - component: {fileID: 2031007779}
+  - component: {fileID: 2031007783}
   m_Layer: 5
   m_Name: PickImageButton
   m_TagString: Untagged
@@ -8424,6 +8441,21 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &2031007783
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2031007777}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Outline
+  m_EffectColor: {r: 0.101960786, g: 0.3372549, b: 0.85882354, a: 0.19607843}
+  m_EffectDistance: {x: 5, y: -5}
+  m_UseGraphicAlpha: 1
 --- !u!1 &2033413823
 GameObject:
   m_ObjectHideFlags: 0
