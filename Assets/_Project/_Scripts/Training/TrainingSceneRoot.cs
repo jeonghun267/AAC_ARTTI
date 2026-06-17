@@ -25,12 +25,20 @@ namespace Artti.Training
         [Header("Clerk 애니메이션 (옵션 — 미와이어링 시 무동작)")]
         [SerializeField] private ClerkView clerkView;
 
+        [Header("카운터 물건 표시 (옵션 — 미와이어링 시 무동작)")]
+        [SerializeField] private CounterDisplay counter;
+
+        [Header("접근성 (옵션)")]
+        [Tooltip("풀 모드에서 카드를 누를 때 카드 문구를 음성으로 읽어줌. 자유발화 연습 의도와 충돌하므로 기본 끔")]
+        [SerializeField] private bool speakCardOnTap = false;
+
         private DialogueManager _dialogueManager;
         private ITtsService _ttsService;
         private ISttService _sttService;
         private GeminiDialogueService _geminiService;
         private EventLogger _eventLogger;
         private FallbackResponsePicker _fallbackPicker;
+        private ConvenienceCardRuleBook _cardRuleBook; // 편의점 전용 카드 룰베이스 (그 외 시나리오는 null)
         private CancellationTokenSource _cts;
         private List<AACCard> _currentPool = new List<AACCard>();
 
@@ -59,6 +67,17 @@ namespace Artti.Training
                 _fallbackPicker = new FallbackResponsePicker(fbAsset.text);
             else
                 Debug.LogWarning("[TrainingSceneRoot] Resources/AAC/fallback_responses.json 없음 — 자동 응답 비활성");
+
+            // 편의점 카드 룰베이스 로드 — Resources/AAC/convenience_card_rules.json (OCR KeywordDictionary 패턴 참고)
+            // 점원 발화 키워드 매칭으로 맥락에 맞는 카드만 정렬해 보여줘 "상황과 무관한 카드" 오출력을 방지.
+            if (scenarioId == ScenarioIds.Convenience)
+            {
+                var ruleAsset = Resources.Load<TextAsset>("AAC/convenience_card_rules");
+                if (ruleAsset != null)
+                    _cardRuleBook = new ConvenienceCardRuleBook(ruleAsset.text);
+                else
+                    Debug.LogWarning("[TrainingSceneRoot] Resources/AAC/convenience_card_rules.json 없음 — 룰베이스 비활성, objective 필터로 폴백");
+            }
 
             // Setup Logger
             if (AppBootstrap.Instance != null)
@@ -137,6 +156,25 @@ namespace Artti.Training
                 }
             }
         };
+
+        // 서브플로(분기) 진입 시 점원 안내 대사 — branchId 기준. scenarios.json subflows와 동기화.
+        // 안내만 하고 같은 objective를 유지(다음 단계로 넘기지 않음).
+        private static readonly Dictionary<string, Dictionary<string, string>> SubflowPromptsByScenario = new Dictionary<string, Dictionary<string, string>>
+        {
+            { "convenience", new Dictionary<string, string>
+                {
+                    { "location_subflow", "음료는 저쪽 냉장고에 있어요. 천천히 보고 오세요." }
+                }
+            }
+        };
+
+        private bool TryGetSubflowPrompt(string branchId, out string line)
+        {
+            line = null;
+            return !string.IsNullOrEmpty(branchId)
+                   && SubflowPromptsByScenario.TryGetValue(scenarioId, out var map)
+                   && map.TryGetValue(branchId, out line);
+        }
 
         private void Start()
         {
@@ -239,6 +277,21 @@ namespace Artti.Training
         {
             if (aacDatabase == null) return;
             var objective = _dialogueManager.CurrentObjectiveId;
+
+            // 룰베이스 우선 (편의점): 점원 발화 키워드 매칭 → objective 폴백 순으로 정렬된 카드 풀 해석.
+            // 브랜치 카드 누출/무정렬 Take(4)로 생기던 맥락 불일치 카드를 차단.
+            if (_cardRuleBook != null && _cardRuleBook.IsLoaded)
+            {
+                var ruled = ResolvePoolByRule(objective);
+                if (ruled != null && ruled.Count > 0)
+                {
+                    _currentPool = ruled;
+                    uiView.SetCardList(_currentPool);
+                    return;
+                }
+            }
+
+            // 폴백: 기존 objective 태그 필터 (룰베이스 미적용 시나리오/규칙 미스 시)
             _currentPool = aacDatabase.CardsForObjective(scenarioId, objective)
                                       .Take(PoolSize)
                                       .ToList();
@@ -247,6 +300,26 @@ namespace Artti.Training
                 Debug.LogWarning($"[TrainingSceneRoot] {scenarioId}/{objective} objective 카드 없음 — 데이터 점검 필요");
             }
             uiView.SetCardList(_currentPool);
+        }
+
+        // 룰베이스로 현재 objective의 카드 풀을 정렬 순서대로 해석. 점원 발화 키워드 매칭을 먼저 시도.
+        private List<AACCard> ResolvePoolByRule(string objective)
+        {
+            var match = TryGetObjectivePrompt(objective, out var npcLine)
+                ? _cardRuleBook.Match(npcLine)
+                : null;
+            match ??= _cardRuleBook.ResolveByObjective(objective);
+            if (match == null) return null;
+
+            var pool = new List<AACCard>(match.CardIds.Length);
+            foreach (var id in match.CardIds)
+            {
+                var card = aacDatabase.GetCard(id);
+                if (card != null) pool.Add(card);
+                else Debug.LogWarning($"[TrainingSceneRoot] 룰베이스 카드 id 미존재: {id} (규칙 {match.RuleId})");
+                if (pool.Count >= PoolSize) break;
+            }
+            return pool;
         }
 
         // "기타" 버튼 → 현재 풀에 포함되지 않은 같은 시나리오 카드 전체를 모달로 표시
@@ -301,6 +374,13 @@ namespace Artti.Training
             {
                 uiView.HideExtraModal();
 
+                // 접근성(옵션): 카드 누를 때 문구를 음성으로 읽어줌 (기본 꺼짐)
+                if (speakCardOnTap && _ttsService != null && card.phrase != null)
+                {
+                    var cue = !string.IsNullOrEmpty(card.phrase.ttsText) ? card.phrase.ttsText : card.phrase.text;
+                    _ttsService.SpeakAsync(cue, _cts.Token).Forget();
+                }
+
                 // 시안 3.png: 선택 카드 강조 + 나머지 터치 비활성·흐림, 사용자 발화 버블 표시
                 hud?.SetUserUtterance(card.phrase?.text);
                 uiView.SetPoolLocked(card);
@@ -319,16 +399,33 @@ namespace Artti.Training
                     return;
                 }
 
+                // 서브플로 카드(위치 문의 등): 점원이 안내만 하고 같은 objective 유지 — 다음 단계로 넘기지 않음
+                // (scenarios.json location_subflow: "위치 안내 후 사용자가 다시 물건을 들고 오는 가정으로 진행")
+                if (TryGetSubflowPrompt(card.branchId, out var subflowLine))
+                {
+                    SpeakNpc(subflowLine);
+                    clerkView?.PlayNod();
+                    RefreshPool(); // 같은 단계 풀 다시 표시
+                    return;
+                }
+
                 // 성공: 짧은 긍정 피드백 (랜덤) 후 다음 단계
                 hud?.ShowPraise();
-                // 점원 반응: 물건 요청 단계면 건네기, 그 외엔 끄덕임
+
+                // 점원 반응: 물건 요청 단계면 집어서 건네기 + 카운터에 물건 등장, 그 외엔 끄덕임
+                var curObjective = _dialogueManager.CurrentObjectiveId;
+                bool isHandOver = HandOverObjectives.Contains(curObjective);
                 if (clerkView != null)
                 {
-                    if (HandOverObjectives.Contains(_dialogueManager.CurrentObjectiveId))
-                        clerkView.PlayHandOver();
-                    else
-                        clerkView.PlayNod();
+                    if (isHandOver) clerkView.PlayHandOver();
+                    else clerkView.PlayNod();
                 }
+                if (isHandOver) counter?.PlaceItem(card.id); // 집기 애니 뒤 카운터에 등장(지연은 CounterDisplay가 처리)
+
+                // 결제(checkout)·봉투/영수증(extras) 카드를 고르면 카운터 정리 — 구매 마무리 연출
+                if (curObjective == "checkout" || curObjective == "extras")
+                    counter?.ClearAll();
+
                 AdvanceObjective();
                 return;
             }
