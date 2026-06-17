@@ -51,7 +51,7 @@ AnimatorState:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Convai_Anim_DemoMain_Locomotion_Idle_Loop
+  m_Name: Idle
   m_Speed: 1
   m_CycleOffset: 0
   m_Transitions: []
@@ -64,7 +64,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: 8993902097722301239, guid: 23627edc140aed74c926c93b328a75e8,
+  m_Motion: {fileID: -203655887218126122, guid: 3533d2a6687e4d97a48abb4d23561736,
     type: 3}
   m_Tag: 
   m_SpeedParameter: 

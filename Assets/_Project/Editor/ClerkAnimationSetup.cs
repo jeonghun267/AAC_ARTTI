@@ -13,7 +13,7 @@ namespace Artti.Editor
         const string AvatarPath       = "Assets/_Project/Models/Clerk_Avatar.asset";
         const string RiggedPrefabPath = "Assets/_Project/Models/Clerk_Rigged.prefab";
         const string ControllerPath   = "Assets/_Project/Art/ClerkController.controller";
-        const string IdleFbxPath      = "Assets/Convai SDK For Unity/Samples/BasicSample/Art/Animations/Convai_Anim_Sample_Locomotion_Idle_Loop.FBX";
+        const string IdleFbxPath      = "Assets/_Project/Models/Animations/Idle.fbx";
 
         const string AnimDir = "Assets/_Project/Models/Animations";
 
