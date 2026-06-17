@@ -24,8 +24,11 @@ namespace Artti.Editor
         static readonly Color   White      = Color.white;
 
         const string RoundedPath   = "Assets/_Project/Art/UI/RoundedRect.png";
-        const string ClerkPrefabPath = "Assets/_Project/Models/Clerk_Rigged.prefab"; // ClerkCharacterSetup 메뉴가 생성
-        const string EnvPrefabPath   = "Assets/_Project/Models/Env_Convenience.prefab";
+        // 점원: Blender 제작 ARTTI_Clerk.fbx (리깅+애니 포함, Generic 임포트). 기존 VRoid Clerk_Rigged.prefab 대체.
+        const string ClerkFbxPath        = "Assets/_Project/Models/Clerk/ARTTI_Clerk.fbx";
+        const string ClerkControllerPath = "Assets/_Project/Art/ARTTIClerkController.controller";
+        // Blender 제작 편의점 전체 매장. 기존 Env_Convenience(Tripo) + 프리미티브 카운터/POS를 이걸로 대체.
+        const string StoreFbxPath    = "Assets/_Project/Models/Props/ConvenienceStore/ARTTI_Store.fbx";
         const string LipSyncProfilePath = "Packages/com.hecomi.ulipsync/Assets/Profiles/uLipSync-Profile-Sample-Female.asset";
         const string PauseIconPath = "Assets/_Project/Art/UI/icon_pause.svg";
         const string SpeakerIconPath = "Assets/_Project/Art/UI/icon_volume_up.svg";
@@ -34,16 +37,15 @@ namespace Artti.Editor
 
         // 3D 무대 배치값 (첫 추정 — Unity에서 보고 조정한 뒤 이 값들을 갱신해 재빌드)
         static readonly Vector3 ClerkPos    = new Vector3(0f, 0f, 0f);
-        static readonly Vector3 ClerkEuler  = new Vector3(0f, 180f, 0f);  // 카메라 바라보게 (기본 +Z향이면 180)
-        static readonly Vector3 EnvPos      = new Vector3(0f, 0f, 1.2f);
-        static readonly Vector3 EnvEuler    = new Vector3(0f, 0f, 0f);
-        static readonly Vector3 EnvScale    = new Vector3(1f, 1f, 1f);
-        static readonly Vector3 CamPos      = new Vector3(0f, 1.3f, -2.2f);
-        static readonly Vector3 CamEuler    = new Vector3(3f, 0f, 0f);    // +Z(점원) 바라봄
-        static readonly Vector3 CounterPos  = new Vector3(0f, 0.45f, -1.0f);
-        static readonly Vector3 CounterSize = new Vector3(1.8f, 0.9f, 0.6f);
-        static readonly Vector3 PosPos      = new Vector3(0.45f, 1.0f, -1.0f);
-        static readonly Vector3 PosSize     = new Vector3(0.32f, 0.26f, 0.36f);
+        static readonly Vector3 ClerkEuler  = new Vector3(0f, 0f, 0f);  // 손님(카메라) 쪽을 바라보게 (입구 쪽 향함)
+        // 매장 모델(ARTTI_Store.fbx) 배치 — 원점 기준. Blender 기준 정면 입구(-Y)가 Unity로 오면서
+        // 회전이 어긋날 수 있으니 Unity에서 보고 StoreEuler/Scale 조정 후 이 값 갱신.
+        static readonly Vector3 StorePos    = new Vector3(0f, 0f, 0f);
+        static readonly Vector3 StoreEuler  = new Vector3(0f, 0f, 0f);
+        static readonly Vector3 StoreScale  = new Vector3(1f, 1f, 1f);
+        // 사용자가 Unity에서 수동 배치한 카메라 (간판·매장 전면이 다 보이는 와이드 샷). 입구 쪽에서 매장 안 -Z를 8.5° 내려다봄.
+        static readonly Vector3 CamPos      = new Vector3(-0.04f, 2.75f, 11.66f);
+        static readonly Vector3 CamEuler    = new Vector3(8.5f, 180f, 0f);
 
         const int PoolSlotCount = 4;   // 풀 모드 카드 수 (TrainingSceneRoot.PoolSize와 동일)
         const int ExtraSlotCount = 10;
@@ -348,7 +350,7 @@ namespace Artti.Editor
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[ConvenienceTrainingSceneBuilder] 완료 — Camila/카메라/RenderTexture 자동 구성됨");
+            Debug.Log("[ConvenienceTrainingSceneBuilder] 완료 — ARTTI_Store 매장 + 점원 + 카메라 구성됨");
         }
 
         // ===== 3D 무대: 메인 카메라 + 편의점 환경 + 점원(Clerk) + 데스크/포스기 + 립싱크 =====
@@ -366,33 +368,34 @@ namespace Artti.Editor
             camGo.transform.position = CamPos;
             camGo.transform.rotation = Quaternion.Euler(CamEuler);
 
-            // 편의점 환경 (Tripo 단일 메시 — 카운터 유무 불확실해서 데스크/포스기는 별도 보장)
-            var envPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(EnvPrefabPath);
-            if (envPrefab != null)
+            // 편의점 매장 (Blender 제작 ARTTI_Store.fbx — 계산대/곤돌라/냉장고/상품/조명 전부 포함).
+            // 기존 Env_Convenience 프리팹 + 프리미티브 카운터/POS는 실제 매장 모델로 대체.
+            GameObject store = null;
+            var storeFbx = AssetDatabase.LoadAssetAtPath<GameObject>(StoreFbxPath);
+            if (storeFbx != null)
             {
-                var env = (GameObject)PrefabUtility.InstantiatePrefab(envPrefab);
-                env.name = "Env_Convenience";
-                env.transform.position = EnvPos;
-                env.transform.rotation = Quaternion.Euler(EnvEuler);
-                env.transform.localScale = EnvScale;
+                store = (GameObject)PrefabUtility.InstantiatePrefab(storeFbx);
+                store.name = "ARTTI_Store";
+                store.transform.position = StorePos;
+                store.transform.rotation = Quaternion.Euler(StoreEuler);
+                store.transform.localScale = StoreScale;
             }
-            else Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] 환경 프리팹 없음: {EnvPrefabPath}");
+            else Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] 매장 FBX 없음: {StoreFbxPath} — Blender에서 내보냈는지 확인");
 
-            // 데스크 + 포스기 (프리미티브 — 환경 모델에 카운터가 없어도 보장)
-            CreateBox("Counter", CounterPos, CounterSize, new Color(0.55f, 0.40f, 0.28f));
-            CreateBox("POS", PosPos, PosSize, new Color(0.22f, 0.24f, 0.28f));
-
-            // 점원 (ClerkCharacterSetup가 만든 Humanoid+Idle 프리팹)
-            var clerkPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(ClerkPrefabPath);
-            if (clerkPrefab == null)
+            // 점원 (Blender 제작 ARTTI_Clerk.fbx — 리깅+애니 포함, Generic 임포트)
+            var clerkFbx = AssetDatabase.LoadAssetAtPath<GameObject>(ClerkFbxPath);
+            if (clerkFbx == null)
             {
-                Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] 점원 프리팹 없음: {ClerkPrefabPath} — 메뉴 'Artti > Setup Clerk Character (Humanoid + Idle)' 먼저 실행");
+                Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] 점원 FBX 없음: {ClerkFbxPath} — Blender에서 내보냈는지 확인");
                 return null;
             }
-            var clerk = (GameObject)PrefabUtility.InstantiatePrefab(clerkPrefab);
+            var clerk = (GameObject)PrefabUtility.InstantiatePrefab(clerkFbx);
             clerk.name = "Clerk";
             clerk.transform.position = ClerkPos;
             clerk.transform.rotation = Quaternion.Euler(ClerkEuler);
+
+            // 블렌더에서 구운 애니메이션(Generic 클립)을 Animator 컨트롤러로 재생
+            EnsureClerkAnimator(clerk);
             WireLipSync(ttsGo, clerk);
 
             // 점원 애니메이션 뷰 — 프로덕션 씬에서는 디버그 버튼 숨김
@@ -400,7 +403,34 @@ namespace Artti.Editor
             var soClerk = new SerializedObject(clerkView);
             soClerk.FindProperty("showDebugButtons").boolValue = false;
             soClerk.ApplyModifiedProperties();
+
             return clerkView;
+        }
+
+        // 블렌더 점원 FBX에 임베드된 Generic 애니메이션을 재생할 Animator + 컨트롤러 구성.
+        static void EnsureClerkAnimator(GameObject clerk)
+        {
+            var animator = clerk.GetComponent<Animator>();
+            if (animator == null) animator = clerk.AddComponent<Animator>();
+
+            AnimationClip idle = null;
+            foreach (var obj in AssetDatabase.LoadAllAssetsAtPath(ClerkFbxPath))
+                if (obj is AnimationClip clip && !clip.name.StartsWith("__preview__")) { idle = clip; break; }
+
+            if (idle == null)
+            {
+                Debug.LogWarning($"[ConvenienceTrainingSceneBuilder] 점원 FBX에 애니메이션 클립 없음 — Blender에서 액션을 구워 내보냈는지 확인: {ClerkFbxPath}");
+                return;
+            }
+
+            if (AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(ClerkControllerPath) != null)
+                AssetDatabase.DeleteAsset(ClerkControllerPath);
+            var controller = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPathWithClip(ClerkControllerPath, idle);
+            animator.runtimeAnimatorController = controller;
+
+            // Generic 아바타가 있으면 연결 (없어도 Generic 클립은 재생됨)
+            foreach (var obj in AssetDatabase.LoadAllAssetsAtPath(ClerkFbxPath))
+                if (obj is Avatar av) { animator.avatar = av; break; }
         }
 
         static void CreateBox(string name, Vector3 pos, Vector3 size, Color color)

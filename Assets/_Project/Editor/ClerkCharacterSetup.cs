@@ -8,14 +8,14 @@ namespace Artti.Editor
     // VRoid 점원(Clerk.glb)을 Unity에 쓰기 위한 1회성 셋업 유틸.
     // glTFast로 들어온 .glb는 ModelImporter Rig 탭이 없어 Generic으로만 임포트되므로,
     // 코드로 J_Bip 본을 Unity HumanBodyBones에 매핑해 Humanoid 아바타를 빌드하고,
-    // 기존 Convai Idle 클립(Humanoid)을 retarget한 Animator가 붙은 Clerk_Rigged.prefab을 생성한다.
+    // Mixamo Idle 클립(Humanoid)을 retarget한 Animator가 붙은 Clerk_Rigged.prefab을 생성한다.
     // 메뉴: Artti > Setup Clerk Character (Humanoid + Idle)
     public static class ClerkCharacterSetup
     {
         const string ClerkGlbPath       = "Assets/_Project/Models/Clerk.glb";
         const string AvatarPath         = "Assets/_Project/Models/Clerk_Avatar.asset";
         const string RiggedPrefabPath   = "Assets/_Project/Models/Clerk_Rigged.prefab";
-        const string IdleAnimFbxPath    = "Assets/Convai SDK For Unity/Samples/BasicSample/Art/Animations/Convai_Anim_Sample_Locomotion_Idle_Loop.FBX";
+        const string IdleAnimFbxPath    = "Assets/_Project/Models/Animations/Idle.fbx";
         const string IdleControllerPath = "Assets/_Project/Art/ClerkIdle.controller";
 
         // Unity humanName (HumanTrait.BoneName) -> VRoid 본 Transform 이름.
@@ -148,7 +148,7 @@ namespace Artti.Editor
                     AssetDatabase.DeleteAsset(AvatarPath);
                 AssetDatabase.CreateAsset(avatar, AvatarPath);
 
-                // Idle 컨트롤러 (기존 Convai Idle 클립 재사용)
+                // Idle 컨트롤러 (Mixamo Idle 클립 재사용)
                 var controller = EnsureIdleController();
 
                 var animator = instance.GetComponent<Animator>();
