@@ -1,0 +1,42 @@
+{
+  "_comment": "편의점 씬 AAC 카드 룰베이스. OCR 모드 signboard_keywords.json + KeywordDictionary 패턴 참고(원본 미수정). 점원/사용자 발화 텍스트의 키워드를 부분일치시켜 해당 맥락의 카드 id를 '표시 우선순위 순서대로' 돌려준다. keywords는 공백 무시(부분일치). cards 배열 순서가 곧 화면 표시 우선순위. 서브플로(branch) 규칙은 objective 규칙보다 먼저 두어 위치 문의 등 분기 상황을 우선 포착한다.",
+  "rules": [
+    {
+      "id": "location_subflow",
+      "branch": "location_subflow",
+      "objective": null,
+      "keywords": ["어디", "어디 있", "어디예요", "어디에", "위치"],
+      "cards": ["card_cvs_ask_drink"]
+    },
+    {
+      "id": "greeting",
+      "objective": "greeting",
+      "keywords": ["어서 오세요", "어서오세요", "어서"],
+      "cards": ["card_cvs_greeting"]
+    },
+    {
+      "id": "select_items",
+      "objective": "select_items",
+      "keywords": ["찾으시는", "물건", "찾으세요", "도와"],
+      "cards": ["card_cvs_water", "card_cvs_snack", "card_cvs_buy_this"]
+    },
+    {
+      "id": "checkout",
+      "objective": "checkout",
+      "keywords": ["결제", "계산", "어떻게 하시"],
+      "cards": ["card_cvs_pay_card", "card_cvs_pay_cash", "card_cvs_checkout_req"]
+    },
+    {
+      "id": "extras",
+      "objective": "extras",
+      "keywords": ["봉투", "영수증", "필요하세요"],
+      "cards": ["card_cvs_bag_yes", "card_cvs_bag_no", "card_cvs_receipt"]
+    },
+    {
+      "id": "farewell",
+      "objective": "farewell",
+      "keywords": ["안녕히", "가세요", "또 오세요"],
+      "cards": ["card_cvs_thanks", "card_cvs_farewell"]
+    }
+  ]
+}
