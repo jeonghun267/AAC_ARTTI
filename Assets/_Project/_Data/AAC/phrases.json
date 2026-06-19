@@ -34,6 +34,17 @@
     { "id": "phr_change_item", "text": "다른 걸로 주세요", "tts_text": "다른 걸로 바꿔 주세요", "register": "Polite", "length_class": "Medium" },
     { "id": "phr_checkout_req", "text": "계산해주세요", "tts_text": "계산 부탁드려요", "register": "Polite", "length_class": "Short" },
     { "id": "phr_cash_receipt", "text": "현금영수증 해주세요", "tts_text": "현금영수증 해주세요", "register": "Polite", "length_class": "Medium" },
-    { "id": "phr_buy_this", "text": "이거 살게요", "tts_text": "이거 계산해주세요", "register": "Polite", "length_class": "Short" }
+    { "id": "phr_buy_this", "text": "이거 살게요", "tts_text": "이거 계산해주세요", "register": "Polite", "length_class": "Short" },
+
+    { "id": "phr_request_lunchbox", "text": "도시락 주세요", "tts_text": "도시락 하나 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_request_bread", "text": "빵 주세요", "tts_text": "빵 하나 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_request_icecream", "text": "아이스크림 주세요", "tts_text": "아이스크림 하나 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_request_milk", "text": "우유 주세요", "tts_text": "우유 하나 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_request_beverage", "text": "음료수 주세요", "tts_text": "음료수 하나 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_heat_up", "text": "데워 주세요", "tts_text": "전자레인지에 데워 주세요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_yes", "text": "네", "tts_text": "네", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_no", "text": "아니요", "tts_text": "아니요", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_ask_bathroom", "text": "화장실 어디예요?", "tts_text": "화장실 어디예요?", "register": "Polite", "length_class": "Short" },
+    { "id": "phr_help", "text": "도와주세요", "tts_text": "도와주세요", "register": "Polite", "length_class": "Short" }
   ]
 }

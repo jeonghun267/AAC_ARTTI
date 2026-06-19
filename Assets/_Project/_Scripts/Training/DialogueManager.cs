@@ -14,6 +14,10 @@ namespace Artti.Training
         private List<string> _pendingQueue = new List<string>();
         private ScaffoldedRetryPolicy _retryPolicy = new ScaffoldedRetryPolicy();
 
+        // Unit 4: 다중 턴 맥락용 대화 이력 (Gemini에 최근 N턴 전달). "User:"/"Clerk:" 줄로 누적.
+        private readonly List<string> _history = new List<string>();
+        private const int HistoryLinesKept = 6; // 약 3턴(사용자+점원)
+
         public event Action<string> OnObjectiveChanged;
         public event Action<DialogueTool, string, string[]> OnToolCallApplied;
 
@@ -24,6 +28,7 @@ namespace Artti.Training
             CurrentScaffoldLevel = ScaffoldLevel.None;
             _slots.Clear();
             _pendingQueue.Clear();
+            _history.Clear();
         }
 
         public void HandleUserTurn(AACCard selectedCard, string sttText)
@@ -31,6 +36,17 @@ namespace Artti.Training
             AttemptCount++;
             CurrentScaffoldLevel = _retryPolicy.GetScaffoldLevel(AttemptCount);
         }
+
+        // Unit 4: 한 턴(사용자 발화 + 점원 응답)을 이력에 기록. 최근 N줄만 유지.
+        public void RecordTurn(string userText, string clerkText)
+        {
+            if (!string.IsNullOrWhiteSpace(userText)) _history.Add($"User: {userText.Trim()}");
+            if (!string.IsNullOrWhiteSpace(clerkText)) _history.Add($"Clerk: {clerkText.Trim()}");
+            while (_history.Count > HistoryLinesKept) _history.RemoveAt(0);
+        }
+
+        // 최근 대화 이력을 Gemini userPrompt에 넣을 텍스트로 반환.
+        public string RecentHistory() => _history.Count == 0 ? "(none)" : string.Join("\n", _history);
 
         public void ApplyToolCall(DialogueTool tool, string npcText, string[] cardIds)
         {

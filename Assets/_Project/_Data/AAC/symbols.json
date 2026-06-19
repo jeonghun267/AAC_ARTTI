@@ -32,6 +32,17 @@
     { "id": "sym_change_item", "png_source": "99_custom/another_one.png", "semantic_tags": ["modify", "exchange"], "description": "다른 것으로 바꿔 달라는 요청." },
     { "id": "sym_checkout_request", "png_source": "99_custom/checkout_please_1.png", "semantic_tags": ["checkout", "payment"], "description": "장바구니와 돈. 계산 요청." },
     { "id": "sym_cash_receipt", "png_source": "99_custom/cash_receipt_please.png", "semantic_tags": ["receipt", "payment"], "description": "현금영수증 요청." },
-    { "id": "sym_want_buy", "png_source": "99_custom/want_to_buy.png", "semantic_tags": ["buy", "item"], "description": "물건을 사겠다는 의사 표시." }
+    { "id": "sym_want_buy", "png_source": "99_custom/want_to_buy.png", "semantic_tags": ["buy", "item"], "description": "물건을 사겠다는 의사 표시." },
+
+    { "id": "sym_cvs_gimbap", "png_source": "02_convenience_store/김밥.png", "semantic_tags": ["food", "gimbap", "item"], "description": "편의점 김밥." },
+    { "id": "sym_lunchbox", "png_source": "02_convenience_store/도시락.png", "semantic_tags": ["food", "lunchbox", "item"], "description": "편의점 도시락." },
+    { "id": "sym_bread", "png_source": "02_convenience_store/빵.png", "semantic_tags": ["food", "bread", "item"], "description": "빵." },
+    { "id": "sym_icecream", "png_source": "02_convenience_store/아이스크림.png", "semantic_tags": ["food", "icecream", "item"], "description": "아이스크림." },
+    { "id": "sym_milk", "png_source": "02_convenience_store/우유.png", "semantic_tags": ["drink", "milk", "item"], "description": "우유." },
+    { "id": "sym_beverage", "png_source": "02_convenience_store/음료수.png", "semantic_tags": ["drink", "beverage", "item"], "description": "음료수." },
+    { "id": "sym_heat_up", "png_source": "02_convenience_store/데워주세요.png", "semantic_tags": ["request", "heat"], "description": "전자레인지에 데워 달라는 요청." },
+    { "id": "sym_no", "png_source": "05_request/아니요.png", "semantic_tags": ["answer", "no"], "description": "아니요. 부정 대답." },
+    { "id": "sym_bathroom", "png_source": "05_request/화장실.png", "semantic_tags": ["question", "location", "bathroom"], "description": "화장실. 위치 문의." },
+    { "id": "sym_help", "png_source": "05_request/도와주세요.png", "semantic_tags": ["request", "help"], "description": "도와 달라는 요청." }
   ]
 }

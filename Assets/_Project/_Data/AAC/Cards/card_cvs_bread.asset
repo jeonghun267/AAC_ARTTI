@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c12b4f431134aa0418b1ad7f0114e362, type: 3}
+  m_Name: card_cvs_bread
+  m_EditorClassIdentifier: Assembly-CSharp::Artti.AAC.AACCard
+  id: card_cvs_bread
+  symbol: {fileID: 11400000, guid: d1de2132857bb534893ed47546407915, type: 2}
+  phrase: {fileID: 11400000, guid: 24550e393d03ae14d8a4995ae4c863e7, type: 2}
+  applicableScenarios:
+  - convenience
+  applicableObjectives:
+  - select_items
+  tags:
+  - item
+  - food
+  - bread
+  branchId: 
+  priorityHint: 2
