@@ -1,0 +1,160 @@
+{
+  "_comment": "PLAN.MD v3 section 5.5.2 - LLM tool catalog for Gemini function calling. Schema follows OpenAPI 3.0 subset supported by Gemini.",
+  "function_declarations": [
+    {
+      "name": "present_cards",
+      "description": "Show 1-2 AAC cards to the user and have the NPC speak. Most frequently used tool. card_ids must reference existing cards in the active scenario.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "card_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Card IDs to display, e.g. ['card_pharm_med_headache', 'card_pharm_med_cold']. Length 1-2."
+          },
+          "npc_speech": {
+            "type": "string",
+            "description": "NPC dialogue line in Korean (한국어). Short, friendly, 존댓말."
+          },
+          "scaffold_level": {
+            "type": "integer",
+            "description": "Help intensity. 0=normal, 1=mild hint, 2=strong hint pointing at correct card."
+          }
+        },
+        "required": ["card_ids", "npc_speech", "scaffold_level"]
+      }
+    },
+    {
+      "name": "mark_objective_complete",
+      "description": "Mark the current objective as completed and update slot values. Always followed by present_cards or transition_to_objective on the next turn.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "objective_id": {
+            "type": "string",
+            "description": "The objective that just completed, e.g. 'identify_needs'."
+          },
+          "slots_filled": {
+            "type": "object",
+            "description": "Slot key-value pairs to set on the dialogue state. Keys must match the scenario's slot schema."
+          }
+        },
+        "required": ["objective_id"]
+      }
+    },
+    {
+      "name": "transition_to_objective",
+      "description": "Move to the next objective explicitly with an NPC line bridging the transition. Use when natural conversation flow suggests progression.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "objective_id": {
+            "type": "string",
+            "description": "The new active objective."
+          },
+          "npc_speech": {
+            "type": "string",
+            "description": "NPC bridging line in Korean (한국어)."
+          }
+        },
+        "required": ["objective_id", "npc_speech"]
+      }
+    },
+    {
+      "name": "enter_subflow",
+      "description": "Enter a branching subflow when the user expresses a secondary intent (off_topic_but_valid). Main objective is pushed; pending_topic queued for later.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "subflow_id": {
+            "type": "string",
+            "description": "Subflow ID defined in scenarios.json (e.g. 'stomach_subflow')."
+          },
+          "npc_speech": {
+            "type": "string",
+            "description": "NPC line that acknowledges the subflow entry, in Korean (한국어)."
+          },
+          "suggested_cards": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Cards to show in the subflow. Length 1-2."
+          },
+          "pending_topic": {
+            "type": "string",
+            "description": "Short label of the unhandled side-intent to remember (e.g. '복통 증상 구체화')."
+          }
+        },
+        "required": ["subflow_id", "npc_speech", "suggested_cards"]
+      }
+    },
+    {
+      "name": "return_from_subflow",
+      "description": "Exit current subflow and resume main objective. Update slots with anything captured during the subflow.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "npc_speech": {
+            "type": "string",
+            "description": "NPC line closing the subflow and bridging back, in Korean (한국어)."
+          },
+          "slots_filled": {
+            "type": "object",
+            "description": "Slot updates captured during the subflow."
+          }
+        },
+        "required": ["npc_speech"]
+      }
+    },
+    {
+      "name": "request_clarification",
+      "description": "Ask the user to clarify when STT output is unintelligible or slot confidence is low. Show simpler card choices.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "npc_speech": {
+            "type": "string",
+            "description": "Clarification question in Korean (한국어). Gentle tone."
+          },
+          "suggested_cards": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Simpler card alternatives. Length 1-2."
+          }
+        },
+        "required": ["npc_speech", "suggested_cards"]
+      }
+    },
+    {
+      "name": "express_understanding",
+      "description": "Empathetic response when user_distressed intent is detected. Pair with a single simplified card or no card.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "npc_speech": {
+            "type": "string",
+            "description": "Warm reassuring line in Korean (한국어). Short."
+          }
+        },
+        "required": ["npc_speech"]
+      }
+    },
+    {
+      "name": "force_complete_scenario",
+      "description": "End the scenario early when turn limit reached or repeated failures accumulate. NPC speaks the user's intended line on their behalf.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why we are force-completing (e.g. 'turn_limit_reached', 'repeated_failure')."
+          },
+          "npc_speech": {
+            "type": "string",
+            "description": "Closing line in Korean (한국어). Positive framing — never imply the user failed."
+          }
+        },
+        "required": ["reason", "npc_speech"]
+      }
+    }
+  ]
+}

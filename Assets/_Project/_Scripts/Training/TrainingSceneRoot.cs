@@ -36,6 +36,9 @@ namespace Artti.Training
         private ITtsService _ttsService;
         private ISttService _sttService;
         private GeminiDialogueService _geminiService;
+        private string _systemPrompt; // system_prompts.json에서 시나리오별로 빌드 (Awake)
+        // Unit 3: 풀 모드에서 룰베이스 대신 Gemini가 대화를 주도. 우선 편의점만 적용, 검증 후 약국·음식점 확대.
+        private bool _useGemini;
         private EventLogger _eventLogger;
         private FallbackResponsePicker _fallbackPicker;
         private ConvenienceCardRuleBook _cardRuleBook; // 편의점 전용 카드 룰베이스 (그 외 시나리오는 null)
@@ -59,7 +62,31 @@ namespace Artti.Training
             // Editor: STT는 더미 텍스트로 풀 모드 흐름만 검증
             _sttService = new EditorMockSttService();
 #endif
-            _geminiService = new GeminiDialogueService(geminiKey);
+            // 변경점(Unit 2): 도구 카탈로그 + 시나리오 시스템 프롬프트 로드해 주입.
+            //   Resources/AAC/{dialogue_tools,system_prompts}.json (기존 _Data/AAC 원본의 런타임 복사본)
+            string declsJson = null;
+            var toolsAsset = Resources.Load<TextAsset>("AAC/dialogue_tools");
+            if (toolsAsset != null)
+            {
+                // function_declarations 배열만 떼어내 서비스에 전달 (Gemini tools 스키마 형식)
+                var decls = Newtonsoft.Json.Linq.JObject.Parse(toolsAsset.text)["function_declarations"];
+                declsJson = decls?.ToString(Newtonsoft.Json.Formatting.None);
+            }
+            else
+                Debug.LogWarning("[TrainingSceneRoot] Resources/AAC/dialogue_tools.json 없음 — function calling 비활성(텍스트 폴백)");
+
+            var promptAsset = Resources.Load<TextAsset>("AAC/system_prompts");
+            if (promptAsset != null)
+                _systemPrompt = new SystemPromptProvider(promptAsset.text).BuildSystemPrompt(scenarioId);
+            else
+                Debug.LogWarning("[TrainingSceneRoot] Resources/AAC/system_prompts.json 없음 — 페르소나 없이 호출");
+
+            // 변경점(Unit 3): Gemini가 실재하는 card_id만 고르도록 시나리오 카드 목록을 시스템 프롬프트에 부착.
+            //   (없으면 card_ids를 환각 → ShowCardsOrPool이 매번 룰 풀로 폴백하게 됨)
+            _systemPrompt = AppendAvailableCards(_systemPrompt);
+
+            _geminiService = new GeminiDialogueService(geminiKey, declsJson);
+            _useGemini = scenarioId == ScenarioIds.Convenience; // 편의점부터 LLM 주도 전환
 
             // Load fallback responses — Resources/AAC/fallback_responses.json (Editor + 빌드 동일)
             var fbAsset = Resources.Load<TextAsset>("AAC/fallback_responses");
@@ -347,7 +374,12 @@ namespace Artti.Training
 
             if (IsPoolMode)
             {
-                if (TryGetObjectivePrompt(newObjectiveId, out var npcLine))
+                // 변경점(Unit 3): Gemini 주도 시에는 고정 멘트를 읽지 않음(점원 발화는 Gemini가 생성).
+                //   단, 시작 인사(첫 objective)는 대화 물꼬를 트기 위해 고정 멘트 유지.
+                bool isOpeningGreeting =
+                    ObjectiveOrderByScenario.TryGetValue(scenarioId, out var ord)
+                    && ord.Length > 0 && newObjectiveId == ord[0];
+                if ((!_useGemini || isOpeningGreeting) && TryGetObjectivePrompt(newObjectiveId, out var npcLine))
                 {
                     SpeakNpc(npcLine);
                 }
@@ -399,6 +431,17 @@ namespace Artti.Training
                     return;
                 }
 
+                _dialogueManager.HandleUserTurn(card, sttResultP.text);
+
+                // 변경점(Unit 3): LLM 주도 시나리오는 매 턴 Gemini가 응답·카드·진행을 결정.
+                //   카드 탭 = 발화 보조일 뿐, 단계 진행은 Gemini 도구 호출로만 (자동 진행 제거).
+                if (_useGemini)
+                {
+                    await RunGeminiTurn(card, sttResultP.text);
+                    return;
+                }
+
+                // ── 이하 기존 룰베이스 흐름 (약국·음식점은 아직 이 경로) ──
                 // 서브플로 카드(위치 문의 등): 점원이 안내만 하고 같은 objective 유지 — 다음 단계로 넘기지 않음
                 // (scenarios.json location_subflow: "위치 안내 후 사용자가 다시 물건을 들고 오는 가정으로 진행")
                 if (TryGetSubflowPrompt(card.branchId, out var subflowLine))
@@ -456,7 +499,13 @@ namespace Artti.Training
 
             // LLM 처리 동안 "생각하는 중" 인디케이터 (응답 지연/무응답 fallback 패턴 공통)
             hud?.ShowThinking(true);
-            var result = await _geminiService.RequestNextTurnAsync("System Prompt", $"{card.phrase?.text} {sttResult.text}", _cts.Token);
+            // 변경점(Unit 2): 하드코딩 "System Prompt" → 시나리오 페르소나 주입.
+            //   userPrompt에 현재 목표/시도 맥락 추가. (대화 이력·슬롯은 Unit 4에서 보강)
+            var userPrompt =
+                $"[active_objective: {_dialogueManager.CurrentObjectiveId}] " +
+                $"[attempt: {_dialogueManager.AttemptCount}, scaffold_level: {(int)_dialogueManager.CurrentScaffoldLevel}]\n" +
+                $"User selected card '{card.id}' ({card.phrase?.text}) and said: \"{sttResult.text}\"";
+            var result = await _geminiService.RequestNextTurnAsync(_systemPrompt, userPrompt, _cts.Token);
             hud?.ShowThinking(false);
 
             // Gemini 실패/키없음 → fallback 응답으로 대체
@@ -475,6 +524,93 @@ namespace Artti.Training
             return _fallbackPicker != null
                 ? _fallbackPicker.Pick(scenarioId, condition)
                 : "잠시만요, 다시 한 번 말씀해주세요.";
+        }
+
+        // Unit 3: LLM 주도 한 턴. Gemini가 점원 발화 + 카드 + 진행 여부를 결정.
+        //   단계 진행은 mark_objective_complete / transition_to_objective 도구를 부를 때만.
+        private async UniTask RunGeminiTurn(AACCard card, string sttText)
+        {
+            hud?.ShowThinking(true);
+            var result = await _geminiService.RequestNextTurnAsync(_systemPrompt, BuildUserPrompt(card, sttText), _cts.Token);
+            hud?.ShowThinking(false);
+
+            // Gemini 실패/키없음 → fallback 발화 + 룰 기반 풀로 카드 유지(대화 끊기지 않게)
+            if (!result.HasValue)
+            {
+                SpeakNpc(PickFallback("llm_call_failed"));
+                RefreshPool();
+                return;
+            }
+
+            var (tool, npcText, args) = result.Value;
+            _dialogueManager.RecordTurn(sttText, npcText);
+            SpeakNpc(npcText, tool);
+
+            switch (tool)
+            {
+                case DialogueTool.MarkObjectiveComplete:
+                case DialogueTool.TransitionToObjective:
+                    // 다음 단계로 — HandleObjectiveChanged가 새 objective의 카드 풀을 표시.
+                    // (objective_id 인자는 현재 반환 튜플에 없어 '현재→다음 순서'로 진행. NOTE Unit 4 확장 대상)
+                    clerkView?.PlayNod();
+                    AdvanceObjective();
+                    break;
+                case DialogueTool.ForceCompleteScenario:
+                    MarkSessionCompleted();
+                    break;
+                default:
+                    // present_cards / enter_subflow / request_clarification / express_understanding / return_from_subflow
+                    // 같은 단계에서 대화를 이어감. Gemini가 고른 카드를 띄우고, 없으면 룰 풀로 폴백.
+                    clerkView?.PlayNod();
+                    ShowCardsOrPool(args);
+                    break;
+            }
+        }
+
+        // Gemini가 지정한 card_ids로 풀을 갱신. 비었거나 전부 미존재면 룰 기반 풀로 폴백(카드는 항상 있게).
+        private void ShowCardsOrPool(string[] cardIds)
+        {
+            if (cardIds != null && cardIds.Length > 0 && aacDatabase != null)
+            {
+                var pool = new List<AACCard>(cardIds.Length);
+                foreach (var id in cardIds)
+                {
+                    var c = aacDatabase.GetCard(id);
+                    if (c != null) pool.Add(c);
+                    else Debug.LogWarning($"[TrainingSceneRoot] Gemini가 고른 카드 id 미존재: {id}");
+                }
+                if (pool.Count > 0)
+                {
+                    _currentPool = pool;
+                    uiView.SetCardList(_currentPool);
+                    return;
+                }
+            }
+            RefreshPool();
+        }
+
+        // 시나리오의 사용 가능한 카드 목록(id: 문구)을 시스템 프롬프트 뒤에 부착.
+        private string AppendAvailableCards(string basePrompt)
+        {
+            if (aacDatabase == null) return basePrompt;
+            var cards = aacDatabase.CardsForScenario(scenarioId).ToList();
+            if (cards.Count == 0) return basePrompt;
+
+            var sb = new System.Text.StringBuilder(basePrompt ?? string.Empty);
+            sb.Append("\n\n--- AVAILABLE CARDS (use only these exact card_ids) ---");
+            foreach (var c in cards)
+                sb.Append($"\n{c.id}: {c.phrase?.text}");
+            return sb.ToString();
+        }
+
+        // Gemini userPrompt: 최근 이력 + 현재 상태 + 이번 턴 발화. 시스템 프롬프트(페르소나·규칙)는 별도 전달.
+        private string BuildUserPrompt(AACCard card, string sttText)
+        {
+            return
+                $"Conversation so far (last turns):\n{_dialogueManager.RecentHistory()}\n\n" +
+                $"State: active_objective={_dialogueManager.CurrentObjectiveId}, " +
+                $"attempt={_dialogueManager.AttemptCount}, scaffold_level={(int)_dialogueManager.CurrentScaffoldLevel}\n" +
+                $"This turn: user tapped card '{card.id}' ({card.phrase?.text}) and said: \"{sttText}\"";
         }
 
         // 다음 objective(카드 풀이 비어있지 않은 것)로 이동. 끝까지 가면 무동작.
