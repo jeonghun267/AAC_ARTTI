@@ -6,44 +6,34 @@ using UnityEngine.Networking;
 public class GeminiMenuManager : MonoBehaviour
 {
     [Header("API 설정")]
-    [SerializeField] private string apiKey = "여기에_발급받은_GEMINI_API_KEY_입력";
+    [SerializeField] private string apiKey = "..."; // 여기에 키 입력
 
-    [Header("UI 연결")]
-    [SerializeField] private GameObject menuCardPrefab; // 1번에서 만든 카드 프리팹
-    [SerializeField] private Transform contentParent;   // 1번에서 만든 Scroll View의 Content
-
-    // 유니티 내장 JsonUtility를 사용하기 위한 데이터 구조체
     [System.Serializable]
-    public class MenuDataWrapper
+    public class DynamicListWrapper { public List<string> options; }
+
+    // Gemini 응답 구조를 그대로 본뜬 파싱용 클래스들
+    [System.Serializable] private class GeminiResponse { public Candidate[] candidates; }
+    [System.Serializable] private class Candidate { public Content content; }
+    [System.Serializable] private class Content { public Part[] parts; }
+    [System.Serializable] private class Part { public string text; }
+
+    public void GenerateList(string prompt, System.Action<List<string>> onComplete)
     {
-        public List<string> menuList;
+        StartCoroutine(RequestGeminiList(prompt, onComplete));
     }
 
-    // ★ 이 함수를 호출하면 실행됩니다! (예: 카카오맵 검색 완료 시 혹은 주문 탭을 열 때)
-    // 테스트용으로 사용하시려면 외부에서 GeminiMenuManager.GetCafeMenus("메가커피") 처럼 호출하세요.
-    public void GetCafeMenus(string brandName)
+    private IEnumerator RequestGeminiList(string prompt, System.Action<List<string>> onComplete)
     {
-        StartCoroutine(RequestGeminiAPI(brandName));
-    }
+        string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={apiKey}";
 
-    private IEnumerator RequestGeminiAPI(string brandName)
-    {
-        // 이전 카드들이 남아있다면 청소
-        foreach (Transform child in contentParent)
-        {
-            Destroy(child.gameObject);
-        }
+        // 역슬래시 먼저, 그다음 따옴표/줄바꿈 순서로 이스케이프
+        string safePrompt = prompt.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", " ");
 
-        string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={apiKey}";
+        // responseMimeType 으로 JSON 출력을 강제 → 응답이 깔끔해짐
+        string jsonPayload =
+            "{\"contents\":[{\"parts\":[{\"text\":\"" + safePrompt + "\"}]}]," +
+            "\"generationConfig\":{\"responseMimeType\":\"application/json\"}}";
 
-        // Gemini가 딱 유니티 데이터 형식(JSON)으로만 답하도록 엄격하게 프롬프트 작성
-        string prompt = $"너는 카페 키오스크 데이터를 제공하는 AI야. 현재 매장은 '{brandName}'이야. " +
-                        "이 브랜드의 가장 인기 있는 대표 메뉴 5개를 찾아서 반드시 다음 JSON 형식으로만 답변해줘. " +
-                        "다른 설명이나 인사말, 주석은 절대 포함하지 마. " +
-                        "형식: { \"menuList\": [\"메뉴1\", \"메뉴2\", \"메뉴3\"] }";
-
-        // JSON 데이터 바디 구성
-        string jsonPayload = "{\"contents\":[{\"parts\":[{\"text\":\"" + prompt + "\"}]}]}";
         byte[] postData = System.Text.Encoding.UTF8.GetBytes(jsonPayload);
 
         using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
@@ -54,56 +44,49 @@ public class GeminiMenuManager : MonoBehaviour
 
             yield return request.SendWebRequest();
 
-            if (request.result == UnityWebRequest.Result.Success)
+            // 통신 자체가 실패한 경우 (429 포함)
+            if (request.result != UnityWebRequest.Result.Success)
             {
-                string rawResponse = request.downloadHandler.text;
-
-                // Gemini의 복잡한 응답에서 우리가 요청한 순수 JSON 문자열만 추출하는 가공 과정
-                string cleanJson = ParseGeminiResponse(rawResponse);
-
-                try
-                {
-                    // JSON 문자열을 C# 리스트 데이터로 변환
-                    MenuDataWrapper parsedData = JsonUtility.FromJson<MenuDataWrapper>(cleanJson);
-
-                    // 받아온 메뉴 개수만큼 카드 생성하여 화면에 배치!
-                    foreach (string menuName in parsedData.menuList)
-                    {
-                        GameObject newCard = Instantiate(menuCardPrefab, contentParent);
-                        MenuCard cardScript = newCard.GetComponent<MenuCard>();
-                        if (cardScript != null)
-                        {
-                            cardScript.SetupMenu(menuName);
-                        }
-                    }
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogError("JSON 파싱 실패. 제미나이가 형식을 지키지 않았을 수 있습니다: " + e.Message);
-                }
+                Debug.LogError($"[Gemini 통신 에러] 코드: {request.responseCode}\n상세: {request.downloadHandler.text}");
+                onComplete?.Invoke(null);
+                yield break;
             }
-            else
-            {
-                Debug.LogError("Gemini API 통신 실패: " + request.error);
-            }
+
+            string rawResponse = request.downloadHandler.text;
+            Debug.Log($"[Gemini 원문 응답]\n{rawResponse}");
+
+            List<string> result = ParseOptions(rawResponse);
+
+            // 성공이든 실패든 콜백은 반드시 호출 → 더 이상 조용히 멈추지 않음
+            onComplete?.Invoke(result);
         }
     }
 
-    // Gemini 응답 구조에서 실제 텍스트 내부 내용만 꺼내는 헬퍼 함수
-    private string ParseGeminiResponse(string rawJson)
+    private List<string> ParseOptions(string rawResponse)
     {
-        // 에디터 환경 등에서 유연하게 텍스트 내용만 자르기 위한 단순 문자열 처리
-        int startIndex = rawJson.IndexOf("{\\n  \\\"menuList\\\"");
-        if (startIndex == -1) startIndex = rawJson.IndexOf("{\"menuList\"");
-
-        if (startIndex != -1)
+        try
         {
-            int endIndex = rawJson.IndexOf("}", startIndex);
-            string result = rawJson.Substring(startIndex, endIndex - startIndex + 1);
-            // 역슬래시나 줄바꿈 기호 복원
-            result = result.Replace("\\n", "").Replace("\\\"", "\"");
-            return result;
+            // 1) 전체 응답에서 모델이 생성한 텍스트만 꺼냄
+            GeminiResponse resp = JsonUtility.FromJson<GeminiResponse>(rawResponse);
+            if (resp == null || resp.candidates == null || resp.candidates.Length == 0)
+            {
+                Debug.LogError("[Gemini] candidates 없음 (안전필터 차단 등 가능). 원문 확인 필요");
+                return null;
+            }
+
+            string innerText = resp.candidates[0].content.parts[0].text;
+
+            // 2) 혹시 모를 코드블록 ```json ... ``` 제거
+            innerText = innerText.Replace("```json", "").Replace("```", "").Trim();
+
+            // 3) 꺼낸 텍스트를 {"options":[...]} 형태로 파싱
+            DynamicListWrapper parsed = JsonUtility.FromJson<DynamicListWrapper>(innerText);
+            return parsed != null ? parsed.options : null;
         }
-        return rawJson;
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[Gemini] 파싱 실패: {e.Message}");
+            return null;
+        }
     }
 }

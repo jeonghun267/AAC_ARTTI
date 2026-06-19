@@ -49,7 +49,7 @@ public class GeminiMenuGenerator : MonoBehaviour
                         "반드시 아래 JSON 형식으로만 대답해. 다른 말은 절대 하지마.\n" +
                         "{\"menus\": [\"메뉴1\", \"메뉴2\", \"메뉴3\", \"메뉴4\", \"메뉴5\"]}";
 
-        string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
+        string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={apiKey}";
 
         // 3. 요청 데이터 세팅
         GeminiRequest requestData = new GeminiRequest

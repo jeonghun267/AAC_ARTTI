@@ -284,6 +284,9 @@ public class OcrTestController : MonoBehaviour
 
     private void ShowResultPanel(KeywordMatch match, string imagePath)
     {
+        // 판별된 장소를 카드 생성으로 전달 (좌표/OCR 경로가 모두 여기로 모임)
+        PlaceContext.Set(match.Category);
+
         LoadCapturedImage(imagePath);
 
         if (categoryText != null)
