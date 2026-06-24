@@ -27,6 +27,64 @@ namespace Artti.Report
             totalAttempts > 0 ? Mathf.Clamp01((float)completedCount / totalAttempts) : 0f;
     }
 
+    // 요약 패널 4스탯
+    public class ReportSummaryStats
+    {
+        public int completedCount;     // 완료 시나리오 수
+        public int totalStudyMinutes;  // 총 학습 시간(분)
+        public int streakDays;         // 연속 학습일
+        public int level;              // 레벨
+        public string levelTitle;      // 레벨 칭호 (예: AAC Explorer)
+    }
+
+    // 최근 학습 기록 한 줄
+    public class ReportRecord
+    {
+        public string sessionId;
+        public string scenarioId;
+        public long dateMs;
+        public int points;
+    }
+
+    public enum StepRating { Excellent, Good, Practice, NeedHelp }
+
+    // 상세 리포트(hh.png)의 한 단계
+    public class ReportStepReport
+    {
+        public int index;          // 1-based
+        public string objectiveName;
+        public string userText;    // 마지막 사용자 발화
+        public string npcText;     // 마지막 NPC 발화 (TTS 재생용)
+        public string time;        // HH:mm
+        public int retryCount;
+        public StepRating rating;
+        public string ratingLabel; // "잘했어요😊" 등
+    }
+
+    // 세션 1개의 상세 리포트 (전체 학습기록 씬)
+    public class ReportRecordDetail
+    {
+        public string sessionId;
+        public string scenarioId;
+        public string scenarioName;
+        public bool completed;
+        public long dateMs;
+        public int durationMin;
+
+        public int fullSuccess;    // 완전 성공
+        public int partialSuccess; // 부분 성공
+        public int needHelp;       // 도움 필요
+        public float successRate;  // 0..1
+
+        public string feedbackMain;
+        public string feedbackBubble;
+        public List<string> goodPoints = new List<string>();
+        public List<string> improvePoints = new List<string>();
+        public List<string> nextGoals = new List<string>();
+
+        public List<ReportStepReport> steps = new List<ReportStepReport>();
+    }
+
     public class ReportTurn
     {
         public bool isUser;
@@ -107,6 +165,180 @@ namespace Artti.Report
             }
             return overview;
         }
+
+        // ===== 요약 스탯 / 추세 / 최근 기록 (요약 패널용) =====
+
+        public ReportSummaryStats GetSummaryStats()
+        {
+            var sessions = GetSessions(); // 최신순
+            var stats = new ReportSummaryStats
+            {
+                completedCount = sessions.Count(s => s.completed),
+                totalStudyMinutes = sessions.Sum(s => s.durationMin),
+                streakDays = ComputeStreak(sessions),
+            };
+            // 레벨 규칙(임시): 완료 3회마다 +1. 칭호는 구간별. (제품 규칙 확정 시 조정)
+            stats.level = 1 + stats.completedCount / 3;
+            stats.levelTitle = LevelTitle(stats.level);
+            return stats;
+        }
+
+        static string LevelTitle(int level)
+        {
+            if (level >= 5) return "AAC Master";
+            if (level >= 3) return "AAC Explorer";
+            return "AAC Beginner";
+        }
+
+        // 가장 최근 학습일부터 거꾸로 연속된 날 수
+        static int ComputeStreak(List<ReportSessionSummary> sessions)
+        {
+            if (sessions == null || sessions.Count == 0) return 0;
+            var days = sessions
+                .Select(s => DateTimeOffset.FromUnixTimeMilliseconds(s.dateMs).ToLocalTime().Date)
+                .Distinct().OrderByDescending(d => d).ToList();
+            int streak = 1;
+            for (int i = 1; i < days.Count; i++)
+            {
+                if ((days[i - 1] - days[i]).Days == 1) streak++;
+                else break;
+            }
+            return streak;
+        }
+
+        // 최근 days일을 일 단위로 버킷팅한 정규화 시리즈(0..1).
+        float[] GetDailyTrend(int days, string eventType)
+        {
+            if (days < 2) days = 2;
+            var counts = new int[days];
+            var today = DateTimeOffset.Now.ToLocalTime().Date;
+            foreach (var ev in _events)
+            {
+                if (ev.eventType != eventType) continue;
+                var d = DateTimeOffset.FromUnixTimeMilliseconds(ev.timestampUnixMs).ToLocalTime().Date;
+                int idx = days - 1 - (today - d).Days;
+                if (idx >= 0 && idx < days) counts[idx]++;
+            }
+            return Normalize(counts);
+        }
+
+        public float[] GetSessionTrend(int days)    => GetDailyTrend(days, EvScenarioEntered);
+        public float[] GetCompletedTrend(int days)  => GetDailyTrend(days, EvSessionEnded);
+        public float[] GetAppearanceTrend(int days) => GetDailyTrend(days, EvCardSelected);
+
+        static float[] Normalize(int[] counts)
+        {
+            var outv = new float[counts.Length];
+            int max = 0;
+            foreach (var c in counts) if (c > max) max = c;
+            if (max <= 0) return outv; // 전부 0 -> 바닥선
+            for (int i = 0; i < counts.Length; i++) outv[i] = (float)counts[i] / max;
+            return outv;
+        }
+
+        public List<ReportRecord> GetRecentRecords(int n)
+        {
+            var list = new List<ReportRecord>();
+            foreach (var group in EventsBySession())
+            {
+                var summary = BuildSummary(group.Key, group.Value);
+                int objectives = group.Value.Count(e => e.eventType == EvObjectiveEntered);
+                int retries = group.Value.Count(e => e.eventType == EvStepRetry);
+                // 점수 규칙(임시): 완료 +30, 목표당 +10, 재시도당 -5, 0 이상. (제품 규칙 확정 시 조정)
+                int points = Mathf.Max(0, (summary.completed ? 30 : 0) + objectives * 10 - retries * 5);
+                list.Add(new ReportRecord
+                {
+                    sessionId = group.Key,
+                    scenarioId = summary.scenarioId,
+                    dateMs = summary.dateMs,
+                    points = points
+                });
+            }
+            return list.OrderByDescending(r => r.dateMs).Take(n).ToList();
+        }
+
+        // 세션 1개의 상세 리포트(hh.png). 피드백은 규칙 기반(추후 LLM 대체 가능).
+        public ReportRecordDetail GetRecordReport(string sessionId)
+        {
+            var detail = GetDetail(sessionId);
+            if (detail == null) return null;
+
+            var rep = new ReportRecordDetail
+            {
+                sessionId = sessionId,
+                scenarioId = detail.summary.scenarioId,
+                scenarioName = ReportLabels.ScenarioName(detail.summary.scenarioId),
+                completed = detail.summary.completed,
+                dateMs = detail.summary.dateMs,
+                durationMin = detail.summary.durationMin,
+            };
+
+            var events = SessionEvents(sessionId);
+            var enteredTimes = events.Where(e => e.eventType == EvObjectiveEntered)
+                                     .Select(e => e.timestampUnixMs).ToList();
+
+            int idx = 1;
+            foreach (var step in detail.steps)
+            {
+                var sr = new ReportStepReport
+                {
+                    index = idx,
+                    objectiveName = ReportLabels.ObjectiveName(step.objectiveId),
+                    retryCount = step.retryCount,
+                };
+                for (int t = step.turns.Count - 1; t >= 0; t--)
+                {
+                    if (sr.userText == null && step.turns[t].isUser) sr.userText = step.turns[t].text;
+                    if (sr.npcText == null && !step.turns[t].isUser) sr.npcText = step.turns[t].text;
+                }
+                sr.time = (idx - 1 < enteredTimes.Count) ? FmtTime(enteredTimes[idx - 1]) : "";
+                Classify(sr);
+                rep.steps.Add(sr);
+                idx++;
+            }
+
+            // 완료 세션의 마지막 단계는 0 재시도면 최고 등급
+            if (rep.steps.Count > 0 && detail.summary.completed)
+            {
+                var last = rep.steps[rep.steps.Count - 1];
+                if (last.retryCount == 0) { last.rating = StepRating.Excellent; last.ratingLabel = "아주 잘함🎉"; }
+            }
+
+            foreach (var s in rep.steps)
+            {
+                if (s.rating == StepRating.Excellent || s.rating == StepRating.Good) rep.fullSuccess++;
+                else if (s.rating == StepRating.Practice) rep.partialSuccess++;
+                else rep.needHelp++;
+            }
+            int totalSteps = Mathf.Max(1, rep.steps.Count);
+            rep.successRate = Mathf.Clamp01((rep.fullSuccess + 0.5f * rep.partialSuccess) / totalSteps);
+
+            // 피드백 (규칙 기반)
+            rep.feedbackMain = detail.summary.completed
+                ? "잘했어요! 꾸준히 연습하면 더 자연스러운 표현을 할 수 있어요."
+                : "조금 더 연습이 필요해요. 다시 도전해볼까요?";
+            rep.feedbackBubble = "다음 연습도 화이팅이에요! 💙";
+            foreach (var s in rep.steps)
+            {
+                bool ok = s.rating == StepRating.Excellent || s.rating == StepRating.Good;
+                if (ok && rep.goodPoints.Count < 3) rep.goodPoints.Add(s.objectiveName);
+                else if (!ok && rep.improvePoints.Count < 3) rep.improvePoints.Add(s.objectiveName);
+            }
+            if (rep.goodPoints.Count == 0) rep.goodPoints.Add("끝까지 도전한 점");
+            if (rep.improvePoints.Count == 0) rep.improvePoints.Add("지금처럼만 하면 충분해요");
+            rep.nextGoals.Add("더 정확하고 자연스러운 표현으로 대화를 이어가요!");
+            return rep;
+        }
+
+        static void Classify(ReportStepReport sr)
+        {
+            if (sr.retryCount == 0) { sr.rating = StepRating.Good; sr.ratingLabel = "잘했어요😊"; }
+            else if (sr.retryCount == 1) { sr.rating = StepRating.Practice; sr.ratingLabel = "좋았어요👍"; }
+            else { sr.rating = StepRating.NeedHelp; sr.ratingLabel = "연습해봐요"; }
+        }
+
+        static string FmtTime(long ms) =>
+            DateTimeOffset.FromUnixTimeMilliseconds(ms).ToLocalTime().ToString("HH:mm");
 
         // 최신 세션이 앞에 오도록 정렬
         public List<ReportSessionSummary> GetSessions()

@@ -35,10 +35,22 @@ namespace Artti.Editor
         const string SpeechBoxPath  = "Assets/_Project/Art/UI/ReportSpeechBox.png";
         const string GlassTabPath   = "Assets/_Project/Art/UI/ReportGlassTab.png";
         const string GlassPillPath  = "Assets/_Project/Art/UI/ReportGlassPill.png";
+        const string PeriodTrackPath = "Assets/_Project/Art/UI/ReportPeriodTrack.png"; // 기간 필터 바탕(최근 7일/3일 baked)
+        const string TabTrackPath   = "Assets/_Project/Art/UI/ReportTabTrack.png";  // 탭 밑바탕 트랙
+        const string TabPillPath    = "Assets/_Project/Art/UI/ReportTabPill.png";   // 탭 슬라이드 pill
         const string SummaryPanelPath = "Assets/_Project/Art/UI/ReportSummaryPanel.png";
         const string GraphGlassPath   = "Assets/_Project/Art/UI/Profile/CenterGlassPanel.png"; // 다른 씬 글래스 재사용
+        const string GlassCardPath    = "Assets/_Project/Art/UI/ReportGlassCard.png";          // L-Photoroom 글래스 카드(3D)
         const string RingPath       = "Assets/_Project/Art/UI/DonutRing.png";
         const string DeleteIconPath = "Assets/_Project/Art/UI/delete_forever.svg";
+        const string StoreIconPath  = "Assets/_Project/Art/UI/Report/Icons/ic_store.png"; // 편의점 카드 아이콘
+        const string OpenmojiDir    = "Assets/_Project/openmoji-master/color/svg/";        // 약국/음식점 등 이모지
+
+        // 캐릭터 프레임 애니(컷아웃). blink는 클로즈업 크롭이라 제외.
+        const string AnimDir = "Assets/_Project/Art/UI/Report/Anim";
+        static readonly Vector2 CharHomeFeet = new Vector2(-620f, -470f); // 정위치 발 좌표(좌측 하단)
+        const float CharOffscreenX  = -1150f; // walk 입장 시작점(화면 왼쪽 밖). 짧게 입장해 스텝 수↓
+        const float CharTargetHeight = 720f;  // 클립별 높이를 이 값으로 정규화해 크기 튐 방지
 
         const string PrefabDir            = "Assets/_Project/Prefabs/Report";
         const string SessionCardPrefabPath = PrefabDir + "/SessionCard.prefab";
@@ -75,21 +87,34 @@ namespace Artti.Editor
             if (bgSprite != null) { bgImg.sprite = bgSprite; bgImg.color = White; bgImg.preserveAspect = false; }
             else bgImg.color = BgColor;
 
-            // 인사하는 캐릭터 (좌측). 이미지 2400x1341 → 비율 유지. 위치 (-200,-35), 회전 0
-            var chSprite = LoadPhotoSprite(CharacterPath);
-            if (chSprite != null)
+            // 인사하는 캐릭터 (좌측). 정적 이미지 대신 프레임 애니 + 연출 director.
+            // 흐름: walk 입장 -> idle -> 말풍선/TTS(talk) -> full_motion -> idle. 발 기준(bottom pivot) 정렬.
+            var idleFrames = LoadFrames("idle", "idle", 5);
+            var walkFrames = LoadFrames("walk_loop", "walk_loop", 8);
+            var talkFrames = LoadFrames("gesture_talk", "gesture_talk", 6);
+            var fullFrames = LoadFrames("full_motion", "full_motion", 12);
+
+            ReportCharacterDirector director = null;
+            AudioSource charAudio = null;
+            if (idleFrames.Length > 0)
             {
                 var ch = ChildRect("ReportCharacter", canvasGo.transform);
                 ch.anchorMin = ch.anchorMax = new Vector2(0.5f, 0.5f);
-                ch.pivot = new Vector2(0.5f, 0.5f);
-                ch.anchoredPosition = new Vector2(-664, -219); // 손배치 (좌측 하단)
-                ch.localRotation = Quaternion.Euler(0, 0, 0);
-                ch.sizeDelta = new Vector2(1900, 1062); // 비율 2400:1341, scale 1.0
+                ch.pivot = new Vector2(0.5f, 0f); // 발 기준
+                ch.anchoredPosition = CharHomeFeet;
                 var chImg = ch.gameObject.AddComponent<Image>();
-                chImg.sprite = chSprite; chImg.preserveAspect = true; chImg.raycastTarget = false;
+                chImg.sprite = idleFrames[0]; chImg.preserveAspect = true; chImg.raycastTarget = false;
+                ch.sizeDelta = SizeFor(idleFrames);
+                ch.gameObject.AddComponent<SpriteSequencePlayer>();
+                charAudio = ch.gameObject.AddComponent<AudioSource>();
+                charAudio.playOnAwake = false;
+                director = ch.gameObject.AddComponent<ReportCharacterDirector>();
             }
 
-            // 캐릭터 말풍선 (box 프레임 + 응원 문구). 꼬리 좌하단이 캐릭터를 가리킴. 이미지 1024x659
+            // 캐릭터 말풍선 (box 프레임). 문구는 런타임에 director가 레포트 기반 LLM 결과로 채움.
+            // 평소 숨김 -> talk 단계에서만 표시. 꼬리 좌하단이 캐릭터를 가리킴. 이미지 1024x659
+            GameObject speechGo = null;
+            TMP_Text speechLabel = null;
             var speechSprite = LoadPhotoSprite(SpeechBoxPath);
             if (speechSprite != null)
             {
@@ -110,11 +135,25 @@ namespace Artti.Editor
                 str.anchoredPosition = new Vector2(0, 22); // 꼬리 영역 피해 위쪽
                 str.sizeDelta = new Vector2(400, 180);
 
-                // 런타임에 첫 줄에 활성 프로필 이름("○○님")을 붙임
-                var greeting = speech.gameObject.AddComponent<CharacterGreeting>();
-                var gso = new SerializedObject(greeting);
-                gso.FindProperty("label").objectReferenceValue = speechText;
-                gso.ApplyModifiedProperties();
+                speechGo = speech.gameObject;
+                speechLabel = speechText;
+                speechGo.SetActive(false); // director가 talk 단계에서 표시
+            }
+
+            // ===== 캐릭터 director 와이어링 =====
+            if (director != null)
+            {
+                var dso = new SerializedObject(director);
+                SetClip(dso, "walk", walkFrames, 12f, SizeFor(walkFrames));
+                SetClip(dso, "idle", idleFrames, 8f,  SizeFor(idleFrames));
+                SetClip(dso, "talk", talkFrames, 10f, SizeFor(talkFrames));
+                SetClip(dso, "full", fullFrames, 12f, SizeFor(fullFrames));
+                dso.FindProperty("homeFeet").vector2Value = CharHomeFeet;
+                dso.FindProperty("offscreenX").floatValue = CharOffscreenX;
+                if (speechGo != null) dso.FindProperty("speechBubble").objectReferenceValue = speechGo;
+                if (speechLabel != null) dso.FindProperty("speechLabel").objectReferenceValue = speechLabel;
+                if (charAudio != null) dso.FindProperty("audioSource").objectReferenceValue = charAudio;
+                dso.ApplyModifiedProperties();
             }
 
             // ===== 공통: 뒤로가기 (상세 열려있으면 목록으로 — ReportView가 처리) =====
@@ -131,20 +170,20 @@ namespace Artti.Editor
             var title = MakeText("Title", listPanel.transform, "레포트", 60, TitleColor, font, bold: true);
             PlaceTop(title.rectTransform, new Vector2(0, -52), new Vector2(1100, 90));
 
-            // 탭 토글 (글래스 트랙 + 슬라이드 pill)
+            // 탭 토글 (밑바탕 트랙 image-Photoroom(2) + 슬라이드 pill image-Photoroom(1))
             var tabBar = ChildRect("TabBar", listPanel.transform);
-            PlaceTop(tabBar, new Vector2(0, -166), new Vector2(600, 100));
+            PlaceTop(tabBar, new Vector2(0, -166), new Vector2(600, 116)); // 트랙 비율 5.18
             var tabBarImg = tabBar.gameObject.AddComponent<Image>();
-            // 밑바닥 트랙 = Innerglass (은은한 베이스)
-            var trackSprite = LoadPhotoSprite(GlassPillPath);
-            if (trackSprite != null) { tabBarImg.sprite = trackSprite; tabBarImg.preserveAspect = false; tabBarImg.color = new Color(1f, 1f, 1f, 0.6f); }
+            // 밑바닥 트랙 (은은한 글래스 외곽선 pill)
+            var trackSprite = LoadPhotoSprite(TabTrackPath);
+            if (trackSprite != null) { tabBarImg.sprite = trackSprite; tabBarImg.preserveAspect = false; tabBarImg.color = White; }
             else { tabBarImg.sprite = Rounded(); tabBarImg.type = Image.Type.Sliced; tabBarImg.pixelsPerUnitMultiplier = 1f; tabBarImg.color = White; }
 
-            // 슬라이드 pill = glass (크롬 테두리). 클릭한 탭으로 왔다갔다 하는 표시기. 텍스트 아래
+            // 슬라이드 pill (흰 채움). 클릭한 탭으로 왔다갔다 하는 표시기. 텍스트 아래
             var tabPill = ChildRect("TabPill", tabBar);
-            PlaceCenter(tabPill, new Vector2(-150, 0), new Vector2(286, 84));
+            PlaceCenter(tabPill, new Vector2(-150, 0), new Vector2(290, 92)); // pill 비율 3.15
             var tabPillImg = tabPill.gameObject.AddComponent<Image>();
-            var pillSprite = LoadPhotoSprite(GlassTabPath);
+            var pillSprite = LoadPhotoSprite(TabPillPath);
             if (pillSprite != null) { tabPillImg.sprite = pillSprite; tabPillImg.preserveAspect = false; }
             else { tabPillImg.sprite = Rounded(); tabPillImg.type = Image.Type.Sliced; tabPillImg.pixelsPerUnitMultiplier = 1f; }
             tabPillImg.color = White; // 또렷하게
@@ -189,56 +228,68 @@ namespace Artti.Editor
             PlaceCenter(sumTitle.rectTransform, new Vector2(513, 323), new Vector2(260, 44));
             var sumMore = MakeText("MoreLabel", speechRoot.transform, "전체 보기", 22, SubColor, font, bold: false);
             PlaceCenter(sumMore.rectTransform, new Vector2(811, 322), new Vector2(150, 40));
+            // "전체 보기" 클릭 영역
+            var moreBtn = MakeHitButton("MoreBtn", (RectTransform)speechRoot.transform, new Vector2(811, 322), new Vector2(150, 44));
 
-            // 4 스탯 (값 + 라벨) - 손배치 위치 그대로, 패널과 독립
-            AddSummaryStat(speechRoot.transform, "12회", "완료 시나리오", new Vector2(499, 240), font);
-            AddSummaryStat(speechRoot.transform, "24시간", "총 학습 시간", new Vector2(773, 235), font);
-            AddSummaryStat(speechRoot.transform, "5일", "연속 학습", new Vector2(499, 81), font);
-            AddSummaryStat(speechRoot.transform, "Level 3", "AAC Explorer", new Vector2(780, 79), font);
+            // 4 스탯 (값 + 라벨, 각자 클릭 가능) - 손배치 위치 그대로, 패널과 독립. 값은 런타임에 ReportView가 채움.
+            var stat1Btn = AddSummaryStat(speechRoot.transform, "0회",    "완료 시나리오", new Vector2(499, 240), font, out var stat1Val, out _);
+            var stat2Btn = AddSummaryStat(speechRoot.transform, "0시간",  "총 학습 시간", new Vector2(773, 235), font, out var stat2Val, out _);
+            var stat3Btn = AddSummaryStat(speechRoot.transform, "0일",    "연속 학습",   new Vector2(499, 81),  font, out var stat3Val, out _);
+            var stat4Btn = AddSummaryStat(speechRoot.transform, "Level 1", "AAC Beginner", new Vector2(780, 79), font, out var stat4Val, out var stat4Title);
 
-            // ===== 중앙 그래프 2개 (전체 학습 세션 / 전체 출현) =====
-            BuildGraphPanel(speechRoot.transform, "전체 학습 세션", new Vector2(-130, 175), new Vector2(720, 350),
+            // ===== 중앙 그래프 2개 (전체 학습 세션 / 전체 출현) - 클릭 가능, 선은 런타임에 실데이터로 갱신 =====
+            var graph1Btn = BuildGraphPanel(speechRoot.transform, "전체 학습 세션", new Vector2(-130, 175), new Vector2(720, 350),
                 new float[] { 0.2f, 0.32f, 0.28f, 0.45f, 0.6f, 0.78f }, new Color(0.16f, 0.45f, 0.9f, 1f),
-                new float[] { 0.12f, 0.22f, 0.35f, 0.4f, 0.55f, 0.68f }, new Color(0.95f, 0.55f, 0.3f, 1f), false, font);
-            BuildGraphPanel(speechRoot.transform, "전체 출현", new Vector2(-130, -210), new Vector2(720, 350),
+                new float[] { 0.12f, 0.22f, 0.35f, 0.4f, 0.55f, 0.68f }, new Color(0.95f, 0.55f, 0.3f, 1f), false, font,
+                out var g1Line1, out var g1Line2);
+            var graph2Btn = BuildGraphPanel(speechRoot.transform, "전체 출현", new Vector2(-130, -210), new Vector2(720, 350),
                 new float[] { 0.15f, 0.3f, 0.42f, 0.5f, 0.62f, 0.72f }, new Color(0.16f, 0.45f, 0.9f, 1f),
-                null, Color.clear, true, font);
+                null, Color.clear, true, font, out var g2Line1, out _);
 
-            // ===== 우하단 최근 학습 기록 =====
-            BuildRecordsPanel(speechRoot.transform, new Vector2(599, -270), new Vector2(690, 330), font);
+            // ===== 우하단 최근 학습 기록 (클릭 가능, 값은 런타임에 ReportView가 채움) =====
+            var recordRows = BuildRecordsPanel(speechRoot.transform, new Vector2(599, -270), new Vector2(690, 330), font);
 
-            // ===== 우상단 기간 필터 (최근 3일 / 최근 7일, 글래스 슬라이드) =====
-            var filterBar = ChildRect("PeriodFilter", listPanel.transform);
-            filterBar.anchorMin = filterBar.anchorMax = new Vector2(1f, 1f);
-            filterBar.pivot = new Vector2(1f, 1f);
-            filterBar.anchoredPosition = new Vector2(-44, -48);
-            filterBar.sizeDelta = new Vector2(330, 70);
-            var filterTrackImg = filterBar.gameObject.AddComponent<Image>();
-            var fTrack = LoadPhotoSprite(GlassPillPath); // 밑바닥 = Innerglass
-            if (fTrack != null) { filterTrackImg.sprite = fTrack; filterTrackImg.preserveAspect = false; filterTrackImg.color = new Color(1f, 1f, 1f, 0.6f); }
-            else { filterTrackImg.sprite = Rounded(); filterTrackImg.type = Image.Type.Sliced; filterTrackImg.pixelsPerUnitMultiplier = 1f; filterTrackImg.color = White; }
+            // ===== 우상단 기간 필터 (세로 슬라이더) =====
+            // 바탕 = image-Photoroom(5): "최근 7일 / 최근 3일" 텍스트가 baked된 베이지 카드(2단).
+            // 그 위에 pill = image-Photoroom(1)이 클릭한 행으로 세로 이동(TabSlider). 텍스트가 비치도록 pill 반투명.
+            var filterRoot = ChildRect("PeriodFilter", listPanel.transform);
+            filterRoot.anchorMin = filterRoot.anchorMax = new Vector2(1f, 1f);
+            filterRoot.pivot = new Vector2(1f, 1f);
+            filterRoot.anchoredPosition = new Vector2(-44, -40);
+            filterRoot.sizeDelta = new Vector2(300, 124); // (5) 비율 2.42 -> 폭300 높이124 꽉맞음
+            var filterBgImg = filterRoot.gameObject.AddComponent<Image>();
+            var filterBg = LoadPhotoSprite(PeriodTrackPath);
+            if (filterBg != null) { filterBgImg.sprite = filterBg; filterBgImg.preserveAspect = true; }
+            else { filterBgImg.sprite = Rounded(); filterBgImg.type = Image.Type.Sliced; filterBgImg.pixelsPerUnitMultiplier = 1f; filterBgImg.color = White; }
 
-            var fPill = ChildRect("FilterPill", filterBar);
-            PlaceCenter(fPill, new Vector2(-80, 0), new Vector2(158, 56));
-            var fPillImg = fPill.gameObject.AddComponent<Image>();
-            var fPillSprite = LoadPhotoSprite(GlassTabPath); // 슬라이드 pill = glass
-            if (fPillSprite != null) { fPillImg.sprite = fPillSprite; fPillImg.preserveAspect = false; }
-            else { fPillImg.sprite = Rounded(); fPillImg.type = Image.Type.Sliced; fPillImg.pixelsPerUnitMultiplier = 1f; }
-            fPillImg.color = White; fPillImg.raycastTarget = false;
+            // baked 텍스트 행 중심: 위(최근 7일) y=+31, 아래(최근 3일) y=-36 (124 높이 기준)
+            var topPos = new Vector2(0, 31);
+            var botPos = new Vector2(0, -36);
 
-            var f3 = MakeSmallTextButton("Filter3", filterBar, "최근 3일", new Vector2(-80, 0), font);
-            var f7 = MakeSmallTextButton("Filter7", filterBar, "최근 7일", new Vector2(80, 0), font);
+            // 슬라이드 pill (선택 행 강조). baked 텍스트가 비치도록 반투명.
+            var filterPill = ChildRect("FilterPill", filterRoot);
+            PlaceCenter(filterPill, topPos, new Vector2(252, 54));
+            var filterPillImg = filterPill.gameObject.AddComponent<Image>();
+            var fPillSprite = LoadPhotoSprite(TabPillPath); // image-Photoroom(1) 재사용
+            if (fPillSprite != null) { filterPillImg.sprite = fPillSprite; filterPillImg.preserveAspect = false; }
+            else { filterPillImg.sprite = Rounded(); filterPillImg.type = Image.Type.Sliced; filterPillImg.pixelsPerUnitMultiplier = 1f; }
+            filterPillImg.color = new Color(1f, 1f, 1f, 0.85f); // 반투명 강조 (진하게)
+            filterPillImg.raycastTarget = false;
 
-            var fSlider = filterBar.gameObject.AddComponent<TabSlider>();
+            // 행 클릭 영역 (투명 버튼, 텍스트는 바탕에 baked라 생략)
+            var f7 = MakeHitButton("Filter7", filterRoot, topPos, new Vector2(260, 58));
+            var f3 = MakeHitButton("Filter3", filterRoot, botPos, new Vector2(260, 58));
+
+            var fSlider = filterRoot.gameObject.AddComponent<TabSlider>();
             var fso = new SerializedObject(fSlider);
-            fso.FindProperty("pill").objectReferenceValue = fPill;
+            fso.FindProperty("pill").objectReferenceValue = filterPill;
             var fTabs = fso.FindProperty("tabs"); fTabs.arraySize = 2;
-            fTabs.GetArrayElementAtIndex(0).objectReferenceValue = f3;
-            fTabs.GetArrayElementAtIndex(1).objectReferenceValue = f7;
+            fTabs.GetArrayElementAtIndex(0).objectReferenceValue = f7;
+            fTabs.GetArrayElementAtIndex(1).objectReferenceValue = f3;
             var fPos = fso.FindProperty("positions"); fPos.arraySize = 2;
-            fPos.GetArrayElementAtIndex(0).vector2Value = new Vector2(-80, 0);
-            fPos.GetArrayElementAtIndex(1).vector2Value = new Vector2(80, 0);
-            fso.FindProperty("defaultIndex").intValue = 1; // 기본 최근 7일
+            fPos.GetArrayElementAtIndex(0).vector2Value = topPos;
+            fPos.GetArrayElementAtIndex(1).vector2Value = botPos;
+            fso.FindProperty("defaultIndex").intValue = 0; // 기본 최근 7일
             fso.ApplyModifiedProperties();
 
             // ===== 하단 중앙 "계속 학습하기" (단독) =====
@@ -394,6 +445,47 @@ namespace Artti.Editor
             PlaceCenter(confirmDelete.GetComponent<RectTransform>(), new Vector2(150, -90), new Vector2(240, 88));
             confirmPopup.SetActive(false);
 
+            // ================= 전체 학습 기록 목록 (전체 보기 오버레이) =================
+            // 배경은 캔버스 직속 "Background"(넓은 이미지)가 담당 - AllSessionsPanel은 자체 배경 없음(중복 제거)
+            var allSessionsPanel = SceneBuilderUtils.CreatePanel("AllSessionsPanel", canvasGo.transform);
+
+            var allTitle = MakeText("Title", allSessionsPanel.transform, "전체 학습 기록", 56, TitleColor, font, bold: true);
+            PlaceTop(allTitle.rectTransform, new Vector2(0, -48), new Vector2(900, 80));
+            var allSubtitle = MakeText("Subtitle", allSessionsPanel.transform, "지금까지의 학습 여정을 한눈에 확인해 보세요.", 28, TitleColor, font, bold: true);
+            PlaceTop(allSubtitle.rectTransform, new Vector2(0, -124), new Vector2(1000, 44));
+
+            var allSessionsEmpty = MakeText("EmptyState", allSessionsPanel.transform, "아직 학습 기록이 없어요.", 36, SubColor, font, bold: false);
+            PlaceCenter(allSessionsEmpty.rectTransform, Vector2.zero, new Vector2(900, 60));
+
+            // ScrollRect (세로 스크롤)
+            var scrollRect = ChildRect("ScrollView", allSessionsPanel.transform);
+            PlaceCenter(scrollRect, new Vector2(0, -64), new Vector2(1040, 760));
+            var scroll = scrollRect.gameObject.AddComponent<ScrollRect>();
+            scroll.horizontal = false; scroll.vertical = true; scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 30f;
+
+            var viewport = ChildRect("Viewport", scrollRect);
+            StretchFull(viewport, 0);
+            var vpImg = viewport.gameObject.AddComponent<Image>();
+            vpImg.color = new Color(1f, 1f, 1f, 0.001f); // 마스크용 거의 투명
+            viewport.gameObject.AddComponent<RectMask2D>();
+
+            var allSessionsContent = ChildRect("Content", viewport);
+            allSessionsContent.anchorMin = new Vector2(0f, 1f);
+            allSessionsContent.anchorMax = new Vector2(1f, 1f);
+            allSessionsContent.pivot = new Vector2(0.5f, 1f);
+            allSessionsContent.anchoredPosition = Vector2.zero;
+            allSessionsContent.sizeDelta = new Vector2(0, 0);
+            SceneBuilderUtils.AddVerticalLayout(allSessionsContent.gameObject, spacing: 20,
+                padding: new RectOffset(20, 20, 20, 20), alignment: TextAnchor.UpperCenter,
+                expandWidth: true, expandHeight: false);
+            var fitter = allSessionsContent.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            scroll.viewport = viewport;
+            scroll.content = allSessionsContent;
+            allSessionsPanel.SetActive(false);
+
             // ===== View 와이어링 =====
             var view = canvasGo.AddComponent<ReportView>();
             var so = new SerializedObject(view);
@@ -406,8 +498,35 @@ namespace Artti.Editor
             // 탭 bg/텍스트색은 미사용(흰 pill이 표시기, 글자는 어둡게 고정) - 와이어링 생략(null, ReportView 가드됨)
             so.FindProperty("speechRoot").objectReferenceValue = speechRoot;
             so.FindProperty("arPlaceholder").objectReferenceValue = arPlaceholder;
-            // 요약/세션 UI 제거됨 - 해당 와이어링 생략 (ReportView 필드는 null, 모두 가드됨)
-            so.FindProperty("sessionCardPrefab").objectReferenceValue = sessionCardPrefab;
+            so.FindProperty("sessionCardPrefab").objectReferenceValue = sessionCardPrefab; // 레거시, 미사용
+
+            // 한눈에 요약 4스탯 (값 텍스트 + 레벨 칭호)
+            so.FindProperty("statCompletedText").objectReferenceValue = stat1Val;
+            so.FindProperty("statStudyTimeText").objectReferenceValue = stat2Val;
+            so.FindProperty("statStreakText").objectReferenceValue = stat3Val;
+            so.FindProperty("statLevelText").objectReferenceValue = stat4Val;
+            so.FindProperty("statLevelTitleText").objectReferenceValue = stat4Title;
+            WireArray(so, "summaryButtons", new UnityEngine.Object[] { stat1Btn, stat2Btn, stat3Btn, stat4Btn });
+
+            // 전체 보기 -> 전체 세션 목록 패널
+            so.FindProperty("moreBtn").objectReferenceValue = moreBtn;
+            so.FindProperty("allSessionsPanel").objectReferenceValue = allSessionsPanel;
+            so.FindProperty("allSessionsContainer").objectReferenceValue = allSessionsContent;
+            so.FindProperty("allSessionsEmpty").objectReferenceValue = allSessionsEmpty.gameObject;
+
+            // 그래프 선
+            so.FindProperty("sessionTrendLine").objectReferenceValue = g1Line1;
+            so.FindProperty("completedTrendLine").objectReferenceValue = g1Line2;
+            so.FindProperty("appearanceTrendLine").objectReferenceValue = g2Line1;
+            WireArray(so, "graphButtons", new UnityEngine.Object[] { graph1Btn, graph2Btn });
+
+            // 최근 학습 기록 행
+            WireArray(so, "recordRows", recordRows);
+
+            // 전체보기 세션 카드의 시나리오 아이콘 (편의점=매장, 약국=💊, 음식점=🍽)
+            so.FindProperty("convenienceIcon").objectReferenceValue = LoadPhotoSprite(StoreIconPath);
+            so.FindProperty("pharmacyIcon").objectReferenceValue = LoadEmoji("1F48A");
+            so.FindProperty("restaurantIcon").objectReferenceValue = LoadEmoji("1F37D");
             so.FindProperty("detailScenarioText").objectReferenceValue = dScenario;
             so.FindProperty("detailStatusBg").objectReferenceValue = dStatusBg;
             so.FindProperty("detailStatusText").objectReferenceValue = dStatusText;
@@ -424,6 +543,8 @@ namespace Artti.Editor
             so.FindProperty("deleteConfirmPopup").objectReferenceValue = confirmPopup;
             so.FindProperty("deleteConfirmBtn").objectReferenceValue = confirmDelete;
             so.FindProperty("deleteCancelBtn").objectReferenceValue = confirmCancel;
+            if (director != null) so.FindProperty("characterDirector").objectReferenceValue = director;
+            if (speechGo != null) so.FindProperty("characterSpeechBubble").objectReferenceValue = speechGo;
             so.ApplyModifiedProperties();
 
             EnsureSceneInBuildSettings(ScenePaths.Report);
@@ -451,31 +572,41 @@ namespace Artti.Editor
             // 탭 시 primary 액션 효과
             var colors = btn.colors;
             colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(0.93f, 0.96f, 1f, 1f);
-            colors.pressedColor = new Color(Primary.r / 255f, Primary.g / 255f, Primary.b / 255f, 1f);
+            colors.highlightedColor = new Color(0.95f, 0.97f, 1f, 1f);
+            colors.pressedColor = new Color(0.90f, 0.94f, 1f, 1f);  // 전체 파랑 대신 은은한 연파랑
             colors.selectedColor = Color.white;
-            colors.fadeDuration = 0.08f;
+            colors.fadeDuration = 0.1f;
             btn.colors = colors;
             SceneBuilderUtils.AddLayoutElement(root, preferredHeight: 150);
 
+            // 상태 배지 (좌측, 세로 중앙)
             var badge = ChildRect("StatusBadge", root.transform);
-            badge.anchorMin = badge.anchorMax = new Vector2(0f, 0.5f);
-            badge.pivot = new Vector2(0f, 0.5f);
-            badge.anchoredPosition = new Vector2(36, 26);
-            badge.sizeDelta = new Vector2(110, 48);
+            AnchorLeft(badge, new Vector2(32, 0), new Vector2(108, 46));
             var badgeImg = badge.gameObject.AddComponent<Image>();
             badgeImg.sprite = Rounded(); badgeImg.type = Image.Type.Sliced; badgeImg.pixelsPerUnitMultiplier = 2f;
             badgeImg.raycastTarget = false;
             var badgeText = MakeText("Text", badge, "완료", 24, TitleColor, font, bold: true);
             StretchFull(badgeText.rectTransform, 2);
 
-            var nameText = MakeText("Name", root.transform, "약국", 42, TitleColor, font, bold: true);
-            nameText.alignment = TextAlignmentOptions.Left;
-            AnchorLeft(nameText.rectTransform, new Vector2(170, 26), new Vector2(420, 60));
+            // 시나리오 아이콘 (둥근 연파랑 박스 + 이모지)
+            var iconBox = ChildRect("IconBox", root.transform);
+            AnchorLeft(iconBox, new Vector2(156, 0), new Vector2(84, 84));
+            var iconBoxImg = iconBox.gameObject.AddComponent<Image>();
+            iconBoxImg.sprite = Rounded(); iconBoxImg.type = Image.Type.Sliced; iconBoxImg.pixelsPerUnitMultiplier = 2f;
+            iconBoxImg.color = new Color32(232, 238, 250, 255); iconBoxImg.raycastTarget = false;
+            var icon = ChildRect("Icon", iconBox);
+            StretchFull(icon, 14);
+            var iconImg = icon.gameObject.AddComponent<Image>();
+            iconImg.preserveAspect = true; iconImg.raycastTarget = false;
 
-            var dateText = MakeText("Date", root.transform, "", 28, SubColor, font, bold: false);
+            // 이름 + 날짜
+            var nameText = MakeText("Name", root.transform, "약국", 40, TitleColor, font, bold: true);
+            nameText.alignment = TextAlignmentOptions.Left;
+            AnchorLeft(nameText.rectTransform, new Vector2(268, 22), new Vector2(440, 54));
+
+            var dateText = MakeText("Date", root.transform, "", 26, SubColor, font, bold: false);
             dateText.alignment = TextAlignmentOptions.Left;
-            AnchorLeft(dateText.rectTransform, new Vector2(172, -34), new Vector2(480, 44));
+            AnchorLeft(dateText.rectTransform, new Vector2(270, -30), new Vector2(500, 40));
 
             var chevron = MakeText("Chevron", root.transform, ">", 44, SubColor, font, bold: true);
             chevron.rectTransform.anchorMin = chevron.rectTransform.anchorMax = new Vector2(1f, 0.5f);
@@ -488,6 +619,7 @@ namespace Artti.Editor
             view.statusText = badgeText;
             view.nameText = nameText;
             view.dateText = dateText;
+            view.iconImage = iconImg;
             view.selectButton = btn;
 
             return SaveAsPrefab(root, SessionCardPrefabPath);
@@ -777,43 +909,90 @@ namespace Artti.Editor
         }
 
         // 요약 패널 스탯: 값(굵게) + 라벨(작게)을 아이콘 오른쪽에 세로로. (아이콘은 패널 이미지에 박힘)
-        static void AddSummaryStat(Transform parent, string value, string label, Vector2 valuePos, TMP_FontAsset font)
+        // 클릭 영역(투명 버튼)을 깔아 카드 전체를 누를 수 있게 하고, 값/라벨 텍스트와 버튼을 반환.
+        static Button AddSummaryStat(Transform parent, string value, string label, Vector2 valuePos, TMP_FontAsset font,
+            out TMP_Text valueText, out TMP_Text labelText)
         {
-            var v = MakeText("StatValue", parent, value, 34, TitleColor, font, bold: true);
-            PlaceCenter(v.rectTransform, valuePos, new Vector2(220, 46));
-            var l = MakeText("StatLabel", parent, label, 22, SubColor, font, bold: false);
-            PlaceCenter(l.rectTransform, new Vector2(valuePos.x, valuePos.y - 33), new Vector2(240, 36));
+            var hit = ChildRect("StatHit", parent);
+            PlaceCenter(hit, new Vector2(valuePos.x, valuePos.y - 16), new Vector2(240, 110));
+            var bg = hit.gameObject.AddComponent<Image>();
+            bg.color = new Color(0f, 0f, 0f, 0f);
+            var btn = hit.gameObject.AddComponent<Button>();
+            btn.targetGraphic = bg;
+
+            valueText = MakeText("StatValue", parent, value, 34, TitleColor, font, bold: true);
+            PlaceCenter(valueText.rectTransform, valuePos, new Vector2(220, 46));
+            labelText = MakeText("StatLabel", parent, label, 22, SubColor, font, bold: false);
+            PlaceCenter(labelText.rectTransform, new Vector2(valuePos.x, valuePos.y - 33), new Vector2(240, 36));
+            return btn;
         }
 
-        // 글래스 패널 (프로스트). title 좌상단. CenterGlassPanel 재사용
+        // 글래스 3D 패널: 뒤에 부드러운 그림자(깊이감) + L-Photoroom 글래스 카드(9-slice) + 좌상단 제목.
         static RectTransform MakeGlassPanel(Transform parent, string name, string title, Vector2 pos, Vector2 size, TMP_FontAsset font)
         {
+            // 그림자 (패널보다 크고 아래로 살짝 -> 떠있는 3D 느낌)
+            var shadow = ChildRect(name + "Shadow", parent);
+            PlaceCenter(shadow, pos + new Vector2(0f, -12f), size + new Vector2(34f, 34f));
+            var sImg = shadow.gameObject.AddComponent<Image>();
+            sImg.sprite = SceneBuilderUtils.EnsureGlowSprite();
+            sImg.color = new Color(0.10f, 0.16f, 0.30f, 0.18f);
+            sImg.raycastTarget = false;
+
+            // 글래스 카드
             var panel = ChildRect(name, parent);
             PlaceCenter(panel, pos, size);
             var img = panel.gameObject.AddComponent<Image>();
-            var glass = LoadPhotoSprite(GraphGlassPath);
-            if (glass != null) { img.sprite = glass; img.preserveAspect = false; img.color = new Color(1f, 1f, 1f, 0.55f); }
-            else { img.sprite = Rounded(); img.type = Image.Type.Sliced; img.pixelsPerUnitMultiplier = 1f; img.color = new Color(1f, 1f, 1f, 0.55f); }
+            var card = LoadGlassCard();
+            if (card != null) { img.sprite = card; img.type = Image.Type.Sliced; img.pixelsPerUnitMultiplier = 1f; img.color = White; }
+            else { img.sprite = Rounded(); img.type = Image.Type.Sliced; img.pixelsPerUnitMultiplier = 1f; img.color = new Color(1f, 1f, 1f, 0.7f); }
             img.raycastTarget = false;
+
             var t = MakeText("Title", panel, title, 28, TitleColor, font, bold: true);
             t.alignment = TextAlignmentOptions.Left;
             PlaceCenter(t.rectTransform, new Vector2(-size.x / 2f + 132, size.y / 2f - 40), new Vector2(420, 44));
             return panel;
         }
 
-        // 꺾은선 그래프 패널: 글래스 + 제목 + 1~2개 선
-        static void BuildGraphPanel(Transform parent, string title, Vector2 pos, Vector2 size,
-            float[] s1, Color c1, float[] s2, Color c2, bool fill, TMP_FontAsset font)
+        // L-Photoroom 글래스 카드 로드. 둥근 모서리 유지 위해 9-slice 테두리 설정 후 Sprite Single.
+        static Sprite LoadGlassCard()
+        {
+            if (AssetImporter.GetAtPath(GlassCardPath) == null)
+                AssetDatabase.ImportAsset(GlassCardPath, ImportAssetOptions.ForceSynchronousImport);
+            if (AssetImporter.GetAtPath(GlassCardPath) is TextureImporter ti)
+            {
+                bool changed = false;
+                if (ti.textureType != TextureImporterType.Sprite) { ti.textureType = TextureImporterType.Sprite; changed = true; }
+                if (ti.spriteImportMode != SpriteImportMode.Single) { ti.spriteImportMode = SpriteImportMode.Single; changed = true; }
+                var border = new Vector4(110, 110, 110, 110); // 모서리 반경 영역 고정
+                if (ti.spriteBorder != border) { ti.spriteBorder = border; changed = true; }
+                if (changed) ti.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Sprite>(GlassCardPath);
+        }
+
+        // 꺾은선 그래프 패널: 글래스 + 제목 + 1~2개 선. 패널 전체 클릭 버튼과 LineChart 참조 반환.
+        static Button BuildGraphPanel(Transform parent, string title, Vector2 pos, Vector2 size,
+            float[] s1, Color c1, float[] s2, Color c2, bool fill, TMP_FontAsset font,
+            out LineChart line1, out LineChart line2)
         {
             var panel = MakeGlassPanel(parent, "GraphPanel", title, pos, size, font);
             var plot = ChildRect("Plot", panel);
             plot.anchorMin = new Vector2(0, 0); plot.anchorMax = new Vector2(1, 1);
             plot.offsetMin = new Vector2(44, 34); plot.offsetMax = new Vector2(-44, -82);
-            AddLine(plot, s1, c1, fill);
-            if (s2 != null) AddLine(plot, s2, c2, false);
+            line1 = AddLine(plot, s1, c1, fill);
+            line2 = s2 != null ? AddLine(plot, s2, c2, false) : null;
+
+            // 패널 전체 클릭 영역 (선 위에 투명 버튼)
+            var hit = ChildRect("GraphHit", panel);
+            StretchFull(hit, 0);
+            var bg = hit.gameObject.AddComponent<Image>();
+            bg.color = new Color(0f, 0f, 0f, 0f);
+            var btn = hit.gameObject.AddComponent<Button>();
+            btn.targetGraphic = bg;
+            return btn;
         }
 
-        static void AddLine(RectTransform plot, float[] vals, Color c, bool fill)
+        static LineChart AddLine(RectTransform plot, float[] vals, Color c, bool fill)
         {
             var go = new GameObject("Line", typeof(RectTransform));
             go.transform.SetParent(plot, false);
@@ -827,29 +1006,46 @@ namespace Artti.Editor
             so.ApplyModifiedProperties();
             lc.color = c;
             lc.raycastTarget = false;
+            return lc;
         }
 
-        // 최근 학습 기록 패널: 글래스 + 제목 + 정적 행(이름 + 포인트)
-        static void BuildRecordsPanel(Transform parent, Vector2 pos, Vector2 size, TMP_FontAsset font)
+        // 최근 학습 기록 패널: 글래스 + 제목 + 클릭 가능한 행 3개. 값은 런타임에 ReportView가 채움.
+        static ReportRecordRow[] BuildRecordsPanel(Transform parent, Vector2 pos, Vector2 size, TMP_FontAsset font)
         {
             var panel = MakeGlassPanel(parent, "RecordsPanel", "최근 학습 기록", pos, size, font);
             float top = size.y / 2f - 108;
-            AddRecordRow(panel, "약국에서 물건 사기", "2025.06.19", "+50", top, size.x, font);
-            AddRecordRow(panel, "편의점에서 과자 사기", "2025.06.18", "+40", top - 72, size.x, font);
-            AddRecordRow(panel, "음식점에서 주문하기", "2025.06.17", "+30", top - 144, size.x, font);
+            return new[]
+            {
+                AddRecordRow(panel, top,        size.x, font),
+                AddRecordRow(panel, top - 72,   size.x, font),
+                AddRecordRow(panel, top - 144,  size.x, font),
+            };
         }
 
-        static void AddRecordRow(RectTransform panel, string name, string date, string pts, float y, float panelW, TMP_FontAsset font)
+        // 기록 행: 텍스트 3개(이름/날짜/포인트)를 행 컨테이너에 담고 행 전체를 투명 버튼으로. ReportRecordRow 반환.
+        static ReportRecordRow AddRecordRow(RectTransform panel, float y, float panelW, TMP_FontAsset font)
         {
-            float left = -panelW / 2f + 60f;
-            var nm = MakeText("RecName", panel, name, 24, TitleColor, font, bold: true);
+            float rw = panelW - 40f;
+            var row = ChildRect("RecordRow", panel);
+            PlaceCenter(row, new Vector2(0, y - 14), new Vector2(rw, 64));
+            var rowBg = row.gameObject.AddComponent<Image>();
+            rowBg.color = new Color(0f, 0f, 0f, 0f);
+            var btn = row.gameObject.AddComponent<Button>();
+            btn.targetGraphic = rowBg;
+
+            float left = -rw / 2f + 40f;
+            var nm = MakeText("RecName", row, "", 24, TitleColor, font, bold: true);
             nm.alignment = TextAlignmentOptions.Left;
-            PlaceCenter(nm.rectTransform, new Vector2(left + 200, y), new Vector2(400, 34));
-            var dt = MakeText("RecDate", panel, date, 18, SubColor, font, bold: false);
+            PlaceCenter(nm.rectTransform, new Vector2(left + 200, 14), new Vector2(400, 34));
+            var dt = MakeText("RecDate", row, "", 18, SubColor, font, bold: false);
             dt.alignment = TextAlignmentOptions.Left;
-            PlaceCenter(dt.rectTransform, new Vector2(left + 200, y - 28), new Vector2(400, 26));
-            var p = MakeText("RecPts", panel, pts, 24, new Color(0.16f, 0.66f, 0.4f, 1f), font, bold: true);
-            PlaceCenter(p.rectTransform, new Vector2(panelW / 2f - 80, y - 12), new Vector2(110, 38));
+            PlaceCenter(dt.rectTransform, new Vector2(left + 200, -14), new Vector2(400, 26));
+            var p = MakeText("RecPts", row, "", 24, new Color(0.16f, 0.66f, 0.4f, 1f), font, bold: true);
+            PlaceCenter(p.rectTransform, new Vector2(rw / 2f - 60, 0), new Vector2(110, 38));
+
+            var view = row.gameObject.AddComponent<ReportRecordRow>();
+            view.nameText = nm; view.dateText = dt; view.pointsText = p; view.button = btn;
+            return view;
         }
 
         // 작은 텍스트 버튼 (bg 투명, 필터용)
@@ -863,6 +1059,18 @@ namespace Artti.Editor
             btn.targetGraphic = bg;
             var t = MakeText("Text", rect, label, 24, TitleColor, font, bold: true);
             StretchFull(t.rectTransform, 2);
+            return btn;
+        }
+
+        // 투명 클릭 영역 버튼 (표시 그래픽 없음, 레이캐스트만). 슬라이더 행 선택용.
+        static Button MakeHitButton(string name, RectTransform parent, Vector2 pos, Vector2 size)
+        {
+            var rect = ChildRect(name, parent);
+            PlaceCenter(rect, pos, size);
+            var bg = rect.gameObject.AddComponent<Image>();
+            bg.color = new Color(0f, 0f, 0f, 0f); // 완전 투명, 레이캐스트 대상
+            var btn = rect.gameObject.AddComponent<Button>();
+            btn.targetGraphic = bg;
             return btn;
         }
 
@@ -922,6 +1130,16 @@ namespace Artti.Editor
             return btn;
         }
 
+        // openmoji 컬러 SVG → Sprite (code = 유니코드, 예: "1F48A"). 없으면 null.
+        static Sprite LoadEmoji(string code)
+        {
+            string path = OpenmojiDir + code + ".svg";
+            foreach (var obj in AssetDatabase.LoadAllAssetsAtPath(path))
+                if (obj is Sprite s) return s;
+            Debug.LogWarning($"[ReportSceneBuilder] 이모지 없음: {path}");
+            return null;
+        }
+
         // delete_forever.svg → Sprite. 없으면 openmoji wastebasket(1F5D1)로 폴백
         static Sprite LoadDeleteIcon()
         {
@@ -966,6 +1184,15 @@ namespace Artti.Editor
             var leaf = Path.GetFileName(path);
             if (!AssetDatabase.IsValidFolder(parent)) EnsureFolder(parent);
             AssetDatabase.CreateFolder(parent, leaf);
+        }
+
+        // SerializedObject 배열 프로퍼티를 한 번에 채움.
+        static void WireArray(SerializedObject so, string prop, UnityEngine.Object[] items)
+        {
+            var p = so.FindProperty(prop);
+            p.arraySize = items.Length;
+            for (int i = 0; i < items.Length; i++)
+                p.GetArrayElementAtIndex(i).objectReferenceValue = items[i];
         }
 
         static RectTransform ChildRect(string name, Transform parent)
@@ -1021,6 +1248,43 @@ namespace Artti.Editor
         {
             var s = AssetDatabase.LoadAssetAtPath<Sprite>(RoundedPath);
             return s != null ? s : Builtin("UI/Skin/UISprite.psd");
+        }
+
+        // 클립 폴더에서 prefix_01..NN.png 프레임을 순서대로 Sprite로 로드. 빠진 건 건너뜀.
+        static Sprite[] LoadFrames(string sub, string prefix, int count)
+        {
+            var list = new System.Collections.Generic.List<Sprite>(count);
+            for (int i = 1; i <= count; i++)
+            {
+                var s = LoadPhotoSprite($"{AnimDir}/{sub}/{prefix}_{i:D2}.png");
+                if (s != null) list.Add(s);
+            }
+            if (list.Count == 0)
+                Debug.LogWarning($"[ReportSceneBuilder] 프레임 없음: {AnimDir}/{sub} (임포트 확인 필요)");
+            return list.ToArray();
+        }
+
+        // 첫 프레임 높이를 CharTargetHeight로 정규화한 표시 크기. 클립 간 캐릭터 크기 일관성 확보.
+        static Vector2 SizeFor(Sprite[] frames)
+        {
+            if (frames == null || frames.Length == 0 || frames[0] == null)
+                return new Vector2(300f, CharTargetHeight);
+            var r = frames[0].rect;
+            float s = r.height > 1f ? CharTargetHeight / r.height : 1f;
+            return new Vector2(r.width * s, r.height * s);
+        }
+
+        // 직렬화된 ReportCharacterDirector.Clip(frames/fps/size) 한 개 채우기.
+        static void SetClip(SerializedObject so, string name, Sprite[] frames, float fps, Vector2 size)
+        {
+            var p = so.FindProperty(name);
+            if (p == null) return;
+            var framesP = p.FindPropertyRelative("frames");
+            framesP.arraySize = frames.Length;
+            for (int i = 0; i < frames.Length; i++)
+                framesP.GetArrayElementAtIndex(i).objectReferenceValue = frames[i];
+            p.FindPropertyRelative("fps").floatValue = fps;
+            p.FindPropertyRelative("size").vector2Value = size;
         }
 
         // 사진 PNG를 Sprite로 로드 (미임포트/타입 불일치면 Sprite Single로 보정).

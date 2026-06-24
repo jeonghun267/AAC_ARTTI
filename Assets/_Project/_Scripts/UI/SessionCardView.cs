@@ -11,6 +11,7 @@ namespace Artti.UI
         public TMP_Text statusText;
         public TMP_Text nameText;
         public TMP_Text dateText;
+        public Image iconImage;     // 시나리오 아이콘 (ReportView가 주입)
         public Button selectButton;
     }
 }

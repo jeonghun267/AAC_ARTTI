@@ -21,6 +21,7 @@ namespace Artti.Editor
         public const string ARField            = "Assets/_Project/Scenes/ARFieldScene.unity";
         public const string ARStore            = "Assets/_Project/Scenes/ARStoreScene.unity"; // Blender 매장 월드 고정 AR 쇼케이스
         public const string Report             = "Assets/_Project/Scenes/ReportScene.unity";
+        public const string RecordDetail       = "Assets/_Project/Scenes/RecordDetailScene.unity"; // 세션 상세 리포트
     }
 
     public static class SceneBuilderUtils
