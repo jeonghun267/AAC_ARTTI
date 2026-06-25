@@ -166,6 +166,108 @@ namespace Artti.Report
             return sb.ToString();
         }
 
+        // ===== 일일/주간 미션 (목표 카드용) =====
+
+        public struct Missions
+        {
+            public string daily;   // 오늘 도전할 미션 (짧게)
+            public string weekly;  // 이번 주 도전할 미션 (짧게)
+        }
+
+        static string _missionCacheKey;
+        static Missions _missionCache;
+        static bool _hasMissionCache;
+
+        // 학습 기록을 근거로 일일/주간 미션을 Gemini로 생성. 항상 Missions 반환(실패 시 폴백).
+        public async UniTask<Missions> GenerateMissionsAsync(ReportOverview overview, string nickname, CancellationToken ct = default)
+        {
+            string key = $"m|{nickname}|{(overview != null ? overview.totalAttempts : 0)}|{(overview != null ? overview.completedCount : 0)}";
+            if (_hasMissionCache && _missionCacheKey == key) return _missionCache;
+
+            var fb = FallbackMissions();
+            var llm = await TryGenerateMissionsLlmAsync(overview, nickname, ct);
+            var result = llm ?? fb;
+            if (string.IsNullOrWhiteSpace(result.daily)) result.daily = fb.daily;
+            if (string.IsNullOrWhiteSpace(result.weekly)) result.weekly = fb.weekly;
+
+            _missionCacheKey = key; _missionCache = result; _hasMissionCache = true;
+            return result;
+        }
+
+        private async UniTask<Missions?> TryGenerateMissionsLlmAsync(ReportOverview overview, string nickname, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(_apiKey)) { Debug.LogWarning("[ReportMission] API key 없음 - 폴백"); return null; }
+
+            string stats = BuildStatsText(overview);
+            string systemPrompt =
+                "당신은 발달장애인 학습자를 돕는 다정한 코치입니다. " +
+                "약국/편의점/음식점 상황의 '말하기 연습' 앱입니다. " +
+                "아래 학습 기록을 근거로 오늘 도전할 '일일 미션' 1개와 이번 주 도전할 '주간 미션' 1개를 제안하세요. " +
+                "각 미션은 구체적이고 실천 가능하며 부담 없게. 각 20자 이내, 이모지 금지. " +
+                (string.IsNullOrEmpty(nickname) ? "" : $"대상은 '{nickname}님'입니다. ") +
+                "반드시 JSON만 출력: {\"daily\":\"...\",\"weekly\":\"...\"}";
+
+            var body = new JObject
+            {
+                ["system_instruction"] = new JObject { ["parts"] = new JArray { new JObject { ["text"] = systemPrompt } } },
+                ["contents"] = new JArray
+                {
+                    new JObject { ["role"] = "user", ["parts"] = new JArray { new JObject { ["text"] = $"학습 기록:\n{stats}" } } }
+                },
+                ["generationConfig"] = new JObject
+                {
+                    ["temperature"] = 0.9,
+                    ["maxOutputTokens"] = 160,
+                    ["responseMimeType"] = "application/json"
+                }
+            };
+
+            string jsonBody = body.ToString(Formatting.None);
+            using (var request = new UnityWebRequest($"{ApiUrl}?key={_apiKey}", "POST"))
+            {
+                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+
+                try { await request.SendWebRequest().WithCancellation(ct); }
+                catch (OperationCanceledException) { throw; }
+                catch (UnityWebRequestException e)
+                {
+                    Debug.LogWarning($"[ReportMission] HTTP {(int)e.ResponseCode}(폴백): {e.Text}");
+                    return null;
+                }
+                if (request.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogWarning($"[ReportMission] API 실패(폴백): {request.error}");
+                    return null;
+                }
+                return ParseMissions(request.downloadHandler.text);
+            }
+        }
+
+        private static Missions? ParseMissions(string responseJson)
+        {
+            try
+            {
+                var root = JObject.Parse(responseJson);
+                var text = (root["candidates"]?[0]?["content"]?["parts"] as JArray)?[0]?["text"]?.ToString();
+                if (string.IsNullOrWhiteSpace(text)) return null;
+                var obj = JObject.Parse(text);
+                var d = obj["daily"]?.ToString();
+                var w = obj["weekly"]?.ToString();
+                if (string.IsNullOrWhiteSpace(d) && string.IsNullOrWhiteSpace(w)) return null;
+                return new Missions { daily = d, weekly = w };
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[ReportMission] 파싱 실패(폴백): {e.Message}");
+                return null;
+            }
+        }
+
+        private static Missions FallbackMissions() =>
+            new Missions { daily = "오늘 한 시나리오 끝내기", weekly = "이번 주 세 번 연습하기" };
+
         private static string Fallback(ReportOverview o, string nickname, bool high)
         {
             string who = string.IsNullOrEmpty(nickname) ? "" : $"{nickname}님 ";
