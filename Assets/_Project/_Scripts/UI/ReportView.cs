@@ -39,11 +39,26 @@ namespace Artti.UI
         [SerializeField] private TMP_Text statLevelTitleText;   // 레벨 칭호
         [SerializeField] private Button[] summaryButtons;       // 스탯 카드 + 전체 보기 (클릭 -> 최신 상세)
 
+        [Header("하단 격려 바")]
+        [SerializeField] private TMP_Text encourageText;        // LLM 응원 문구 (캐릭터 말풍선 대체)
+
+        [Header("헤더 / 캐릭터")]
+        [SerializeField] private Image profileAvatar;           // 좌상단 프로필 아바타
+        [SerializeField] private TMP_Text charNameText;         // 캐릭터 카드 이름
+
         [Header("그래프 (최근 7일 추세)")]
         [SerializeField] private LineChart sessionTrendLine;    // 전체 학습 세션
         [SerializeField] private LineChart completedTrendLine;  // 전체 학습 세션 보조선(완료)
         [SerializeField] private LineChart appearanceTrendLine; // 전체 출현
         [SerializeField] private Button[] graphButtons;         // 그래프 패널 (클릭 -> 최신 상세)
+
+        [Header("일일미션 & 목표")]
+        [SerializeField] private Image dailyGoalFill;           // 일일 목표 진행 바
+        [SerializeField] private TMP_Text dailyGoalText;        // "x/1"
+        [SerializeField] private Image weeklyGoalFill;          // 주간 목표 진행 바
+        [SerializeField] private TMP_Text weeklyGoalText;       // "x/5"
+        [SerializeField] private TMP_Text dailyMissionText;     // Gemini 일일 미션
+        [SerializeField] private TMP_Text weeklyMissionText;    // Gemini 주간 미션
 
         [Header("최근 학습 기록")]
         [SerializeField] private ReportRecordRow[] recordRows;  // 클릭 -> 해당 세션 상세
@@ -111,12 +126,13 @@ namespace Artti.UI
             if (moreBtn != null) moreBtn.onClick.AddListener(ShowAllSessions);
 
             var profile = AppBootstrap.Instance?.ProfileManager?.ActiveProfile;
+            string nick = profile != null && !string.IsNullOrEmpty(profile.nickname) ? profile.nickname : null;
             if (titleText != null)
-                titleText.text = profile != null && !string.IsNullOrEmpty(profile.nickname)
-                    ? $"{profile.nickname} 님의 레포트"
-                    : "레포트";
+                titleText.text = nick != null ? $"{nick}님의 종합 리포트" : "종합 리포트";
+            if (charNameText != null) charNameText.text = nick ?? "이름";
             if (profile != null)
                 _avatarSprite = AvatarLibrary.Load()?.GetById(profile.avatarId);
+            if (profileAvatar != null && _avatarSprite != null) profileAvatar.sprite = _avatarSprite;
 
             SetTab(speech: true);
             ShowList();
@@ -134,6 +150,7 @@ namespace Artti.UI
             }
             _service = new ReportDataService(path);
             RefreshListPanel();
+            LoadMissionsAsync().Forget(); // 일일/주간 미션 (Gemini)
 
             // 데이터 준비 완료 -> 캐릭터 입장 연출 시작. 말풍선 문구는 레포트 기록 기반으로 LLM 생성.
             PlayCharacterIntro();
@@ -142,7 +159,7 @@ namespace Artti.UI
         // 캐릭터 walk 입장과 병렬로 레포트 기반 응원 문구(LLM)를 생성해 director에 넘긴다.
         private void PlayCharacterIntro()
         {
-            if (characterDirector == null || _service == null) return;
+            if (_service == null) return;
 
             var overview = _service.GetOverview();
             var profile = AppBootstrap.Instance?.ProfileManager?.ActiveProfile;
@@ -153,7 +170,41 @@ namespace Artti.UI
             var ct = this.GetCancellationTokenOnDestroy();
 
             var messageTask = GenerateMessageAsync(encourage, overview, nick, ct);
-            characterDirector.Play(messageTask);
+            // 캐릭터가 있으면 말풍선, 없으면(oo.png 대시보드) 하단 격려 바에 표시
+            if (characterDirector != null) characterDirector.Play(messageTask);
+            else ShowEncouragementAsync(messageTask).Forget();
+        }
+
+        // 하단 격려 바에 LLM 응원 문구 표시. 실패/취소 시 빌더 기본 문구 유지.
+        private async UniTaskVoid ShowEncouragementAsync(UniTask<(string message, bool isHighScore)> task)
+        {
+            if (encourageText == null) return;
+            try
+            {
+                var (message, _) = await task;
+                if (!string.IsNullOrEmpty(message)) encourageText.text = message;
+            }
+            catch (OperationCanceledException) { }
+            catch { /* LLM 실패 시 기본 문구 유지 */ }
+        }
+
+        // 일일/주간 미션을 Gemini로 생성해 목표 카드에 표시. 실패/오프라인 시 폴백 문구.
+        private async UniTaskVoid LoadMissionsAsync()
+        {
+            if (_service == null || (dailyMissionText == null && weeklyMissionText == null)) return;
+            var overview = _service.GetOverview();
+            var profile = AppBootstrap.Instance?.ProfileManager?.ActiveProfile;
+            string nick = profile != null ? profile.nickname : null;
+            var svc = new ReportEncouragementService(ApiKeyLoader.Get(ApiKeyLoader.GeminiApi));
+            var ct = this.GetCancellationTokenOnDestroy();
+            try
+            {
+                var m = await svc.GenerateMissionsAsync(overview, nick, ct);
+                if (dailyMissionText != null) dailyMissionText.text = m.daily;
+                if (weeklyMissionText != null) weeklyMissionText.text = m.weekly;
+            }
+            catch (OperationCanceledException) { }
+            catch { }
         }
 
         private static async UniTask<(string message, bool isHighScore)> GenerateMessageAsync(
@@ -206,11 +257,10 @@ namespace Artti.UI
         // "전체 보기": 전체 세션 카드를 채우고 목록 패널로 전환
         private void ShowAllSessions()
         {
-            if (_service == null) return;
+            if (_service == null || !HasActiveProfile()) return; // 프로필 미선택 시 진입 불가
             var sessions = _service.GetSessions();
 
             var ct = this.GetCancellationTokenOnDestroy();
-            SetupAllSessionsDecor();   // 사진 배경 위 옅은 입자 (1회)
 
             // 제목/부제 진입 애니 (패널 직속이라 위치 애니 OK)
             if (allSessionsPanel != null)
@@ -246,10 +296,33 @@ namespace Artti.UI
                     var id = session.sessionId;
                     if (card.selectButton != null) card.selectButton.onClick.AddListener(() => ShowDetail(id));
 
-                    // 글래스 + 3D 호버(틸트/떠오름)
+                    // 🃏 3D 호버(틸트/떠오름)
                     if (go.GetComponent<UICard3D>() == null) go.AddComponent<UICard3D>();
 
-                    // 카드 순차 팝인 (레이아웃 그룹이라 위치 대신 알파+스케일) - 천천히 보이게
+                    // 🃏 떠있는 느낌의 부드러운 그림자 (레이아웃 안 깨지게 카드 본체에 Shadow 이펙트)
+                    if (go.GetComponent<Shadow>() == null)
+                    {
+                        var sh = go.AddComponent<Shadow>();
+                        sh.effectColor = new Color(0.10f, 0.16f, 0.30f, 0.20f);
+                        sh.effectDistance = new Vector2(0f, -6f);
+                        sh.useGraphicAlpha = false;
+                    }
+
+                    // 💡 완료 배지: 미세한 반복 펄스(스케일+밝기)
+                    if (session.completed && card.statusBg != null &&
+                        card.statusBg.GetComponent<UISparkle>() == null)
+                        card.statusBg.gameObject.AddComponent<UISparkle>();
+
+                    // 💡 화살표(>): 미세한 반복 펄스로 "탭 가능" 힌트
+                    var chevron = go.transform.Find("Chevron");
+                    if (chevron != null && chevron.GetComponent<UISparkle>() == null)
+                    {
+                        var sp = chevron.gameObject.AddComponent<UISparkle>();
+                        sp.scaleAmp = 0.16f;   // 화살표는 살짝 더 또렷하게
+                        sp.alphaAmp = 0.30f;
+                    }
+
+                    // 🌱 카드 순차 팝인 (레이아웃 그룹이라 위치 대신 알파+스케일) - 천천히 보이게
                     UIFx.PopIn((RectTransform)go.transform, 0.15f + i * 0.12f, 0.42f, ct).Forget();
                 }
             }
@@ -258,19 +331,6 @@ namespace Artti.UI
             if (detailPanel != null) detailPanel.SetActive(false);
             if (allSessionsPanel != null) allSessionsPanel.SetActive(true);
             SetCharacterShown(false); // 전체보기에선 캐릭터+말풍선 숨김
-        }
-
-        // 전체보기: 사진 배경 위에 옅은 입자만 1회 추가 (그라데이션은 안 씀 - 배경 이미지 유지)
-        private void SetupAllSessionsDecor()
-        {
-            if (allSessionsPanel == null) return;
-            if (allSessionsPanel.transform.Find("Particles") != null) return;
-            var p = new GameObject("Particles", typeof(RectTransform));
-            p.transform.SetParent(allSessionsPanel.transform, false);
-            p.transform.SetSiblingIndex(0); // 제목/카드 뒤
-            var bd = p.AddComponent<UIBackdrop>();
-            bd.gradient = false;
-            bd.particleCount = 10;
         }
 
         private Sprite IconFor(string scenarioId)
@@ -285,10 +345,9 @@ namespace Artti.UI
 
         private void SetTab(bool speech)
         {
-            if (speechTabBg != null) speechTabBg.color = speech ? Primary : Color.white;
-            if (arTabBg != null) arTabBg.color = speech ? Color.white : Primary;
-            if (speechTabText != null) speechTabText.color = speech ? Color.white : TabIdleText;
-            if (arTabText != null) arTabText.color = speech ? TabIdleText : Color.white;
+            // 이미지 탭: 선택은 불투명(1), 비선택은 반투명(0.5). 베이크 텍스트라 색은 안 건드림.
+            if (speechTabBg != null) { var c = speechTabBg.color; c.a = speech ? 1f : 0.5f; speechTabBg.color = c; }
+            if (arTabBg != null) { var c = arTabBg.color; c.a = speech ? 0.5f : 1f; arTabBg.color = c; }
             if (speechRoot != null) speechRoot.SetActive(speech);
             if (arPlaceholder != null) arPlaceholder.SetActive(!speech);
         }
@@ -313,14 +372,37 @@ namespace Artti.UI
             if (completedTrendLine != null) completedTrendLine.SetValues(_service.GetCompletedTrend(days));
             if (appearanceTrendLine != null) appearanceTrendLine.SetValues(_service.GetAppearanceTrend(days));
 
-            // 최근 학습 기록
+            // 일일미션 & 목표 (완료 세션 기준: 오늘 / 이번 주)
+            int doneToday = 0, doneWeek = 0;
+            var today = DateTimeOffset.Now.ToLocalTime().Date;
+            var weekStart = today.AddDays(-(int)today.DayOfWeek);
+            foreach (var s in _service.GetSessions())
+            {
+                if (!s.completed) continue;
+                var d = DateTimeOffset.FromUnixTimeMilliseconds(s.dateMs).ToLocalTime().Date;
+                if (d == today) doneToday++;
+                if (d >= weekStart) doneWeek++;
+            }
+            const int dailyTarget = 2, weeklyTarget = 5;
+            if (dailyGoalFill != null) dailyGoalFill.fillAmount = Mathf.Clamp01(doneToday / (float)dailyTarget);
+            if (dailyGoalText != null) dailyGoalText.text = $"{doneToday}/{dailyTarget}";
+            if (weeklyGoalFill != null) weeklyGoalFill.fillAmount = Mathf.Clamp01(doneWeek / (float)weeklyTarget);
+            if (weeklyGoalText != null) weeklyGoalText.text = $"{doneWeek}/{weeklyTarget}";
+
+            // 최근 학습 기록 (+ 프로필 미선택 시 전체보기 비활성)
             RefreshRecords();
+            if (moreBtn != null) moreBtn.interactable = HasActiveProfile();
         }
+
+        // 활성 프로필이 선택돼 있는지. 미선택 시 기록/전체보기 차단.
+        private static bool HasActiveProfile() =>
+            AppBootstrap.Instance?.ProfileManager?.ActiveProfile != null;
 
         private void RefreshRecords()
         {
             if (recordRows == null || recordRows.Length == 0) return;
-            var records = _service.GetRecentRecords(recordRows.Length);
+            var records = HasActiveProfile() ? _service.GetRecentRecords(recordRows.Length)
+                                             : new List<ReportRecord>();
             for (int i = 0; i < recordRows.Length; i++)
             {
                 var row = recordRows[i];
