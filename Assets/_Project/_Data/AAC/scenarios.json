@@ -37,8 +37,8 @@
       "objectives": [
         { "id": "greeting",     "description": "인사 또는 입장",         "completion": "사용자 입장 발화 또는 카드 터치 1회" },
         { "id": "select_items", "description": "물건 찾기 / 요청",       "completion": "items_requested 슬롯 1개 이상 채움" },
-        { "id": "checkout",     "description": "결제 진행",              "completion": "payment_method 슬롯 확정" },
         { "id": "extras",       "description": "봉투, 영수증 등 부가 요청","completion": "bag_needed 슬롯 확정 (필요/불필요)" },
+        { "id": "checkout",     "description": "결제 진행",              "completion": "payment_method 슬롯 확정" },
         { "id": "farewell",     "description": "작별",                   "completion": "사용자 작별 발화 또는 NPC 작별 응답 후 종료" }
       ],
       "slots": [

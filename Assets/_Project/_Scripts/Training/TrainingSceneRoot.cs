@@ -45,6 +45,19 @@ namespace Artti.Training
         private CancellationTokenSource _cts;
         private List<AACCard> _currentPool = new List<AACCard>();
 
+        // 변경점: 직전 도구가 점원 발화를 주지 않았을 때만 고정 멘트로 메꾸기 위한 플래그(침묵 방어선).
+        //   mark_objective_complete에 npc_speech를 추가했지만 LLM이 빈 값을 낼 수 있다.
+        private bool _lastToolSpoke;
+
+        // 단계 전환 턴에도 "방금 점원이 실제로 한 말"로 카드를 고르기 위한 임시 보관.
+        // HandleObjectiveChanged는 이벤트 핸들러라 인자를 못 받아 필드로 넘긴다.
+        private DialogueTurn _pendingTurn;
+
+        // 대화하기(자유 대화) 모드 상태. ON인 동안 objective·스테퍼는 멈춘다.
+        private bool _freeTalkActive;
+        private bool _freeTalkBusy;
+        private string _freeTalkSystemPrompt;
+
         private void Awake()
         {
             _dialogueManager = new DialogueManager();
@@ -77,12 +90,20 @@ namespace Artti.Training
 
             var promptAsset = Resources.Load<TextAsset>("AAC/system_prompts");
             if (promptAsset != null)
-                _systemPrompt = new SystemPromptProvider(promptAsset.text).BuildSystemPrompt(scenarioId);
+            {
+                var provider = new SystemPromptProvider(promptAsset.text);
+                _systemPrompt = provider.BuildSystemPrompt(scenarioId);
+                // 대화하기 모드는 도구·카드 규칙이 빠진 persona 기반 프롬프트를 따로 쓴다.
+                _freeTalkSystemPrompt = BuildFreeTalkPrompt(provider.BuildPersona(scenarioId));
+            }
             else
+            {
                 Debug.LogWarning("[TrainingSceneRoot] Resources/AAC/system_prompts.json 없음 — 페르소나 없이 호출");
+                _freeTalkSystemPrompt = BuildFreeTalkPrompt(null); // 자유 대화는 최소 persona라도 있어야 한다
+            }
 
             // 변경점(Unit 3): Gemini가 실재하는 card_id만 고르도록 시나리오 카드 목록을 시스템 프롬프트에 부착.
-            //   (없으면 card_ids를 환각 → ShowCardsOrPool이 매번 룰 풀로 폴백하게 됨)
+            //   (없으면 card_ids를 환각 → 매번 룰 풀로 폴백하게 됨)
             _systemPrompt = AppendAvailableCards(_systemPrompt);
 
             _geminiService = new GeminiDialogueService(geminiKey, declsJson);
@@ -121,12 +142,16 @@ namespace Artti.Training
         }
 
         private const int PoolSize = 4;
+        // scenarios.json의 turnLimit과 동기화. 초과 시 앱이 세션을 부드럽게 마무리한다.
+        private const int TurnLimit = 12;
 
         // 시나리오별 objective 순서 (scenarios.json과 동기화)
         private static readonly Dictionary<string, string[]> ObjectiveOrderByScenario = new Dictionary<string, string[]>
         {
             { "pharmacy",    new[] { "greeting", "identify_needs", "serve_meds", "payment", "farewell" } },
-            { "convenience", new[] { "greeting", "select_items", "checkout", "extras", "farewell" } },
+            // 봉투를 먼저 묻고 결제한다 — 실제 편의점 흐름이자 페르소나("Always ask about 봉투 needed
+            // before payment confirmation")와 few-shot 예시가 이미 전제하던 순서.
+            { "convenience", new[] { "greeting", "select_items", "extras", "checkout", "farewell" } },
             { "restaurant",  new[] { "greeting", "menu_browse", "order", "order_modifications", "payment", "farewell" } }
         };
 
@@ -142,7 +167,7 @@ namespace Artti.Training
         private static readonly Dictionary<string, string> StepperLabels = new Dictionary<string, string>
         {
             { "greeting", "인사하기" }, { "select_items", "물건 찾기" }, { "checkout", "계산하기" },
-            { "extras", "후속 처리" }, { "farewell", "작별" },
+            { "extras", "봉투 확인" }, { "farewell", "작별" },
             { "identify_needs", "증상 말하기" }, { "serve_meds", "물품 요구하기" }, { "payment", "계산하기" },
             { "menu_browse", "메뉴 보기" }, { "order", "주문하기" }, { "order_modifications", "추가 주문" }
         };
@@ -216,12 +241,16 @@ namespace Artti.Training
             CloudSttService.RequestMicPermissionAsync(_cts.Token).Forget();
 
             // scenarios.json의 첫 objective가 모든 시나리오에서 "greeting"
-            _dialogueManager.Initialize("greeting");
+            // 변경점: objective 순서와 "그 단계에 카드가 있는가" 판정을 DialogueManager에 주입.
+            //   진행 판정이 MonoBehaviour에서 상태 머신으로 옮겨졌다 (CLAUDE.md 아키텍처 규칙).
+            ObjectiveOrderByScenario.TryGetValue(scenarioId, out var objectiveOrder);
+            _dialogueManager.Initialize("greeting", objectiveOrder, ObjectiveHasCards, TurnLimit);
             _dialogueManager.OnToolCallApplied += HandleToolCall;
             _dialogueManager.OnObjectiveChanged += HandleObjectiveChanged;
 
             uiView.OnCardTapped += HandleCardTapped;
             uiView.OnExtraRequested += HandleExtraRequested;
+            uiView.OnFreeTalkToggled += HandleFreeTalkToggled;
 
             _eventLogger?.LogScenarioEntered();
             _eventLogger?.LogObjectiveEntered("greeting");
@@ -305,53 +334,159 @@ namespace Artti.Training
                    && map.TryGetValue(objectiveId, out line);
         }
 
-        private void RefreshPool()
+        // 변경점: 단계가 넘어가는 턴에는 _pendingTurn을 통해 실제 점원 발화와 LLM 카드가 전달된다.
+        //   이전에는 항상 (null, null)이라, 단계 전환 직후 카드가 고정 멘트 기준으로만 정해졌다.
+        //   그래서 "우유 꺼내 드릴까요?"라고 물어놓고 물/과자/이거 살게요가 뜨는 일이 생겼다.
+        private void RefreshPool() =>
+            ApplyPool(ResolveCardPool(_pendingTurn?.CardIds, _pendingTurn?.NpcSpeech));
+
+        // 카드 풀 해석 3단계 + 채우기.
+        //   1) LLM이 지정한 card_ids 중 실재하는 것
+        //   2) 룰베이스 — 방금 생성된 실제 점원 발화로 키워드 매칭
+        //   3) objective 태그 필터
+        // 그 뒤 PoolSize에 못 미치면 objective 카드로 채운다. 이 채우기가 card_cvs_yes/no처럼
+        // 룰북 어느 규칙에도 없지만 objective 태그는 달려 있는 카드를 자동으로 끌어온다.
+        private List<AACCard> ResolveCardPool(string[] llmCardIds, string npcSpeech)
         {
-            if (aacDatabase == null) return;
+            var pool = new List<AACCard>(PoolSize);
+            if (aacDatabase == null) return pool;
+
             var objective = _dialogueManager.CurrentObjectiveId;
 
-            // 룰베이스 우선 (편의점): 점원 발화 키워드 매칭 → objective 폴백 순으로 정렬된 카드 풀 해석.
-            // 브랜치 카드 누출/무정렬 Take(4)로 생기던 맥락 불일치 카드를 차단.
-            if (_cardRuleBook != null && _cardRuleBook.IsLoaded)
+            // 1) LLM 지정 — 단, 현재 단계에 맞는 카드만 받는다.
+            //    LLM이 결제 단계에서 "물 주세요"를 끼워 넣는 일이 있어 무조건 신뢰하지 않는다.
+            //    풀이 4칸을 못 채우면 그냥 적게 보여준다 (빈 슬롯은 SetCardList가 숨긴다).
+            //    무관한 카드로 칸을 메우면 단계만 바뀔 뿐 같은 문제가 되살아난다.
+            if (llmCardIds != null)
             {
-                var ruled = ResolvePoolByRule(objective);
-                if (ruled != null && ruled.Count > 0)
+                foreach (var id in llmCardIds)
                 {
-                    _currentPool = ruled;
-                    uiView.SetCardList(_currentPool);
-                    return;
+                    var c = aacDatabase.GetCard(id);
+                    if (c == null)
+                    {
+                        Debug.LogWarning($"[TrainingSceneRoot] Gemini가 고른 카드 id 미존재: {id}");
+                        continue;
+                    }
+
+                    if (IsApplicable(c, objective))
+                    {
+                        AddCard(pool, c);
+                    }
+                    else
+                    {
+                        // 버린다. 채워 넣으면 "계산 단계에 물 주세요"가 되살아난다.
+                        Debug.Log($"[TrainingSceneRoot] '{objective}' 단계와 무관한 LLM 카드 제외: {c.id}");
+                    }
                 }
             }
 
-            // 폴백: 기존 objective 태그 필터 (룰베이스 미적용 시나리오/규칙 미스 시)
-            _currentPool = aacDatabase.CardsForObjective(scenarioId, objective)
-                                      .Take(PoolSize)
-                                      .ToList();
-            if (_currentPool.Count == 0)
+            // 2) 룰베이스 — 변경점: 고정 멘트가 아니라 실제 점원 발화로 매칭한다.
+            //    이전에는 TryGetObjectivePrompt의 고정 대사로 매칭해서, 점원이 실제로 물은 것과
+            //    무관한 카드가 뜨는 원인이었다.
+            if (pool.Count < PoolSize && _cardRuleBook != null && _cardRuleBook.IsLoaded)
             {
-                Debug.LogWarning($"[TrainingSceneRoot] {scenarioId}/{objective} objective 카드 없음 — 데이터 점검 필요");
+                var context = !string.IsNullOrWhiteSpace(npcSpeech)
+                    ? npcSpeech
+                    : (TryGetObjectivePrompt(objective, out var fixedLine) ? fixedLine : null);
+
+                var match = context != null ? _cardRuleBook.Match(context) : null;
+                match ??= _cardRuleBook.ResolveByObjective(objective);
+
+                if (match != null)
+                {
+                    foreach (var id in match.CardIds)
+                    {
+                        var c = aacDatabase.GetCard(id);
+                        if (c == null)
+                            Debug.LogWarning($"[TrainingSceneRoot] 룰베이스 카드 id 미존재: {id} (규칙 {match.RuleId})");
+                        else if (IsApplicable(c, objective))
+                            AddCard(pool, c);
+                        // 서브플로 규칙(location_subflow 등)은 키워드만 보고 걸리므로 단계 검사를 한 번 더 한다.
+                        // 점원이 계산 중에 "어디"라고 말했다고 "음료 어디 있어요?"가 뜨면 안 된다.
+                        if (pool.Count >= PoolSize) break;
+                    }
+                }
             }
-            uiView.SetCardList(_currentPool);
+
+            // 3) objective 태그 폴백 겸 빈 칸 채우기
+            if (pool.Count < PoolSize)
+            {
+                foreach (var c in aacDatabase.CardsForObjective(scenarioId, objective))
+                {
+                    AddCard(pool, c);
+                    if (pool.Count >= PoolSize) break;
+                }
+            }
+
+            // 최후 방어 — 풀이 비면 사용자가 아무것도 못 누른다.
+            if (pool.Count == 0)
+            {
+                Debug.LogWarning($"[TrainingSceneRoot] {scenarioId}/{objective} 카드 풀 비어있음 — 데이터 점검 필요");
+                var help = aacDatabase.GetCard("card_cvs_help");
+                if (help != null) pool.Add(help);
+            }
+
+            // 안전망 — 점원이 예/아니요 질문을 했는데 LLM이 답 카드를 안 골랐을 때 앱이 채운다.
+            ApplyYesNoGuarantee(pool, npcSpeech);
+            return pool;
         }
 
-        // 룰베이스로 현재 objective의 카드 풀을 정렬 순서대로 해석. 점원 발화 키워드 매칭을 먼저 시도.
-        private List<AACCard> ResolvePoolByRule(string objective)
-        {
-            var match = TryGetObjectivePrompt(objective, out var npcLine)
-                ? _cardRuleBook.Match(npcLine)
-                : null;
-            match ??= _cardRuleBook.ResolveByObjective(objective);
-            if (match == null) return null;
+        // 예/아니요로 답할 수 없는 질문을 걸러내는 의문사 목록.
+        private static readonly string[] WhWords =
+            { "어떤", "어느", "무엇", "무슨", "뭐", "어디", "언제", "얼마", "몇", "왜", "누구", "어떻게" };
 
-            var pool = new List<AACCard>(match.CardIds.Length);
-            foreach (var id in match.CardIds)
-            {
-                var card = aacDatabase.GetCard(id);
-                if (card != null) pool.Add(card);
-                else Debug.LogWarning($"[TrainingSceneRoot] 룰베이스 카드 id 미존재: {id} (규칙 {match.RuleId})");
-                if (pool.Count >= PoolSize) break;
-            }
-            return pool;
+        // 점원 발화가 예/아니요 질문인지. 물음표로 끝나되 의문사가 없으면 yes/no로 본다.
+        // ("어떤 과자 찾으세요?"는 의문사가 있어 제외 — 네/아니요로는 답이 안 된다)
+        private static bool IsYesNoQuestion(string npcSpeech)
+        {
+            if (string.IsNullOrWhiteSpace(npcSpeech)) return false;
+
+            var trimmed = npcSpeech.TrimEnd();
+            if (!trimmed.EndsWith("?")) return false;
+
+            for (int i = 0; i < WhWords.Length; i++)
+                if (trimmed.Contains(WhWords[i])) return false;
+            return true;
+        }
+
+        // 네/아니요를 풀 맨 앞 두 칸으로 올린다. 방금 받은 질문의 답이 제일 먼저 보이게 하려는 것.
+        private void ApplyYesNoGuarantee(List<AACCard> pool, string npcSpeech)
+        {
+            if (scenarioId != ScenarioIds.Convenience) return;   // 편의점 전용 카드 id
+            if (!IsYesNoQuestion(npcSpeech)) return;
+
+            var yes = aacDatabase.GetCard("card_cvs_yes");
+            var no  = aacDatabase.GetCard("card_cvs_no");
+            if (yes == null || no == null) return;
+
+            // 이미 뒤쪽에 들어와 있으면 떼어내고 앞으로 다시 붙인다.
+            pool.RemoveAll(c => c != null && (c.id == yes.id || c.id == no.id));
+            pool.Insert(0, no);
+            pool.Insert(0, yes);
+            if (pool.Count > PoolSize) pool.RemoveRange(PoolSize, pool.Count - PoolSize);
+        }
+
+        // 이 카드가 현재 단계에서 쓸 만한가. applicableObjectives가 비어 있으면 어느 단계에서나 허용.
+        private static bool IsApplicable(AACCard card, string objective)
+        {
+            if (card == null) return false;
+            if (card.applicableObjectives == null || card.applicableObjectives.Length == 0) return true;
+            return System.Array.IndexOf(card.applicableObjectives, objective) >= 0;
+        }
+
+        // 같은 카드가 두 경로에서 중복으로 들어오는 것을 막는다.
+        private static void AddCard(List<AACCard> pool, AACCard card)
+        {
+            if (card == null || pool.Count >= PoolSize) return;
+            for (int i = 0; i < pool.Count; i++)
+                if (pool[i] != null && pool[i].id == card.id) return;
+            pool.Add(card);
+        }
+
+        private void ApplyPool(List<AACCard> pool)
+        {
+            _currentPool = pool ?? new List<AACCard>();
+            uiView.SetCardList(_currentPool);
         }
 
         // "기타" 버튼 → 현재 풀에 포함되지 않은 같은 시나리오 카드 전체를 모달로 표시
@@ -379,12 +514,10 @@ namespace Artti.Training
 
             if (IsPoolMode)
             {
-                // 변경점(Unit 3): Gemini 주도 시에는 고정 멘트를 읽지 않음(점원 발화는 Gemini가 생성).
-                //   단, 시작 인사(첫 objective)는 대화 물꼬를 트기 위해 고정 멘트 유지.
-                bool isOpeningGreeting =
-                    ObjectiveOrderByScenario.TryGetValue(scenarioId, out var ord)
-                    && ord.Length > 0 && newObjectiveId == ord[0];
-                if ((!_useGemini || isOpeningGreeting) && TryGetObjectivePrompt(newObjectiveId, out var npcLine))
+                // 변경점: 고정 멘트는 "직전 도구가 발화를 주지 않았을 때"만 메꾼다(침묵 방어선).
+                //   이전에는 _useGemini면 무조건 건너뛰어서, npc_speech 없는 mark_objective_complete로
+                //   단계가 넘어가는 턴에 점원이 아무 말도 안 했다. 사용자에게는 대답이 한 턴 밀린 것처럼 보였다.
+                if ((!_useGemini || !_lastToolSpoke) && TryGetObjectivePrompt(newObjectiveId, out var npcLine))
                 {
                     SpeakNpc(npcLine);
                 }
@@ -394,6 +527,7 @@ namespace Artti.Training
 
         private void OnDestroy()
         {
+            _freeTalkActive = false;
             // 완료 없이 씬 이탈 → 중단 처리 (마지막 objective 기록). 레포트의 미완료/연습 필요 집계에 사용
             if (!_sessionCompleted)
                 _eventLogger?.LogSessionAbandoned(_dialogueManager?.CurrentObjectiveId);
@@ -405,6 +539,9 @@ namespace Artti.Training
 
         private async void HandleCardTapped(AACCard card)
         {
+            // 대화하기 모드 중에는 카드 입력을 받지 않는다 (풀이 잠겨 있지만 방어적으로 한 번 더).
+            if (_freeTalkActive) return;
+
             // 변경점: 직전 점원 발화가 fallback("다시 말씀해주세요" 등)이었다면, 카드를 누르는 순간
             //         재생을 중단해 마이크 입력과 겹치지 않게 함. 일반 안내 발화는 끝까지 재생.
             if (_lastNpcWasFallback)
@@ -437,6 +574,8 @@ namespace Artti.Training
                 if (string.IsNullOrWhiteSpace(sttResultP.text))
                 {
                     _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
+                    _dialogueManager.RegisterFailure();
+                    _lastToolSpoke = true;
                     SpeakNpc(PickFallback("stt_empty"), isFallback: true);
                     return;
                 }
@@ -516,11 +655,11 @@ namespace Artti.Training
                 $"[active_objective: {_dialogueManager.CurrentObjectiveId}] " +
                 $"[attempt: {_dialogueManager.AttemptCount}, scaffold_level: {(int)_dialogueManager.CurrentScaffoldLevel}]\n" +
                 $"User selected card '{card.id}' ({card.phrase?.text}) and said: \"{sttResult.text}\"";
-            var result = await _geminiService.RequestNextTurnAsync(_systemPrompt, userPrompt, _cts.Token);
+            var turn = await _geminiService.RequestNextTurnAsync(_systemPrompt, userPrompt, _cts.Token);
             hud?.ShowThinking(false);
 
             // Gemini 실패/키없음 → fallback 응답으로 대체
-            if (!result.HasValue)
+            if (turn == null)
             {
                 var line = PickFallback("llm_call_failed");
                 _fallbackPending = true;
@@ -528,8 +667,105 @@ namespace Artti.Training
                 return;
             }
 
-            _dialogueManager.ApplyToolCall(result.Value.tool, result.Value.npcText, result.Value.args);
+            _dialogueManager.ApplyToolCall(turn.Tool, turn.NpcSpeech, turn.CardIds);
         }
+
+        // ===== 대화하기 (자유 대화 모드) =====
+        //
+        // 카드 없이 점원과 그냥 이야기하는 모드. 버튼 하나로 켜고 끄는 토글이다.
+        // 켜져 있는 동안 objective와 스테퍼는 멈춘다 — 훈련 진행 지표를 잡담으로 오염시키지 않기 위해서.
+        // 대화 이력은 훈련 흐름과 같은 곳에 쌓아, 카드 화면으로 돌아왔을 때 점원이 방금 한 잡담을 기억한다.
+
+        private void HandleFreeTalkToggled()
+        {
+            if (_freeTalkActive) StopFreeTalk();
+            else StartFreeTalk();
+        }
+
+        private void StartFreeTalk()
+        {
+            if (!IsPoolMode || _freeTalkActive || _sessionCompleted) return;
+
+            _freeTalkActive = true;
+            uiView.HideExtraModal();
+            uiView.SetFreeTalkActive(true);
+            _ttsService?.StopAll();   // 안내 발화가 흐르는 중이면 끊고 바로 듣기 시작
+            FreeTalkLoop(_cts.Token).Forget();
+        }
+
+        private void StopFreeTalk()
+        {
+            if (!_freeTalkActive) return;
+
+            _freeTalkActive = false;
+            uiView.SetFreeTalkActive(false);
+            uiView.ShowMicIndicator(false);
+            RefreshPool();   // 멈춰 있던 objective 그대로 카드 풀 복원
+        }
+
+        private async UniTaskVoid FreeTalkLoop(CancellationToken ct)
+        {
+            if (_freeTalkBusy) return;
+            _freeTalkBusy = true;
+            try
+            {
+                while (_freeTalkActive && !ct.IsCancellationRequested)
+                {
+                    uiView.ShowMicIndicator(true);
+                    var stt = await _sttService.ListenOnceAsync(ct);
+                    uiView.ShowMicIndicator(false);
+                    if (!_freeTalkActive) break;
+
+                    uiView.ShowSttResult(stt.text);
+                    if (string.IsNullOrWhiteSpace(stt.text))
+                    {
+                        SpeakNpc(PickFallback("stt_empty"), isFallback: true);
+                        continue;
+                    }
+
+                    hud?.SetUserUtterance(stt.text);
+                    hud?.ShowThinking(true);
+                    var reply = await _geminiService.RequestFreeTalkAsync(
+                        _freeTalkSystemPrompt, BuildFreeTalkUserPrompt(stt.text), ct);
+                    hud?.ShowThinking(false);
+                    if (!_freeTalkActive) break;
+
+                    bool failed = string.IsNullOrWhiteSpace(reply);
+                    var line = failed ? PickFallback("llm_call_failed") : reply;
+                    _dialogueManager.RecordTurn(stt.text, line);
+                    SpeakNpc(line, DialogueTool.PresentCards, isFallback: failed);
+                }
+            }
+            catch (System.OperationCanceledException) { }
+            finally
+            {
+                _freeTalkBusy = false;
+                hud?.ShowThinking(false);
+                uiView.ShowMicIndicator(false);
+            }
+        }
+
+        // 자유 대화용 시스템 프롬프트 — 시나리오 persona만 쓰고 도구·카드 규칙은 빼야 한다.
+        // shared_preamble에는 "매 턴 반드시 도구를 하나 호출하라"가 들어 있어 평문 응답과 충돌한다.
+        private static string BuildFreeTalkPrompt(string persona)
+        {
+            var basePersona = string.IsNullOrWhiteSpace(persona)
+                ? "You are 편의점 점원 (a Korean convenience store clerk)."
+                : persona;
+
+            return basePersona +
+                "\n\n--- FREE TALK MODE ---\n" +
+                "You are having an ordinary conversation with the customer. There are no AAC cards and no tools this turn.\n" +
+                "- Reply with plain text only. Never mention tools, cards, objectives, or training.\n" +
+                "- Always answer in Korean (한국어), 존댓말, short and warm.\n" +
+                "- Whatever the customer brings up (weather, small talk, something unrelated to the store), receive it naturally as a friendly clerk would.\n" +
+                "- Do NOT push the shopping steps forward. Only if the conversation winds down on its own may you gently mention the counter.\n" +
+                "- One question at a time. Keep it to one or two sentences.";
+        }
+
+        private string BuildFreeTalkUserPrompt(string sttText) =>
+            $"Conversation so far (last turns):\n{_dialogueManager.RecentHistory()}\n\n" +
+            $"The customer just said: \"{sttText}\"";
 
         private string PickFallback(string condition)
         {
@@ -538,67 +774,94 @@ namespace Artti.Training
                 : "잠시만요, 다시 한 번 말씀해주세요.";
         }
 
-        // Unit 3: LLM 주도 한 턴. Gemini가 점원 발화 + 카드 + 진행 여부를 결정.
-        //   단계 진행은 mark_objective_complete / transition_to_objective 도구를 부를 때만.
+        // LLM 주도 한 턴. Gemini가 점원 발화 + 카드 + 진행 여부를 한 번에 결정한다.
+        // 변경점: DialogueTurn으로 도구 인자 전체를 받아 objective_id·slots_filled·scaffold_level·
+        //         subflow_id를 모두 반영한다. 이전에는 npc_speech와 card_ids만 살아남았다.
         private async UniTask RunGeminiTurn(AACCard card, string sttText)
         {
+            // 턴 상한 / 반복 실패 — 더 끌지 않고 부드럽게 마무리한다.
+            // LLM 호출 "전"에 검사한다: 응답을 말한 직후 마무리 멘트를 덧붙이면 TTS가 서로 잘린다.
+            // (이전에는 ShouldForceComplete가 정의만 되고 아무 데서도 호출되지 않았다)
+            if (_dialogueManager.ShouldForceComplete())
+            {
+                _lastToolSpoke = true;
+                SpeakNpc(PickFallback("turn_limit_reached"), DialogueTool.ForceCompleteScenario);
+                MarkSessionCompleted();
+                return;
+            }
+
             hud?.ShowThinking(true);
-            var result = await _geminiService.RequestNextTurnAsync(_systemPrompt, BuildUserPrompt(card, sttText), _cts.Token);
+            var turn = await _geminiService.RequestNextTurnAsync(_systemPrompt, BuildUserPrompt(card, sttText), _cts.Token);
             hud?.ShowThinking(false);
 
             // Gemini 실패/키없음 → fallback 발화 + 룰 기반 풀로 카드 유지(대화 끊기지 않게)
-            if (!result.HasValue)
+            if (turn == null)
             {
+                _dialogueManager.RegisterFailure();
+                _lastToolSpoke = true;
                 SpeakNpc(PickFallback("llm_call_failed"), isFallback: true);
                 RefreshPool();
                 return;
             }
 
-            var (tool, npcText, args) = result.Value;
-            _dialogueManager.RecordTurn(sttText, npcText);
-            SpeakNpc(npcText, tool);
+            // 침묵 방어선 — 이 턴에 점원이 실제로 말했는지. HandleObjectiveChanged가 고정 멘트로 메꿀지 판단한다.
+            _lastToolSpoke = turn.HasSpeech;
+            _pendingTurn = turn;
+            _dialogueManager.RecordTurn(sttText, turn.NpcSpeech);
+            SpeakNpc(turn.NpcSpeech, turn.Tool);
 
-            switch (tool)
+            try
             {
-                case DialogueTool.MarkObjectiveComplete:
-                case DialogueTool.TransitionToObjective:
-                    // 다음 단계로 — HandleObjectiveChanged가 새 objective의 카드 풀을 표시.
-                    // (objective_id 인자는 현재 반환 튜플에 없어 '현재→다음 순서'로 진행. NOTE Unit 4 확장 대상)
-                    clerkView?.PlayNod();
-                    AdvanceObjective();
-                    break;
-                case DialogueTool.ForceCompleteScenario:
-                    MarkSessionCompleted();
-                    break;
-                default:
-                    // present_cards / enter_subflow / request_clarification / express_understanding / return_from_subflow
-                    // 같은 단계에서 대화를 이어감. Gemini가 고른 카드를 띄우고, 없으면 룰 풀로 폴백.
-                    clerkView?.PlayNod();
-                    ShowCardsOrPool(args);
-                    break;
-            }
-        }
+                switch (turn.Tool)
+                {
+                    case DialogueTool.MarkObjectiveComplete:
+                    case DialogueTool.TransitionToObjective:
+                        _dialogueManager.RegisterSuccess();
+                        _dialogueManager.ApplySlots(turn.SlotsFilled);
+                        clerkView?.PlayNod();
+                        // 단계가 실제로 바뀌면 HandleObjectiveChanged가 새 풀을 소유한다(이중 갱신 방지).
+                        var before = _dialogueManager.CurrentObjectiveId;
+                        AdvanceObjective(turn.ObjectiveId);
+                        if (!_sessionCompleted && _dialogueManager.CurrentObjectiveId == before)
+                            ApplyPool(ResolveCardPool(turn.CardIds, turn.NpcSpeech)); // 역행 거부 등으로 제자리
+                        break;
 
-        // Gemini가 지정한 card_ids로 풀을 갱신. 비었거나 전부 미존재면 룰 기반 풀로 폴백(카드는 항상 있게).
-        private void ShowCardsOrPool(string[] cardIds)
-        {
-            if (cardIds != null && cardIds.Length > 0 && aacDatabase != null)
-            {
-                var pool = new List<AACCard>(cardIds.Length);
-                foreach (var id in cardIds)
-                {
-                    var c = aacDatabase.GetCard(id);
-                    if (c != null) pool.Add(c);
-                    else Debug.LogWarning($"[TrainingSceneRoot] Gemini가 고른 카드 id 미존재: {id}");
-                }
-                if (pool.Count > 0)
-                {
-                    _currentPool = pool;
-                    uiView.SetCardList(_currentPool);
-                    return;
+                    case DialogueTool.EnterSubflow:
+                        _dialogueManager.RegisterSuccess();
+                        _dialogueManager.EnterSubflow(turn.SubflowId, turn.PendingTopic);
+                        clerkView?.PlayNod();
+                        ApplyPool(ResolveCardPool(turn.CardIds, turn.NpcSpeech));
+                        break;
+
+                    case DialogueTool.ReturnFromSubflow:
+                        _dialogueManager.RegisterSuccess();
+                        _dialogueManager.ApplySlots(turn.SlotsFilled);
+                        _dialogueManager.ReturnFromSubflow();
+                        clerkView?.PlayNod();
+                        ApplyPool(ResolveCardPool(turn.CardIds, turn.NpcSpeech));
+                        break;
+
+                    case DialogueTool.RequestClarification:
+                        // 못 알아들은 턴 — 힌트 강도를 올린다.
+                        _dialogueManager.RegisterFailure();
+                        _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
+                        ApplyPool(ResolveCardPool(turn.CardIds, turn.NpcSpeech));
+                        break;
+
+                    case DialogueTool.ForceCompleteScenario:
+                        MarkSessionCompleted();
+                        break;
+
+                    default:
+                        // present_cards / express_understanding — 같은 단계에서 대화를 이어감.
+                        _dialogueManager.RegisterSuccess();
+                        _dialogueManager.ApplyScaffoldHint(turn.ScaffoldLevel);
+                        clerkView?.PlayNod();
+                        ApplyPool(ResolveCardPool(turn.CardIds, turn.NpcSpeech));
+                        break;
                 }
             }
-            RefreshPool();
+            finally { _pendingTurn = null; }
         }
 
         // 시나리오의 사용 가능한 카드 목록(id: 문구)을 시스템 프롬프트 뒤에 부착.
@@ -616,44 +879,46 @@ namespace Artti.Training
         }
 
         // Gemini userPrompt: 최근 이력 + 현재 상태 + 이번 턴 발화. 시스템 프롬프트(페르소나·규칙)는 별도 전달.
+        // 변경점: 슬롯과 서브플로 상태를 실제로 넘긴다. shared_preamble이 "슬롯과 진행 상태는 별도로
+        //         전달되며 authoritative"라고 선언해 놓고 정작 안 넘기고 있었다.
         private string BuildUserPrompt(AACCard card, string sttText)
         {
+            var subflow = string.IsNullOrEmpty(_dialogueManager.ActiveSubflowId)
+                ? "(none)"
+                : $"{_dialogueManager.ActiveSubflowId} (pending: {_dialogueManager.PendingTopic ?? "-"})";
+
             return
                 $"Conversation so far (last turns):\n{_dialogueManager.RecentHistory()}\n\n" +
                 $"State: active_objective={_dialogueManager.CurrentObjectiveId}, " +
+                $"turn={_dialogueManager.TurnCount}/{TurnLimit}, " +
                 $"attempt={_dialogueManager.AttemptCount}, scaffold_level={(int)_dialogueManager.CurrentScaffoldLevel}\n" +
+                $"Slots: {_dialogueManager.SlotsSnapshot()}\n" +
+                $"Active subflow: {subflow}\n" +
                 $"This turn: user tapped card '{card.id}' ({card.phrase?.text}) and said: \"{sttText}\"";
         }
 
-        // 다음 objective(카드 풀이 비어있지 않은 것)로 이동. 끝까지 가면 무동작.
-        private void AdvanceObjective()
+        // 해당 objective에 표시할 카드가 있는지 — DialogueManager의 진행 판정에 주입되는 델리게이트.
+        private bool ObjectiveHasCards(string objectiveId) =>
+            aacDatabase != null && aacDatabase.CardsForObjective(scenarioId, objectiveId).Any();
+
+        // 변경점: 진행 판정을 DialogueManager.ResolveNextObjective로 위임(하이브리드 제어).
+        //   requested가 있으면 LLM 제안을 검증해 반영하고, 없으면 순서상 다음 단계로 간다.
+        private void AdvanceObjective(string requested = null)
         {
-            if (!ObjectiveOrderByScenario.TryGetValue(scenarioId, out var order))
+            var next = _dialogueManager.ResolveNextObjective(requested);
+            if (string.IsNullOrEmpty(next))
             {
-                Debug.LogWarning($"[TrainingSceneRoot] '{scenarioId}' 시나리오 objective 순서 미정의");
+                // 역행 거부는 현재 단계 유지가 정답이고, 순서 끝 도달은 세션 완료다.
+                if (IsLastObjective()) MarkSessionCompleted();
                 return;
             }
-            var current = _dialogueManager.CurrentObjectiveId;
-            int idx = System.Array.IndexOf(order, current);
-            if (idx < 0)
-            {
-                Debug.LogWarning($"[TrainingSceneRoot] 알 수 없는 {scenarioId} objective: {current}");
-                return;
-            }
-            for (int i = idx + 1; i < order.Length; i++)
-            {
-                var next = order[i];
-                var hasCards = aacDatabase != null && aacDatabase.CardsForObjective(scenarioId, next).Any();
-                if (hasCards)
-                {
-                    _dialogueManager.SetObjective(next);
-                    return;
-                }
-                Debug.Log($"[TrainingSceneRoot] '{next}' objective 카드 없음 — 건너뜀");
-            }
-            Debug.Log($"[TrainingSceneRoot] {scenarioId} 시나리오 마지막 objective 도달");
-            MarkSessionCompleted();
+            _dialogueManager.SetObjective(next);
         }
+
+        private bool IsLastObjective() =>
+            ObjectiveOrderByScenario.TryGetValue(scenarioId, out var order)
+            && order.Length > 0
+            && System.Array.IndexOf(order, _dialogueManager.CurrentObjectiveId) == order.Length - 1;
 
         private bool _sessionCompleted;
 

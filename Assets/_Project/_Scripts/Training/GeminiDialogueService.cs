@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -26,36 +27,16 @@ namespace Artti.Training
             _functionDeclarationsJson = functionDeclarationsJson;
         }
 
+        // 훈련 흐름 한 턴 — 도구 호출을 강제해 DialogueTurn으로 파싱.
         // 실패/키없음 시 null 리턴 — caller가 FallbackResponsePicker로 대체
-        public async UniTask<(DialogueTool tool, string npcText, string[] args)?> RequestNextTurnAsync(
+        // 변경점: 반환 타입을 (tool, npcText, args) 튜플 → DialogueTurn으로 교체.
+        //         objective_id / slots_filled / scaffold_level / subflow_id가 더 이상 버려지지 않는다.
+        public async UniTask<DialogueTurn> RequestNextTurnAsync(
             string systemPrompt,
             string userPrompt,
             CancellationToken ct = default)
         {
-            if (string.IsNullOrEmpty(_apiKey))
-            {
-                Debug.LogWarning("[Gemini] API key missing — caller should use fallback");
-                return null;
-            }
-
-            // ── 요청 본문 구성 (Newtonsoft) ──
-            // 변경점: 기존 JsonUtility + [Serializable] 방식은 tools/tool_config의 중첩 동적 스키마를
-            //        직렬화하지 못해 function calling이 불가능했음. JObject로 교체.
-            var body = new JObject
-            {
-                ["system_instruction"] = new JObject
-                {
-                    ["parts"] = new JArray { new JObject { ["text"] = systemPrompt ?? string.Empty } }
-                },
-                ["contents"] = new JArray
-                {
-                    new JObject
-                    {
-                        ["role"] = "user",
-                        ["parts"] = new JArray { new JObject { ["text"] = userPrompt ?? string.Empty } }
-                    }
-                }
-            };
+            var body = BuildBody(systemPrompt, userPrompt);
 
             // 변경점: 도구 카탈로그 주입 + mode ANY로 매 턴 반드시 하나의 함수 호출 강제.
             // (system_prompts.json shared_preamble: "Every turn you MUST call exactly one tool.")
@@ -75,11 +56,68 @@ namespace Artti.Training
                 }
             }
 
-            string jsonBody = body.ToString(Formatting.None);
+            var raw = await SendAsync(body, ct);
+            return raw == null ? null : ParseResponse(raw);
+        }
+
+        // 변경점(대화하기 모드): 도구 없이 평문 응답만 받는 자유 대화 경로.
+        //   tools/tool_config를 아예 싣지 않아 Gemini가 함수 호출 대신 그냥 말하게 된다.
+        //   실패/키없음 시 null.
+        public async UniTask<string> RequestFreeTalkAsync(
+            string systemPrompt,
+            string userPrompt,
+            CancellationToken ct = default)
+        {
+            var raw = await SendAsync(BuildBody(systemPrompt, userPrompt), ct);
+            if (raw == null) return null;
+
+            try
+            {
+                var parts = JObject.Parse(raw)["candidates"]?[0]?["content"]?["parts"] as JArray;
+                var text = parts?.Select(p => p["text"]?.ToString()).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    Debug.LogWarning($"[Gemini] 자유 대화 응답 비어있음 (안전필터 가능)\n{raw}");
+                    return null;
+                }
+                return text.Trim();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Gemini] 자유 대화 파싱 실패: {e.Message}\n{raw}");
+                return null;
+            }
+        }
+
+        // system_instruction + contents 공통 골격.
+        private static JObject BuildBody(string systemPrompt, string userPrompt) => new JObject
+        {
+            ["system_instruction"] = new JObject
+            {
+                ["parts"] = new JArray { new JObject { ["text"] = systemPrompt ?? string.Empty } }
+            },
+            ["contents"] = new JArray
+            {
+                new JObject
+                {
+                    ["role"] = "user",
+                    ["parts"] = new JArray { new JObject { ["text"] = userPrompt ?? string.Empty } }
+                }
+            }
+        };
+
+        // HTTP 왕복 공통부. 성공 시 응답 본문 원문, 실패 시 null.
+        private async UniTask<string> SendAsync(JObject body, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(_apiKey))
+            {
+                Debug.LogWarning("[Gemini] API key missing — caller should use fallback");
+                return null;
+            }
 
             using (var request = new UnityWebRequest($"{ApiUrl}?key={_apiKey}", "POST"))
             {
-                byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
+                byte[] bodyRaw = Encoding.UTF8.GetBytes(body.ToString(Formatting.None));
                 request.uploadHandler = new UploadHandlerRaw(bodyRaw);
                 request.downloadHandler = new DownloadHandlerBuffer();
                 request.SetRequestHeader("Content-Type", "application/json");
@@ -101,14 +139,13 @@ namespace Artti.Training
                     return null;
                 }
 
-                // 변경점: mock 제거 → 실제 function calling 응답 파싱.
-                return ParseResponse(request.downloadHandler.text);
+                return request.downloadHandler.text;
             }
         }
 
-        // candidates[0].content.parts[] 에서 functionCall을 찾아 (tool, npc_speech, card_ids)로 변환.
+        // candidates[0].content.parts[] 에서 functionCall을 찾아 DialogueTurn으로 변환.
         // functionCall이 없으면 text 파트를 PresentCards로 폴백. 파싱 불가 시 null(→ caller fallback).
-        private (DialogueTool tool, string npcText, string[] args)? ParseResponse(string responseJson)
+        private DialogueTurn ParseResponse(string responseJson)
         {
             try
             {
@@ -125,7 +162,7 @@ namespace Artti.Training
                     if (fc == null) continue;
 
                     string name = fc["name"]?.ToString();
-                    var argsObj = fc["args"] as JObject ?? new JObject();
+                    var args = fc["args"] as JObject ?? new JObject();
 
                     if (!TryMapTool(name, out var tool))
                     {
@@ -133,17 +170,30 @@ namespace Artti.Training
                         continue;
                     }
 
-                    string npc = argsObj["npc_speech"]?.ToString() ?? string.Empty;
-                    string[] cards = ExtractCardIds(argsObj);
-                    return (tool, npc, cards);
-                    // NOTE(Unit 4): objective_id / slots_filled / scaffold_level / subflow_id 등은
-                    //               현재 반환 튜플에 담기지 않아 DialogueManager가 못 읽음. 반환 타입 확장 예정.
+                    // 변경점: 도구 인자를 전부 실어 보낸다. 이전에는 npc_speech와 card_ids만 살아남았다.
+                    return new DialogueTurn
+                    {
+                        Tool          = tool,
+                        NpcSpeech     = args["npc_speech"]?.ToString() ?? string.Empty,
+                        CardIds       = ExtractCardIds(args),
+                        ObjectiveId   = args["objective_id"]?.ToString(),
+                        SubflowId     = args["subflow_id"]?.ToString(),
+                        PendingTopic  = args["pending_topic"]?.ToString(),
+                        Reason        = args["reason"]?.ToString(),
+                        ScaffoldLevel = ExtractScaffoldLevel(args),
+                        SlotsFilled   = ExtractSlots(args)
+                    };
                 }
 
                 // function call이 없을 때(mode ANY면 드묾) 텍스트라도 살려서 발화로 사용.
                 string text = parts.Select(p => p["text"]?.ToString()).FirstOrDefault(t => !string.IsNullOrEmpty(t));
                 if (!string.IsNullOrEmpty(text))
-                    return (DialogueTool.PresentCards, text, Array.Empty<string>());
+                    return new DialogueTurn
+                    {
+                        Tool      = DialogueTool.PresentCards,
+                        NpcSpeech = text,
+                        CardIds   = Array.Empty<string>()
+                    };
 
                 Debug.LogWarning($"[Gemini] functionCall/text 모두 없음\n{responseJson}");
                 return null;
@@ -161,6 +211,32 @@ namespace Artti.Training
             var arr = (args["card_ids"] ?? args["suggested_cards"]) as JArray;
             if (arr == null) return Array.Empty<string>();
             return arr.Select(t => t.ToString()).Where(s => !string.IsNullOrEmpty(s)).ToArray();
+        }
+
+        // 모델이 정수 대신 문자열("1")로 낼 수 있어 파싱 실패를 null로 흡수한다.
+        private static int? ExtractScaffoldLevel(JObject args)
+        {
+            var token = args["scaffold_level"];
+            if (token == null) return null;
+            if (token.Type == JTokenType.Integer) return (int)token;
+            return int.TryParse(token.ToString(), out var v) ? v : (int?)null;
+        }
+
+        // slots_filled의 값은 string[]·bool·string이 섞여 온다. 프롬프트 되먹임 용도이므로 문자열로 평탄화.
+        private static Dictionary<string, string> ExtractSlots(JObject args)
+        {
+            if (!(args["slots_filled"] is JObject slots) || !slots.HasValues) return null;
+
+            var result = new Dictionary<string, string>();
+            foreach (var prop in slots.Properties())
+            {
+                if (prop.Value == null || prop.Value.Type == JTokenType.Null) continue;
+                var value = prop.Value is JArray arr
+                    ? string.Join(", ", arr.Select(t => t.ToString()))
+                    : prop.Value.ToString();
+                if (!string.IsNullOrWhiteSpace(value)) result[prop.Name] = value;
+            }
+            return result.Count > 0 ? result : null;
         }
 
         // dialogue_tools.json의 snake_case 함수명 → DialogueTool enum 매핑.

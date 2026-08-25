@@ -18,6 +18,8 @@ namespace Artti.Training
 
         [Header("Pharmacy 기타 모달")]
         [SerializeField] private Button extraButton;          // 하단 "기타" 버튼
+        [SerializeField] private Button freeTalkButton;        // 하단 "대화하기" 버튼 (자유 대화 토글)
+        [SerializeField] private TMP_Text freeTalkLabel;       // 토글 상태에 따라 문구 교체
         [SerializeField] private GameObject extraModal;       // 풀스크린 오버레이
         [SerializeField] private AACCardButton[] extraCardSlots;
         [SerializeField] private Button extraCloseButton;
@@ -42,6 +44,7 @@ namespace Artti.Training
 
         public event Action<AACCard> OnCardTapped;
         public event Action OnExtraRequested;
+        public event Action OnFreeTalkToggled;
 
         private bool _isListening;
         private float _pulseTime;
@@ -59,6 +62,7 @@ namespace Artti.Training
                 foreach (var s in extraCardSlots)
                     if (s != null) s.OnCardSelected += HandleCardSelected;
             if (extraButton != null) extraButton.onClick.AddListener(HandleExtraRequested);
+            if (freeTalkButton != null) freeTalkButton.onClick.AddListener(HandleFreeTalkToggled);
             if (extraCloseButton != null) extraCloseButton.onClick.AddListener(HideExtraModal);
         }
 
@@ -73,10 +77,22 @@ namespace Artti.Training
                 foreach (var s in extraCardSlots)
                     if (s != null) s.OnCardSelected -= HandleCardSelected;
             if (extraButton != null) extraButton.onClick.RemoveListener(HandleExtraRequested);
+            if (freeTalkButton != null) freeTalkButton.onClick.RemoveListener(HandleFreeTalkToggled);
             if (extraCloseButton != null) extraCloseButton.onClick.RemoveListener(HideExtraModal);
         }
 
         private void HandleExtraRequested() => OnExtraRequested?.Invoke();
+        private void HandleFreeTalkToggled() => OnFreeTalkToggled?.Invoke();
+
+        // 대화하기 모드 표시 — 버튼 문구를 바꾸고, 카드 풀은 잠가서 자유 발화에 집중하게 한다.
+        // 잠금 연출은 기존 SetPoolLocked/UnlockPool을 그대로 재사용한다.
+        public void SetFreeTalkActive(bool active)
+        {
+            if (freeTalkLabel != null) freeTalkLabel.text = active ? "대화 끝내기" : "대화하기";
+            if (extraButton != null) extraButton.interactable = !active;
+            if (active) SetPoolLocked(null);
+            else UnlockPool();
+        }
 
         public void ShowExtraModal(System.Collections.Generic.IList<AACCard> cards)
         {

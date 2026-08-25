@@ -110,6 +110,15 @@ namespace Artti.Editor
             extraRect.anchoredPosition = new Vector2(-44, 236);
             extraRect.sizeDelta = new Vector2(170, 72);
 
+            // 대화하기 버튼 (카드 없이 점원과 자유 대화 — 토글). 기타 버튼 왼쪽에 나란히 배치.
+            var freeTalkBtn = MakePillButton("FreeTalkBtn", canvasGo.transform, "대화하기", 30, Primary, White, font);
+            var freeTalkRect = freeTalkBtn.GetComponent<RectTransform>();
+            freeTalkRect.anchorMin = freeTalkRect.anchorMax = new Vector2(1f, 0f);
+            freeTalkRect.pivot = new Vector2(1f, 0f);
+            freeTalkRect.anchoredPosition = new Vector2(-232, 236);
+            freeTalkRect.sizeDelta = new Vector2(210, 72);
+            var freeTalkLabel = freeTalkBtn.GetComponentInChildren<TMP_Text>();
+
             // ===== 사용자 발화 버블 (선택 카드 + "말해볼까요?") =====
             var userBubble = ChildRect("UserBubble", canvasGo.transform);
             userBubble.anchorMin = userBubble.anchorMax = new Vector2(0f, 0f);
@@ -291,6 +300,8 @@ namespace Artti.Editor
             for (int i = 0; i < poolSlots.Length; i++)
                 slotsProp.GetArrayElementAtIndex(i).objectReferenceValue = poolSlots[i];
             soView.FindProperty("extraButton").objectReferenceValue = extraBtn;
+            soView.FindProperty("freeTalkButton").objectReferenceValue = freeTalkBtn;
+            soView.FindProperty("freeTalkLabel").objectReferenceValue = freeTalkLabel;
             soView.FindProperty("extraModal").objectReferenceValue = extraModal;
             soView.FindProperty("extraCloseButton").objectReferenceValue = extraCloseBtn;
             var exSlotsProp = soView.FindProperty("extraCardSlots");

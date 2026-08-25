@@ -26,7 +26,7 @@
     },
     {
       "name": "mark_objective_complete",
-      "description": "Mark the current objective as completed and update slot values. Always followed by present_cards or transition_to_objective on the next turn.",
+      "description": "Reply to what the user just said AND mark the current objective as completed, in a single call. Do NOT wait for a later turn to speak — npc_speech is the clerk's spoken reply for THIS turn and must respond to the card the user tapped and the words they said, then bridge naturally toward the next objective.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -37,9 +37,18 @@
           "slots_filled": {
             "type": "object",
             "description": "Slot key-value pairs to set on the dialogue state. Keys must match the scenario's slot schema."
+          },
+          "npc_speech": {
+            "type": "string",
+            "description": "The clerk's spoken line for THIS turn, in Korean (한국어). Must acknowledge what the user just said or the card they tapped, then lead into the next objective. Never leave this empty."
+          },
+          "card_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "The cards the user can reply with AFTER hearing npc_speech. These are their only way to answer, so they must fit the question you just asked. If npc_speech ends in a yes/no question, include card_cvs_yes and card_cvs_no. Length 1-4."
           }
         },
-        "required": ["objective_id"]
+        "required": ["objective_id", "npc_speech", "card_ids"]
       }
     },
     {

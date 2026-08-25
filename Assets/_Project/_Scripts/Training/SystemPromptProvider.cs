@@ -18,6 +18,19 @@ namespace Artti.Training
             _scenarios = root["scenarios"] as JArray ?? new JArray();
         }
 
+        // 시나리오 persona 원문만 반환. 자유 대화(대화하기) 모드용 —
+        // shared_preamble에는 "매 턴 반드시 도구를 하나 호출하라" 같은 훈련 흐름 규칙이 들어 있어
+        // 도구 없이 평문으로 답해야 하는 자유 대화에 그대로 쓰면 안 된다.
+        public string BuildPersona(string scenarioId)
+        {
+            foreach (var s in _scenarios)
+            {
+                if (s["scenario_id"]?.ToString() != scenarioId) continue;
+                return s["persona"]?.ToString() ?? string.Empty;
+            }
+            return string.Empty;
+        }
+
         // 해당 시나리오의 persona + few-shot을 공통 preamble 뒤에 이어붙여 반환. 시나리오 미발견 시 preamble만.
         public string BuildSystemPrompt(string scenarioId)
         {
