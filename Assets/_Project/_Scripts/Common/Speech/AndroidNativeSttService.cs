@@ -24,6 +24,11 @@ namespace Artti.Common.Speech
             }
         }
 
+        // 침묵 타임아웃(ms). 발달장애인 사용자의 느린/끊긴 발화를 끝까지 듣기 위해 기본값보다 길게.
+        private const int CompleteSilenceMs = 3000;          // 발화 후 종료 판정까지의 침묵
+        private const int PossiblyCompleteSilenceMs = 3000;  // 끝났을 수 있다고 보는 침묵
+        private const int MinimumInputMs = 5000;             // 최소 인식 유지 시간(말 시작 지연 허용)
+
         private AndroidJavaObject _activity;
         private AndroidJavaObject _recognizer;
         private UniTaskCompletionSource<SttResult> _tcs;
@@ -109,6 +114,17 @@ namespace Artti.Common.Speech
                     intent.Call<AndroidJavaObject>("putExtra", "android.speech.extra.LANGUAGE_MODEL", "free_form");
                     intent.Call<AndroidJavaObject>("putExtra", "calling_package", _activity.Call<string>("getPackageName"));
                     intent.Call<AndroidJavaObject>("putExtra", "android.speech.extra.MAX_RESULTS", 1);
+
+                    // 변경점: 침묵 타임아웃 extra 추가. 기본값이 너무 짧아 천천히/끊어 말하는
+                    //         발달장애인 사용자의 발화가 중간에 잘려 ERROR_NO_MATCH/SPEECH_TIMEOUT으로
+                    //         빠지던 문제 완화. (OEM recognizer는 무시할 수 있는 hint값)
+                    // 말이 끝났다고 보기까지 기다리는 침묵 길이
+                    intent.Call<AndroidJavaObject>("putExtra", "android.speech.extra.SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS", CompleteSilenceMs);
+                    // 끝났을 "수도" 있다고 보는 침묵 길이
+                    intent.Call<AndroidJavaObject>("putExtra", "android.speech.extra.SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS", PossiblyCompleteSilenceMs);
+                    // 이 시간 전에는 침묵만으로 종료하지 않음(말 시작이 늦어도 기다림)
+                    intent.Call<AndroidJavaObject>("putExtra", "android.speech.extra.SPEECH_INPUT_MINIMUM_LENGTH_MILLIS", MinimumInputMs);
+
                     _recognizer.Call("startListening", intent);
                 }
             }

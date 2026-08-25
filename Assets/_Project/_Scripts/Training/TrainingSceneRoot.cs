@@ -148,6 +148,10 @@ namespace Artti.Training
         };
 
         private string _lastNpcLine;
+        // 마지막 점원 발화가 fallback("다시 말씀해주세요" 등)이었는지 — 카드 탭 시 이 경우에만 TTS 중단.
+        private bool _lastNpcWasFallback;
+        // 비풀 모드 fallback은 ApplyToolCall→HandleToolCall→SpeakNpc 경로라 다음 SpeakNpc에 fallback 여부 전달용.
+        private bool _fallbackPending;
         private int _objectivesEntered;
         private System.DateTimeOffset _sessionStartUtc;
 
@@ -254,9 +258,10 @@ namespace Artti.Training
             !string.IsNullOrEmpty(objectiveId) && StepperLabels.TryGetValue(objectiveId, out var l) ? l : objectiveId;
 
         // NPC 대사 출력 공통 경로 — 말풍선 갱신 + TTS + 재청취용 보관 + TtsPlayed 기록 (레포트 진행 흐름)
-        private void SpeakNpc(string line, Artti.AAC.DialogueTool tool = Artti.AAC.DialogueTool.PresentCards)
+        private void SpeakNpc(string line, Artti.AAC.DialogueTool tool = Artti.AAC.DialogueTool.PresentCards, bool isFallback = false)
         {
             if (string.IsNullOrEmpty(line)) return;
+            _lastNpcWasFallback = isFallback;
             _lastNpcLine = line;
             uiView.SetNPCDialogue(line);
             if (_ttsService != null)
@@ -400,6 +405,11 @@ namespace Artti.Training
 
         private async void HandleCardTapped(AACCard card)
         {
+            // 변경점: 직전 점원 발화가 fallback("다시 말씀해주세요" 등)이었다면, 카드를 누르는 순간
+            //         재생을 중단해 마이크 입력과 겹치지 않게 함. 일반 안내 발화는 끝까지 재생.
+            if (_lastNpcWasFallback)
+                _ttsService?.StopAll();
+
             // 풀 모드: 자유 발화 연습 (PLAN.MD 5.4.2 / 7.3.1)
             // 카드 phrase TTS는 없음. STT로 사용자 발화 수집 후 다음 objective로 진행.
             if (IsPoolMode)
@@ -427,7 +437,7 @@ namespace Artti.Training
                 if (string.IsNullOrWhiteSpace(sttResultP.text))
                 {
                     _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
-                    SpeakNpc(PickFallback("stt_empty"));
+                    SpeakNpc(PickFallback("stt_empty"), isFallback: true);
                     return;
                 }
 
@@ -493,6 +503,7 @@ namespace Artti.Training
             {
                 _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
                 var line = PickFallback("stt_empty");
+                _fallbackPending = true;
                 _dialogueManager.ApplyToolCall(DialogueTool.RequestClarification, line, null);
                 return;
             }
@@ -512,6 +523,7 @@ namespace Artti.Training
             if (!result.HasValue)
             {
                 var line = PickFallback("llm_call_failed");
+                _fallbackPending = true;
                 _dialogueManager.ApplyToolCall(DialogueTool.RequestClarification, line, null);
                 return;
             }
@@ -537,7 +549,7 @@ namespace Artti.Training
             // Gemini 실패/키없음 → fallback 발화 + 룰 기반 풀로 카드 유지(대화 끊기지 않게)
             if (!result.HasValue)
             {
-                SpeakNpc(PickFallback("llm_call_failed"));
+                SpeakNpc(PickFallback("llm_call_failed"), isFallback: true);
                 RefreshPool();
                 return;
             }
@@ -670,7 +682,9 @@ namespace Artti.Training
 
         private void HandleToolCall(DialogueTool tool, string npcText, string[] args)
         {
-            SpeakNpc(npcText, tool);
+            bool wasFallback = _fallbackPending;
+            _fallbackPending = false;
+            SpeakNpc(npcText, tool, wasFallback);
 
             // Gemini 흐름의 시나리오 종료 — 풀 모드의 마지막 objective 도달과 동일하게 완료 처리
             if (tool == DialogueTool.ForceCompleteScenario)
