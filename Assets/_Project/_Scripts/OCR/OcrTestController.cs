@@ -156,10 +156,11 @@ public class OcrTestController : MonoBehaviour
 
         try
         {
-            NativeCamera.TakePicture(
-                (path) => HandleImageSelected(path, "카메라"),
-                maxSize: 2048
-            );
+            // 시스템 카메라 앱(NativeCamera) 대신 앱 내부 카메라(WebCamTexture) 사용.
+            // 외부 카메라 인텐트는 우리 프로세스를 백그라운드(adj=700)로 내리고, 그 순간 카메라가
+            // 가용 메모리를 ~160MB까지 끌어내려 저메모리 기기(SM-T733 3GB 실측)에서 LMKD가
+            // 강제 종료 → 앱이 스플래시부터 재시작. 인앱 카메라는 포그라운드를 유지해 이를 차단.
+            InAppCamera.Open((path) => HandleImageSelected(path, "카메라"));
         }
         catch (System.Exception e)
         {
@@ -261,7 +262,9 @@ public class OcrTestController : MonoBehaviour
         }
         else
         {
-            SetStatus("분류 가능한 카테고리를 찾지 못했습니다.");
+            // 매칭 실패해도 결과 화면으로 전환 (촬영 사진 + 인식 상태 표시).
+            // 이렇게 해야 "촬영 후 다음 화면으로 넘어가는" 흐름이 끊기지 않음.
+            ShowResultFallback(imagePath, ocrText);
         }
     }
 
@@ -318,6 +321,34 @@ public class OcrTestController : MonoBehaviour
         if (resultPanel != null) resultPanel.SetActive(true);
     }
 
+    // 카테고리 매칭에 실패했을 때도 촬영 사진과 인식 결과를 보여주며 결과 화면으로 전환
+    private void ShowResultFallback(string imagePath, string ocrText)
+    {
+        LoadCapturedImage(imagePath);
+
+        bool noText = string.IsNullOrWhiteSpace(ocrText);
+
+        if (categoryText != null)
+            categoryText.text = noText ? "인식 실패" : "분류 불가";
+
+        if (categoryBadgeImage != null)
+            categoryBadgeImage.color = new Color(0.5f, 0.5f, 0.5f);
+
+        if (descriptionText != null)
+            descriptionText.text = noText
+                ? "글자를 인식하지 못했어요.\n간판이 잘 보이게 더 가까이서 다시 찍어주세요."
+                : ("인식된 글자:\n" + ocrText);
+
+        if (aacImageComponent != null)
+        {
+            aacImageComponent.sprite = null;
+            aacImageComponent.color = new Color(0.9f, 0.9f, 0.9f);
+        }
+
+        if (homePanel != null) homePanel.SetActive(false);
+        if (resultPanel != null) resultPanel.SetActive(true);
+    }
+
     private void LoadCapturedImage(string imagePath)
     {
         if (capturedImage == null) return;
@@ -334,7 +365,8 @@ public class OcrTestController : MonoBehaviour
             DisposeCurrentTexture();
 
             _currentTexture = new Texture2D(2, 2);
-            if (_currentTexture.LoadImage(imageData))
+            // 표시 전용 — 읽기 사본을 버려 텍스처 메모리를 절반으로 줄인다 (OCR은 파일 경로로 별도 처리)
+            if (_currentTexture.LoadImage(imageData, markNonReadable: true))
             {
                 capturedImage.texture = _currentTexture;
                 capturedImage.color = Color.white;

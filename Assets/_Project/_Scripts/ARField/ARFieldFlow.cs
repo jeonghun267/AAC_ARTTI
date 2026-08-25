@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.XR.ARFoundation;
 using Artti.AAC;
 using Artti.Common.Speech;
 using Artti.UI;
@@ -23,10 +24,21 @@ namespace Artti.ARField
         private readonly KeywordDictionary _dict = new KeywordDictionary();
         private bool _dictLoading;
         private bool _captureBusy;
+        private ARSession _arSession;
 
         public void SetTtsService(ITtsService tts) => _tts = tts;
 
-        // "캡처" 버튼 → 시스템 카메라 → ML Kit OCR → 키워드 사전 매칭 → ResultConfirmPanel 갱신
+        // ARCore가 카메라를 점유하고 있어 인앱 카메라(WebCamTexture)가 같은 카메라를 열 수 없다.
+        // 촬영 직전 AR 세션을 꺼서 카메라를 반납하고, 복귀 후 다시 켜 라이브 AR을 복구한다(카메라 양도).
+        private void SetArActive(bool active)
+        {
+            if (_arSession == null)
+                _arSession = FindFirstObjectByType<ARSession>();
+            if (_arSession != null)
+                _arSession.enabled = active;
+        }
+
+        // "캡처" 버튼 → 인앱 카메라 → ML Kit OCR → 키워드 사전 매칭 → ResultConfirmPanel 갱신
         public void Capture()
         {
             if (_captureBusy) return;
@@ -46,12 +58,16 @@ namespace Artti.ARField
             _captureBusy = true;
             try
             {
-                NativeCamera.TakePicture(OnPhotoTaken, maxSize: 2048);
+                // 외부 카메라 앱(NativeCamera) 대신 인앱 카메라 사용 → 포그라운드 유지로 LMKD 재시작 차단.
+                // ARCore와 카메라가 겹치므로 먼저 AR 세션을 꺼 카메라를 반납한 뒤 연다.
+                SetArActive(false);
+                InAppCamera.Open(OnPhotoTaken);
             }
             catch (System.Exception e)
             {
                 _captureBusy = false;
-                Debug.LogError("[ARFieldFlow] NativeCamera 실패: " + e);
+                SetArActive(true);
+                Debug.LogError("[ARFieldFlow] 인앱 카메라 실패: " + e);
             }
         }
 
@@ -69,6 +85,9 @@ namespace Artti.ARField
 
         private void OnPhotoTaken(string path)
         {
+            // 카메라에서 복귀 — AR 세션 재개 (취소/성공 무관하게 라이브 카메라 복구)
+            SetArActive(true);
+
             if (string.IsNullOrEmpty(path))
             {
                 _captureBusy = false;
@@ -142,7 +161,8 @@ namespace Artti.ARField
             {
                 var bytes = File.ReadAllBytes(path);
                 var tex = new Texture2D(2, 2);
-                if (tex.LoadImage(bytes)) return tex;
+                // 표시 전용 — 읽기 사본을 버려 텍스처 메모리 절반 절감 (OCR은 파일 경로로 별도 처리)
+                if (tex.LoadImage(bytes, markNonReadable: true)) return tex;
                 Destroy(tex);
             }
             catch (System.Exception e)
