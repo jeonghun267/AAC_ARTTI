@@ -7,6 +7,7 @@ using Cysharp.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Artti.UI;
 
 namespace Artti.Training
 {
@@ -18,6 +19,9 @@ namespace Artti.Training
 
         [Header("UI")]
         [SerializeField] private TrainingUIView uiView;
+
+        [Header("Convenience dashboard (옵션)")]
+        [SerializeField] private ConvenienceDashboardView dashboardView;
 
         [Header("Convenience HUD (옵션 — 미와이어링 시 무동작)")]
         [SerializeField] private ConvenienceHudView hud;
@@ -57,6 +61,7 @@ namespace Artti.Training
         private bool _freeTalkActive;
         private bool _freeTalkBusy;
         private string _freeTalkSystemPrompt;
+        private bool _dashboardTurnBusy;
 
         private void Awake()
         {
@@ -166,8 +171,8 @@ namespace Artti.Training
         // 진행 표시(스테퍼)용 objective 한국어 라벨 — 시안 기준 5단계 명칭
         private static readonly Dictionary<string, string> StepperLabels = new Dictionary<string, string>
         {
-            { "greeting", "인사하기" }, { "select_items", "물건 찾기" }, { "checkout", "계산하기" },
-            { "extras", "봉투 확인" }, { "farewell", "작별" },
+            { "greeting", "점원에게 인사하기" }, { "select_items", "원하는 상품 고르기" }, { "checkout", "결제 방법 말하기" },
+            { "extras", "봉투 여부 답하기" }, { "farewell", "감사 인사하기" },
             { "identify_needs", "증상 말하기" }, { "serve_meds", "물품 요구하기" }, { "payment", "계산하기" },
             { "menu_browse", "메뉴 보기" }, { "order", "주문하기" }, { "order_modifications", "추가 주문" }
         };
@@ -251,6 +256,11 @@ namespace Artti.Training
             uiView.OnCardTapped += HandleCardTapped;
             uiView.OnExtraRequested += HandleExtraRequested;
             uiView.OnFreeTalkToggled += HandleFreeTalkToggled;
+            if (dashboardView != null)
+            {
+                dashboardView.OnProductSelected += HandleDashboardProductSelected;
+                dashboardView.OnQuickPhraseSelected += HandleDashboardQuickPhraseSelected;
+            }
 
             _eventLogger?.LogScenarioEntered();
             _eventLogger?.LogObjectiveEntered("greeting");
@@ -325,7 +335,9 @@ namespace Artti.Training
 
         // 풀 모드: View에 카드 풀 슬롯이 와이어링되었고 시나리오의 objective 순서가 정의되어 있을 때
         private bool IsPoolMode =>
-            uiView != null && uiView.HasPharmacyCardPool && ObjectiveOrderByScenario.ContainsKey(scenarioId);
+            uiView != null
+            && ObjectiveOrderByScenario.ContainsKey(scenarioId)
+            && (uiView.HasPharmacyCardPool || (dashboardView != null && dashboardView.HasProducts));
 
         private bool TryGetObjectivePrompt(string objectiveId, out string line)
         {
@@ -528,6 +540,11 @@ namespace Artti.Training
         private void OnDestroy()
         {
             _freeTalkActive = false;
+            if (dashboardView != null)
+            {
+                dashboardView.OnProductSelected -= HandleDashboardProductSelected;
+                dashboardView.OnQuickPhraseSelected -= HandleDashboardQuickPhraseSelected;
+            }
             // 완료 없이 씬 이탈 → 중단 처리 (마지막 objective 기록). 레포트의 미완료/연습 필요 집계에 사용
             if (!_sessionCompleted)
                 _eventLogger?.LogSessionAbandoned(_dialogueManager?.CurrentObjectiveId);
@@ -689,6 +706,7 @@ namespace Artti.Training
             _freeTalkActive = true;
             uiView.HideExtraModal();
             uiView.SetFreeTalkActive(true);
+            dashboardView?.SetInteractionEnabled(false);
             _ttsService?.StopAll();   // 안내 발화가 흐르는 중이면 끊고 바로 듣기 시작
             FreeTalkLoop(_cts.Token).Forget();
         }
@@ -699,6 +717,7 @@ namespace Artti.Training
 
             _freeTalkActive = false;
             uiView.SetFreeTalkActive(false);
+            dashboardView?.SetInteractionEnabled(true);
             uiView.ShowMicIndicator(false);
             RefreshPool();   // 멈춰 있던 objective 그대로 카드 풀 복원
         }
@@ -745,6 +764,49 @@ namespace Artti.Training
             }
         }
 
+        // 추천 상품은 STT를 다시 거치지 않고, 사용자가 해당 상품명을 말한 한 턴으로 Gemini에 전달한다.
+        private void HandleDashboardProductSelected(string productId, string productName, string utterance)
+        {
+            RunDashboardTurn(productId, productName, utterance, true).Forget();
+        }
+
+        // 오른쪽 대화 힌트도 AAC 보조 입력이므로 누른 문장을 그대로 Gemini에 전달한다.
+        private void HandleDashboardQuickPhraseSelected(string phrase)
+        {
+            RunDashboardTurn("quick_phrase", "대화 힌트", phrase, false).Forget();
+        }
+
+        private async UniTaskVoid RunDashboardTurn(
+            string sourceId, string sourceName, string utterance, bool isProduct)
+        {
+            if (_dashboardTurnBusy || _freeTalkActive || _sessionCompleted || !_useGemini
+                || string.IsNullOrWhiteSpace(utterance)) return;
+
+            _dashboardTurnBusy = true;
+            dashboardView?.SetInteractionEnabled(false);
+            try
+            {
+                _ttsService?.StopAll();
+                hud?.SetUserUtterance(utterance);
+                uiView.ShowSttResult(utterance);
+                _eventLogger?.LogCardSelected(sourceId, utterance, utterance);
+                _dialogueManager.HandleUserTurn(null, utterance);
+
+                string sourceContext = isProduct
+                    ? $"The user tapped the recommended product '{sourceName}' (product_id={sourceId}). " +
+                      $"Treat it as the direct customer utterance: \"{utterance}\". Respond about that exact product."
+                    : $"The user tapped a dialogue-hint button. Treat it as the direct customer utterance: \"{utterance}\".";
+
+                await RunGeminiTurn(null, utterance, sourceContext);
+            }
+            finally
+            {
+                _dashboardTurnBusy = false;
+                if (!_freeTalkActive && !_sessionCompleted)
+                    dashboardView?.SetInteractionEnabled(true);
+            }
+        }
+
         // 자유 대화용 시스템 프롬프트 — 시나리오 persona만 쓰고 도구·카드 규칙은 빼야 한다.
         // shared_preamble에는 "매 턴 반드시 도구를 하나 호출하라"가 들어 있어 평문 응답과 충돌한다.
         private static string BuildFreeTalkPrompt(string persona)
@@ -777,7 +839,7 @@ namespace Artti.Training
         // LLM 주도 한 턴. Gemini가 점원 발화 + 카드 + 진행 여부를 한 번에 결정한다.
         // 변경점: DialogueTurn으로 도구 인자 전체를 받아 objective_id·slots_filled·scaffold_level·
         //         subflow_id를 모두 반영한다. 이전에는 npc_speech와 card_ids만 살아남았다.
-        private async UniTask RunGeminiTurn(AACCard card, string sttText)
+        private async UniTask RunGeminiTurn(AACCard card, string sttText, string sourceContext = null)
         {
             // 턴 상한 / 반복 실패 — 더 끌지 않고 부드럽게 마무리한다.
             // LLM 호출 "전"에 검사한다: 응답을 말한 직후 마무리 멘트를 덧붙이면 TTS가 서로 잘린다.
@@ -791,7 +853,8 @@ namespace Artti.Training
             }
 
             hud?.ShowThinking(true);
-            var turn = await _geminiService.RequestNextTurnAsync(_systemPrompt, BuildUserPrompt(card, sttText), _cts.Token);
+            var turn = await _geminiService.RequestNextTurnAsync(
+                _systemPrompt, BuildUserPrompt(card, sttText, sourceContext), _cts.Token);
             hud?.ShowThinking(false);
 
             // Gemini 실패/키없음 → fallback 발화 + 룰 기반 풀로 카드 유지(대화 끊기지 않게)
@@ -881,11 +944,17 @@ namespace Artti.Training
         // Gemini userPrompt: 최근 이력 + 현재 상태 + 이번 턴 발화. 시스템 프롬프트(페르소나·규칙)는 별도 전달.
         // 변경점: 슬롯과 서브플로 상태를 실제로 넘긴다. shared_preamble이 "슬롯과 진행 상태는 별도로
         //         전달되며 authoritative"라고 선언해 놓고 정작 안 넘기고 있었다.
-        private string BuildUserPrompt(AACCard card, string sttText)
+        private string BuildUserPrompt(AACCard card, string sttText, string sourceContext = null)
         {
             var subflow = string.IsNullOrEmpty(_dialogueManager.ActiveSubflowId)
                 ? "(none)"
                 : $"{_dialogueManager.ActiveSubflowId} (pending: {_dialogueManager.PendingTopic ?? "-"})";
+
+            string turnDescription = !string.IsNullOrWhiteSpace(sourceContext)
+                ? sourceContext
+                : card != null
+                    ? $"The user tapped card '{card.id}' ({card.phrase?.text}) and said: \"{sttText}\""
+                    : $"The customer said: \"{sttText}\"";
 
             return
                 $"Conversation so far (last turns):\n{_dialogueManager.RecentHistory()}\n\n" +
@@ -894,7 +963,7 @@ namespace Artti.Training
                 $"attempt={_dialogueManager.AttemptCount}, scaffold_level={(int)_dialogueManager.CurrentScaffoldLevel}\n" +
                 $"Slots: {_dialogueManager.SlotsSnapshot()}\n" +
                 $"Active subflow: {subflow}\n" +
-                $"This turn: user tapped card '{card.id}' ({card.phrase?.text}) and said: \"{sttText}\"";
+                $"This turn: {turnDescription}";
         }
 
         // 해당 objective에 표시할 카드가 있는지 — DialogueManager의 진행 판정에 주입되는 델리게이트.

@@ -29,6 +29,10 @@ namespace Artti.Editor
         const string ClerkControllerPath = "Assets/_Project/Art/ARTTIClerkController.controller";
         // Blender 제작 편의점 전체 매장. 기존 Env_Convenience(Tripo) + 프리미티브 카운터/POS를 이걸로 대체.
         const string StoreFbxPath    = "Assets/_Project/Models/Props/ConvenienceStore/ARTTI_Store.fbx";
+
+        // 배경 이미지 — 3D 무대(매장 FBX + 점원)를 대체한다. 캔버스 맨 뒤에 전체 화면으로 깔리고
+        // 카드·말풍선·스테퍼 등 UI가 그 위에 그려진다. 1920x1080(16:9) 렌더 기준.
+        const string BackgroundPath  = "Assets/_Project/Art/UI/Training/bg_convenience_store.png";
         const string LipSyncProfilePath = "Packages/com.hecomi.ulipsync/Assets/Profiles/uLipSync-Profile-Sample-Female.asset";
         const string PauseIconPath = "Assets/_Project/Art/UI/icon_pause.svg";
         const string SpeakerIconPath = "Assets/_Project/Art/UI/icon_volume_up.svg";
@@ -55,19 +59,17 @@ namespace Artti.Editor
         [MenuItem("Artti/Build TrainingConvenienceScene Hierarchy")]
         public static void BuildMenu() => Build();
 
-        public static void Build()
+        public static void Build() => ConvenienceTrainingDashboardBuilder.Build();
+
+        // 이전 카드 중심 시안은 되돌릴 때 참고할 수 있도록 빌더에 남겨 둔다.
+        // 현재 메뉴 명령은 PNG 대시보드 레이아웃을 생성한다.
+        static void BuildLegacy()
         {
             SceneBuilderUtils.OpenScene(ScenePaths.TrainingConvenience);
             SceneBuilderUtils.ClearRootObjects();
 
             SceneBuilderUtils.CreateEventSystem();
             SceneBuilderUtils.EnsureAudioListener();
-
-            // 3D 캐릭터(RenderTexture 합성)용 라이트 — 없으면 캐릭터가 검게 렌더됨
-            var lightGo = new GameObject("[Directional Light]");
-            var dirLight = lightGo.AddComponent<Light>();
-            dirLight.type = LightType.Directional;
-            lightGo.transform.rotation = Quaternion.Euler(50, -30, 0);
 
             var font = SceneBuilderUtils.GetKoreanFont();
 
@@ -80,8 +82,11 @@ namespace Artti.Editor
 
             var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution);
 
-            // ===== 3D 무대 (메인 카메라가 직접 렌더 — 평면 사진 + RT 합성 폐기) =====
-            var clerkView = Build3DStage(sceneRootGo);
+            // ===== 배경 (3D 무대 폐기 — 렌더 이미지 한 장 위에 UI를 올린다) =====
+            // 점원 캐릭터와 매장 오브젝트를 씬에서 뺐다. ClerkView/CounterDisplay 참조가 비면
+            // TrainingSceneRoot의 clerkView?.PlayNod() 류 호출이 전부 무동작이 되므로 로직은 그대로 돈다.
+            BuildBackground(canvasGo);
+            BuildFlatCamera();
 
             // ===== 하단 AAC 카드 가로 풀 =====
             var cardRow = ChildRect("CardRow", canvasGo.transform);
@@ -355,17 +360,69 @@ namespace Artti.Editor
                 soRoot.FindProperty("aacDatabase").objectReferenceValue = aacDb;
             else
                 Debug.LogWarning("[ConvenienceTrainingSceneBuilder] AACDatabase.asset 없음 — Tools/AAC/Import Seed Data 먼저 실행");
-            if (clerkView != null)
-                soRoot.FindProperty("clerkView").objectReferenceValue = clerkView;
+            // clerkView / counter 는 비워 둔다 — 3D 무대가 없으므로 참조할 대상이 없다.
             soRoot.ApplyModifiedProperties();
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[ConvenienceTrainingSceneBuilder] 완료 — ARTTI_Store 매장 + 점원 + 카메라 구성됨");
+            Debug.Log("[ConvenienceTrainingSceneBuilder] 완료 — 배경 이미지 + UI 구성됨 (3D 무대 없음)");
         }
 
-        // ===== 3D 무대: 메인 카메라 + 편의점 환경 + 점원(Clerk) + 데스크/포스기 + 립싱크 =====
-        // 점원에 ClerkView를 붙여 반환 (TrainingSceneRoot 와이어링용). 프리팹 없으면 null.
+        // ===== 배경: 렌더 이미지 한 장을 캔버스 맨 뒤에 전체 화면으로 =====
+        //
+        // 배경 이미지 비율과 단말 화면 비율이 다르다(현재 소스는 3:2, 태블릿은 4:3~16:9).
+        // 늘려서 채우면 매대와 간판이 눈에 띄게 왜곡되므로, 짧은 쪽에 맞춰 확대한 뒤
+        // 넘치는 부분을 잘라낸다(cover). AspectRatioFitter.EnvelopeParent + RectMask2D 조합.
+        static void BuildBackground(GameObject canvasGo)
+        {
+            var frame = ChildRect("Background", canvasGo.transform);
+            frame.SetSiblingIndex(0);       // 맨 뒤 — 이후 만들어지는 UI가 전부 이 위에 그려진다
+            StretchFull(frame, 0);
+            frame.gameObject.AddComponent<RectMask2D>();   // 화면 밖으로 넘친 부분을 잘라낸다
+
+            var inner = ChildRect("Image", frame);
+            var img = inner.gameObject.AddComponent<Image>();
+            img.sprite = LoadSceneSprite(BackgroundPath);
+            img.type = Image.Type.Simple;
+            img.raycastTarget = false;      // 배경이 카드 터치를 가로채지 않게
+
+            if (img.sprite != null)
+            {
+                // 소스 비율을 그대로 유지한 채 부모(전체 화면)를 덮을 때까지 키운다
+                var fitter = inner.gameObject.AddComponent<AspectRatioFitter>();
+                fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+                fitter.aspectRatio = img.sprite.rect.width / img.sprite.rect.height;
+
+                inner.anchorMin = inner.anchorMax = new Vector2(0.5f, 0.5f);
+                inner.pivot = new Vector2(0.5f, 0.5f);
+                inner.anchoredPosition = Vector2.zero;
+            }
+            else
+            {
+                // 이미지를 아직 안 넣었어도 씬이 깨져 보이지 않도록 매장 톤의 단색으로 대체
+                StretchFull(inner, 0);
+                img.color = new Color(0.09f, 0.12f, 0.24f, 1f);
+            }
+        }
+
+        // 3D 오브젝트가 없어 렌더할 것이 없지만, 카메라가 하나도 없으면 Unity가 경고를 낸다.
+        // cullingMask를 0으로 둬서 아무것도 그리지 않는 최소 카메라만 남긴다.
+        // (UI는 Screen Space - Overlay 캔버스라 카메라 없이 그려진다)
+        static void BuildFlatCamera()
+        {
+            var camGo = new GameObject("Main Camera");
+            camGo.tag = "MainCamera";
+            var cam = camGo.AddComponent<Camera>();
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.09f, 0.12f, 0.24f, 1f);
+            cam.cullingMask = 0;
+            camGo.transform.position = new Vector3(0f, 1f, -10f);
+        }
+
+        // ===== 3D 무대 (현재 미사용) =====
+        // 배경 이미지로 전환하면서 호출을 뺐다. 3D 매장·점원으로 되돌리려면 Build()에서
+        // BuildBackground/BuildFlatCamera 대신 이 메서드를 부르고, 위쪽 Directional Light 생성도
+        // 되살리면 된다. FBX와 ClerkView/CounterDisplay 스크립트는 프로젝트에 그대로 남아 있다.
         static ClerkView Build3DStage(GameObject ttsGo)
         {
             // 메인 카메라 (URP가 UniversalAdditionalCameraData 자동 추가). AudioListener는 씬에 이미 존재

@@ -12,6 +12,11 @@ namespace Artti.Training
         [Header("진행 표시 (objective 기준 5단계)")]
         [SerializeField] private Image[] stepDots;
         [SerializeField] private TMP_Text stepLabel;
+        [SerializeField] private TMP_Text stepCounter;
+        [SerializeField] private RectTransform stepFillMask;
+        [SerializeField] private float stepFillWidth;
+        [SerializeField] private Sprite stepNodeOnSprite;
+        [SerializeField] private Sprite stepNodeOffSprite;
 
         [Header("일시정지")]
         [SerializeField] private Button pauseBtn;
@@ -103,7 +108,25 @@ namespace Artti.Training
                 for (int i = 0; i < stepDots.Length; i++)
                 {
                     if (stepDots[i] == null) continue;
-                    stepDots[i].color = i < index ? DotDone : (i == index ? DotCurrent : DotPending);
+                    if (stepNodeOnSprite != null && stepNodeOffSprite != null)
+                    {
+                        stepDots[i].sprite = i <= index ? stepNodeOnSprite : stepNodeOffSprite;
+                        stepDots[i].color = Color.white;
+                    }
+                    else
+                    {
+                        stepDots[i].color = i < index ? DotDone : (i == index ? DotCurrent : DotPending);
+                    }
+                }
+
+                int clamped = Mathf.Clamp(index, 0, Mathf.Max(0, stepDots.Length - 1));
+                if (stepCounter != null) stepCounter.text = $"{clamped + 1} / {stepDots.Length} 단계";
+                if (stepFillMask != null && stepFillWidth > 0f)
+                {
+                    float ratio = stepDots.Length > 0 ? (clamped + 1f) / stepDots.Length : 0f;
+                    var size = stepFillMask.sizeDelta;
+                    size.x = stepFillWidth * ratio;
+                    stepFillMask.sizeDelta = size;
                 }
             }
             if (stepLabel != null) stepLabel.text = label;
