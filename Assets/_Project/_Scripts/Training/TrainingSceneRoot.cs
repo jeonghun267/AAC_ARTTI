@@ -290,6 +290,7 @@ namespace Artti.Training
             hud.OnRetrySession += () => SceneManager.LoadScene(SceneManager.GetActiveScene().name);
             hud.OnGoHub += () => SceneManager.LoadScene("TrainingHubScene");
             hud.OnGoHome += () => SceneManager.LoadScene("MainScene");
+            hud.OnGoReport += () => SceneManager.LoadScene("ReportScene");
             hud.SetObjective(0, StepperLabel("greeting"));
         }
 
@@ -1007,6 +1008,7 @@ namespace Artti.Training
             if (hud == null) return;
             var elapsed = System.DateTimeOffset.UtcNow - _sessionStartUtc;
             string duration = elapsed.TotalSeconds < 60 ? "1분 이내" : $"{Mathf.RoundToInt((float)elapsed.TotalMinutes)}분";
+            SpeakNpc("정말 잘했어요! 다음에도 함께해요.");
             hud.ShowCompletion(
                 Artti.Report.ReportLabels.ScenarioName(scenarioId),
                 duration,
