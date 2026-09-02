@@ -1,6 +1,7 @@
 using Artti.AAC;
 using Artti.Training;
 using Artti.UI;
+using System.IO;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
@@ -16,6 +17,7 @@ namespace Artti.Editor
         private static readonly Color White = Color.white;
         private static readonly Color Ink = new Color32(26, 35, 58, 255);
         private const string Art = "Assets/_Project/Art/UI/Training/Dashboard/";
+        private const string CompletionArt = "Assets/_Project/Art/UI/Training/Completion/";
         private const string RoundedPath = "Assets/_Project/Art/UI/RoundedRect.png";
         private const string AacDbPath = "Assets/_Project/_Data/AAC/AACDatabase.asset";
 
@@ -48,6 +50,87 @@ namespace Artti.Editor
         {
             "물 주세요", "어디에 있어요?", "얼마예요?", "계산할게요", "감사합니다"
         };
+
+        [MenuItem("Artti/Preview Training Completion")]
+        private static void PreviewCompletion()
+        {
+            foreach (var rect in Resources.FindObjectsOfTypeAll<RectTransform>())
+            {
+                if (rect.name != "CompletionRoot" || !rect.gameObject.scene.IsValid()) continue;
+                rect.gameObject.SetActive(true);
+                var help = rect.Find("CompletionHelpPanel");
+                if (help != null) help.gameObject.SetActive(false);
+                Selection.activeGameObject = rect.gameObject;
+                SceneView.RepaintAll();
+                Debug.Log("[ConvenienceTrainingDashboardBuilder] 완료 화면 미리보기 활성화 (씬 저장 전용 상태 아님)");
+                return;
+            }
+            Debug.LogWarning("[ConvenienceTrainingDashboardBuilder] CompletionRoot 없음 — 씬 빌더를 먼저 실행하세요.");
+        }
+
+        [MenuItem("Artti/Capture Training Completion QA")]
+        private static void CaptureCompletionQa()
+        {
+            Canvas canvas = null;
+            RectTransform completion = null;
+            foreach (var rect in Resources.FindObjectsOfTypeAll<RectTransform>())
+            {
+                if (!rect.gameObject.scene.IsValid()) continue;
+                if (rect.name == "CompletionRoot") completion = rect;
+                if (rect.GetComponent<Canvas>() != null) canvas = rect.GetComponent<Canvas>();
+            }
+            if (canvas == null || completion == null)
+            {
+                Debug.LogWarning("[ConvenienceTrainingDashboardBuilder] 캡처 대상 없음 — 씬 빌더를 먼저 실행하세요.");
+                return;
+            }
+
+            completion.gameObject.SetActive(true);
+            var help = completion.Find("CompletionHelpPanel");
+            if (help != null) help.gameObject.SetActive(false);
+
+            var oldMode = canvas.renderMode;
+            var oldCamera = canvas.worldCamera;
+            float oldPlaneDistance = canvas.planeDistance;
+            var cameraGo = new GameObject("[CompletionQaCamera]");
+            var camera = cameraGo.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = Navy;
+            camera.orthographic = true;
+            camera.transform.position = new Vector3(0f, 0f, -10f);
+
+            var texture = new RenderTexture(1536, 1024, 24, RenderTextureFormat.ARGB32);
+            texture.Create();
+            camera.targetTexture = texture;
+            canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            canvas.worldCamera = camera;
+            canvas.planeDistance = 1f;
+            Canvas.ForceUpdateCanvases();
+            foreach (var text in canvas.GetComponentsInChildren<TMP_Text>(true))
+                text.ForceMeshUpdate(true, true);
+            camera.Render();
+
+            var previousActive = RenderTexture.active;
+            RenderTexture.active = texture;
+            var capture = new Texture2D(1536, 1024, TextureFormat.RGBA32, false);
+            capture.ReadPixels(new Rect(0, 0, 1536, 1024), 0, 0);
+            capture.Apply();
+            var outputPath = Path.GetFullPath(Path.Combine(Application.dataPath, "../completion-implementation.png"));
+            File.WriteAllBytes(outputPath, capture.EncodeToPNG());
+
+            RenderTexture.active = previousActive;
+            canvas.renderMode = oldMode;
+            canvas.worldCamera = oldCamera;
+            canvas.planeDistance = oldPlaneDistance;
+            camera.targetTexture = null;
+            texture.Release();
+            Object.DestroyImmediate(capture);
+            Object.DestroyImmediate(texture);
+            Object.DestroyImmediate(cameraGo);
+            Canvas.ForceUpdateCanvases();
+            AssetDatabase.Refresh();
+            Debug.Log($"[ConvenienceTrainingDashboardBuilder] 완료 화면 QA 캡처: {outputPath}");
+        }
 
         public static void Build()
         {
@@ -91,6 +174,7 @@ namespace Artti.Editor
             var chrome = BuildTopChrome(canvasGo.transform);
             var help = BuildHelpModal(canvasGo.transform, font);
             var pause = BuildPauseModal(canvasGo.transform, font);
+            var completion = BuildCompletion(canvasGo.transform, font);
 
             var uiView = canvasGo.AddComponent<TrainingUIView>();
             var uiSo = new SerializedObject(uiView);
@@ -113,6 +197,18 @@ namespace Artti.Editor
             hudSo.FindProperty("pauseCancelBtn").objectReferenceValue = pause.cancel;
             hudSo.FindProperty("speakerBtn").objectReferenceValue = npc.replayButton;
             hudSo.FindProperty("ttsSource").objectReferenceValue = ttsSource;
+            hudSo.FindProperty("completionRoot").objectReferenceValue = completion.root;
+            hudSo.FindProperty("completionScenarioText").objectReferenceValue = completion.scenarioText;
+            hudSo.FindProperty("completionDurationText").objectReferenceValue = completion.durationText;
+            hudSo.FindProperty("completionProfileNameText").objectReferenceValue = completion.profileNameText;
+            hudSo.FindProperty("retryBtn").objectReferenceValue = completion.retryButton;
+            hudSo.FindProperty("hubBtn").objectReferenceValue = completion.nextButton;
+            hudSo.FindProperty("homeBtn").objectReferenceValue = completion.homeButton;
+            hudSo.FindProperty("completionHistoryBtn").objectReferenceValue = completion.historyButton;
+            hudSo.FindProperty("completionTopHomeBtn").objectReferenceValue = completion.topHomeButton;
+            hudSo.FindProperty("completionHelpBtn").objectReferenceValue = completion.helpButton;
+            hudSo.FindProperty("completionHelpPanel").objectReferenceValue = completion.helpPanel;
+            hudSo.FindProperty("completionHelpCloseBtn").objectReferenceValue = completion.helpCloseButton;
             hudSo.ApplyModifiedPropertiesWithoutUndo();
 
             var dashboard = canvasGo.AddComponent<ConvenienceDashboardView>();
@@ -141,6 +237,8 @@ namespace Artti.Editor
 
             help.root.SetActive(false);
             pause.root.SetActive(false);
+            completion.helpPanel.SetActive(false);
+            completion.root.SetActive(false);
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
             Debug.Log("[ConvenienceTrainingDashboardBuilder] PNG 대시보드 화면 생성 완료");
@@ -155,6 +253,243 @@ namespace Artti.Editor
             camera.backgroundColor = Navy;
             camera.cullingMask = 0;
             go.transform.position = new Vector3(0f, 0f, -10f);
+        }
+
+        private static (
+            GameObject root,
+            TMP_Text scenarioText,
+            TMP_Text durationText,
+            TMP_Text profileNameText,
+            Button retryButton,
+            Button nextButton,
+            Button homeButton,
+            Button historyButton,
+            Button helpButton,
+            Button topHomeButton,
+            GameObject helpPanel,
+            Button helpCloseButton) BuildCompletion(Transform parent, TMP_FontAsset font)
+        {
+            var root = ChildRect("CompletionRoot", parent);
+            Stretch(root);
+            var dim = root.gameObject.AddComponent<Image>();
+            dim.color = new Color(0.01f, 0.025f, 0.09f, 0.42f);
+
+            // 완료 화면은 기존 대시보드 UI를 가리고 매장 배경만 보여야 한다.
+            var completionBackground = CreateRaster("CompletionBackground", root,
+                Art + "store_background.png", 0, 0, 1536, 1024, false);
+            Stretch(completionBackground.rectTransform);
+            var completionTint = CreateColorPanel("CompletionTint", root, 0, 0, 1536, 1024,
+                new Color(0.015f, 0.035f, 0.12f, 0.48f));
+            Stretch(completionTint.rectTransform);
+
+            var frame = CreateRoundedPanel("CompletionFrame", root, 32, 36, 1472, 940,
+                new Color(0.025f, 0.05f, 0.15f, 0.42f));
+            frame.GetComponent<Image>().raycastTarget = false;
+            var frameOutline = frame.AddComponent<Outline>();
+            frameOutline.effectColor = new Color(0.72f, 0.82f, 1f, 0.24f);
+            frameOutline.effectDistance = new Vector2(1.5f, -1.5f);
+
+            var headerShade = CreateRoundedPanel("HeaderShade", root, 34, 44, 1468, 108,
+                new Color(0.02f, 0.045f, 0.14f, 0.48f));
+            headerShade.GetComponent<Image>().raycastTarget = false;
+
+            // 프로필 칩 — 실제 활성 프로필 닉네임은 ShowCompletion에서 덮어쓴다.
+            var profile = CreateRoundedPanel("CompletionProfile", root, 49, 46, 286, 80,
+                new Color(0.035f, 0.075f, 0.20f, 0.88f));
+            var avatarMask = ChildRect("Avatar", profile.transform);
+            Place(avatarMask, 10, 8, 64, 64);
+            var maskImage = avatarMask.gameObject.AddComponent<Image>();
+            maskImage.sprite = Builtin("UI/Skin/Knob.psd");
+            maskImage.color = White;
+            var avatarMaskComponent = avatarMask.gameObject.AddComponent<Mask>();
+            avatarMaskComponent.showMaskGraphic = false;
+            var avatarArt = ChildRect("ProfileArtwork", avatarMask);
+            avatarArt.anchorMin = avatarArt.anchorMax = new Vector2(0.5f, 0.5f);
+            avatarArt.pivot = new Vector2(0.5f, 0.5f);
+            avatarArt.anchoredPosition = new Vector2(140f, -8f);
+            avatarArt.sizeDelta = new Vector2(421f, 140f);
+            var avatarImage = avatarArt.gameObject.AddComponent<Image>();
+            avatarImage.sprite = LoadSprite(Art + "profile_panel.png");
+            avatarImage.raycastTarget = false;
+            var profileName = MakeText("ProfileName", profile.transform, "김연영님", 22, White, font,
+                88, 8, 190, 36, true);
+            profileName.overflowMode = TextOverflowModes.Overflow;
+            MakeText("ProfileGreeting", profile.transform, "오늘도 고생했어요!", 15,
+                new Color(0.86f, 0.90f, 1f), font, 88, 42, 180, 24, false);
+
+            var historyButton = CreateRasterButton("HistoryButton", root,
+                CompletionArt + "button_history.png", 1124, 23, 124, 165);
+            var helpButton = CreateRasterButton("HelpButton", root,
+                CompletionArt + "button_help.png", 1248, 23, 124, 165);
+            var topHomeButton = CreateRasterButton("TopHomeButton", root,
+                CompletionArt + "button_home_top.png", 1370, 23, 124, 165);
+
+            // 축하 제목과 점원.
+            CreateRaster("CompletionBadge", root, CompletionArt + "completion_badge.png",
+                535, 86, 132, 132, true);
+            CreateRaster("CompletionTitle", root, CompletionArt + "completion_title.png",
+                695, 103, 310, 103, true);
+            var clerkClip = ChildRect("CompletionClerkClip", root);
+            Place(clerkClip, 0, 215, 495, 577);
+            clerkClip.gameObject.AddComponent<RectMask2D>();
+            CreateRaster("CompletionClerk", clerkClip, CompletionArt + "completion_clerk.png",
+                -125, 20, 920, 1227, true);
+
+            CreateRaster("SpeechBubble", root, CompletionArt + "speech_bubble.png",
+                12, 290, 242, 194, true);
+            var speech = MakeText("Speech", root, "정말 잘했어요!\n다음에도 함께해요", 18, Ink, font,
+                61, 317, 168, 58, true);
+            speech.textWrappingMode = TextWrappingModes.Normal;
+
+            // 중앙 결과 카드.
+            var card = CreateRoundedPanel("ResultCard", root, 495, 260, 620, 530,
+                new Color(0.965f, 0.975f, 1f, 0.97f));
+            card.GetComponent<Image>().raycastTarget = false;
+            var cardShadow = card.AddComponent<Shadow>();
+            cardShadow.effectColor = new Color(0f, 0.03f, 0.12f, 0.32f);
+            cardShadow.effectDistance = new Vector2(0f, -8f);
+
+            // 제공된 요약 스트립의 라벨/아이콘/상태는 그대로 쓰고 값만 런타임 텍스트로 올린다.
+            CreateRaster("SummaryStrip", root, CompletionArt + "summary_strip.png",
+                489, 220, 632, 211, true);
+            var scenarioText = MakeText("ScenarioValue", root, "편의점", 27, Ink, font,
+                578, 325, 150, 52, true);
+            scenarioText.alignment = TextAlignmentOptions.MidlineLeft;
+            scenarioText.overflowMode = TextOverflowModes.Overflow;
+            var durationText = MakeText("DurationValue", root, "1분 이내", 27, Ink, font,
+                785, 325, 170, 52, true);
+            durationText.alignment = TextAlignmentOptions.MidlineLeft;
+            durationText.overflowMode = TextOverflowModes.Overflow;
+
+            var scorePanel = CreateRoundedPanel("ScorePanel", root, 520, 400, 570, 88,
+                new Color(0.92f, 0.94f, 1f, 0.82f));
+            scorePanel.GetComponent<Image>().raycastTarget = false;
+            MakeText("ScoreLabel", root, "나의 점수", 22, Ink, font, 539, 421, 110, 40, true);
+            for (int i = 0; i < 5; i++)
+                CreateRaster($"ScoreStar_{i + 1}", root, CompletionArt + "score_star.png",
+                    646 + i * 54, 407, 58, 58, true);
+            var scoreText = MakeText("ScoreValue", root, "100점", 29, new Color32(45, 86, 225, 255),
+                font, 978, 410, 110, 52, true);
+            scoreText.alignment = TextAlignmentOptions.MidlineLeft;
+            scoreText.overflowMode = TextOverflowModes.Overflow;
+
+            var expCard = CreateRoundedPanel("ExperienceCard", root, 520, 505, 180, 165,
+                new Color(0.95f, 0.96f, 1f, 0.92f));
+            expCard.GetComponent<Image>().raycastTarget = false;
+            CreateRaster("ExperienceArtwork", root, CompletionArt + "experience_panel.png",
+                510, 520, 200, 94, true);
+            var expTitle = MakeText("ExperienceTitle", root, "획득 경험치", 18, Ink, font,
+                536, 521, 148, 30, true);
+            expTitle.alignment = TextAlignmentOptions.Center;
+            var expValue = MakeText("ExperienceValue", root, "+150", 24, Ink, font,
+                618, 609, 70, 36, true);
+            expValue.alignment = TextAlignmentOptions.Center;
+
+            var levelCard = CreateRoundedPanel("LevelCard", root, 710, 505, 180, 165,
+                new Color(0.95f, 0.96f, 1f, 0.92f));
+            levelCard.GetComponent<Image>().raycastTarget = false;
+            var levelTitle = MakeText("LevelTitle", root, "시나리오 레벨", 18, Ink, font,
+                726, 521, 148, 30, true);
+            levelTitle.alignment = TextAlignmentOptions.Center;
+            var levelPill = CreateRoundedPanel("LevelPill", root, 762, 560, 76, 46,
+                new Color32(64, 195, 139, 255));
+            var levelText = MakeText("LevelValue", levelPill.transform, "Lv.2", 23, White, font,
+                0, 0, 76, 46, true);
+            levelText.alignment = TextAlignmentOptions.Center;
+            CreateRaster("LevelMaster", root, CompletionArt + "level_master.png",
+                718, 595, 164, 60, true);
+
+            var badgeCard = CreateRoundedPanel("BadgeCard", root, 900, 505, 190, 165,
+                new Color(0.95f, 0.96f, 1f, 0.92f));
+            badgeCard.GetComponent<Image>().raycastTarget = false;
+            CreateRaster("FirstPurchaseBadge", root, CompletionArt + "badge_first_purchase.png",
+                900, 505, 190, 143, true);
+            var badgeTitle = MakeText("BadgeTitle", root, "새 배지 획득!", 18, Ink, font,
+                916, 521, 158, 30, true);
+            badgeTitle.alignment = TextAlignmentOptions.Center;
+
+            MakeText("ProgressTitle", root, "전체 시나리오 진행도", 18, Ink, font,
+                535, 704, 200, 30, true);
+            var progressTrack = CreateRoundedPanel("ProgressTrack", root, 535, 741, 405, 15,
+                new Color32(190, 202, 236, 255));
+            progressTrack.GetComponent<Image>().raycastTarget = false;
+            var progressFill = CreateRoundedPanel("ProgressFill", root, 535, 741, 162, 15,
+                new Color32(67, 103, 238, 255));
+            progressFill.GetComponent<Image>().raycastTarget = false;
+            MakeText("ProgressValue", root, "40%", 24, Ink, font, 952, 726, 65, 40, true);
+            CreateRaster("ProgressGift", root, CompletionArt + "progress_gift.png",
+                1002, 682, 92, 92, true);
+
+            // 오른쪽 미션 하이라이트와 팁.
+            CreateRaster("MissionHighlightPanel", root, CompletionArt + "mission_highlight_panel.png",
+                1155, 217, 330, 396, true);
+            CreateHighlight(root, font, "FindItem", CompletionArt + "highlight_search.png",
+                1184, 292, "물건 찾기 성공!", "필요한 물건을 정확히 찾았어요");
+            CreateHighlight(root, font, "Conversation", CompletionArt + "highlight_chat.png",
+                1184, 386, "대화하기 성공!", "편의점 직원과 잘 대화했어요");
+            CreateHighlight(root, font, "Payment", CompletionArt + "highlight_payment.png",
+                1184, 480, "결제하기 성공!", "스스로 계산까지 완료했어요");
+            CreateRaster("TodayTip", root, CompletionArt + "today_tip.png",
+                1155, 532, 330, 248, true);
+
+            // 화면 전체에 제공된 컨페티 에셋을 정적으로 배치한다.
+            CreateRaster("ConfettiYellowRibbon", root, CompletionArt + "confetti_ribbon_yellow.png",
+                394, 49, 70, 73, true);
+            CreateRaster("ConfettiPurpleRibbon", root, CompletionArt + "confetti_ribbon_purple.png",
+                1387, 779, 62, 62, true);
+            CreateRaster("ConfettiPinkRibbon", root, CompletionArt + "confetti_ribbon_pink.png",
+                1058, 172, 56, 56, true);
+            CreateRaster("ConfettiCyanRibbon", root, CompletionArt + "confetti_ribbon_cyan.png",
+                1005, 76, 58, 63, true);
+            CreateRaster("ConfettiSparkle", root, CompletionArt + "confetti_sparkle.png",
+                621, 44, 58, 58, true);
+            CreateRaster("ConfettiDiamond", root, CompletionArt + "confetti_diamond.png",
+                1032, 218, 48, 48, true);
+            CreateRaster("ConfettiDiamondSmall", root, CompletionArt + "confetti_diamond_small.png",
+                455, 218, 44, 44, true);
+
+            var bottomShade = CreateRoundedPanel("BottomShade", root, 34, 792, 1468, 182,
+                new Color(0.025f, 0.05f, 0.15f, 0.76f));
+            bottomShade.GetComponent<Image>().raycastTarget = false;
+
+            // 하단 핵심 동작 3개.
+            var retryButton = CreateRasterButton("RetryButton", root,
+                CompletionArt + "button_retry.png", 130, 735, 380, 285);
+            var nextButton = CreateRasterButton("NextScenarioButton", root,
+                CompletionArt + "button_next.png", 485, 700, 500, 368);
+            var homeButton = CreateRasterButton("HomeButton", root,
+                CompletionArt + "button_home.png", 955, 728, 450, 330);
+
+            // 완료 화면 전용 도움말. 메인 완료 화면보다 나중 형제로 생성해 항상 위에 뜬다.
+            var helpPanel = ChildRect("CompletionHelpPanel", root);
+            Stretch(helpPanel);
+            var helpDim = helpPanel.gameObject.AddComponent<Image>();
+            helpDim.color = new Color(0f, 0f, 0f, 0.72f);
+            var helpCard = CreateRoundedPanel("Card", helpPanel, 443, 285, 650, 430,
+                new Color(0.035f, 0.075f, 0.23f, 0.98f));
+            var helpTitle = MakeText("Title", helpCard.transform, "완료 화면 도움말", 32, White, font,
+                50, 42, 550, 50, true);
+            helpTitle.alignment = TextAlignmentOptions.Center;
+            var helpBody = MakeText("Body", helpCard.transform,
+                "• 다시 도전하기: 편의점 훈련을 처음부터 다시 시작해요.\n\n" +
+                "• 다음 시나리오: 다른 훈련을 선택하는 화면으로 이동해요.\n\n" +
+                "• 기록 보기: 방금 완료한 훈련 기록을 확인해요.",
+                21, new Color(0.88f, 0.92f, 1f), font, 60, 120, 530, 190, false);
+            helpBody.textWrappingMode = TextWrappingModes.Normal;
+            var helpCloseButton = MakeTextButton("Close", helpCard.transform, "닫기", 23, font,
+                225, 338, 200, 62, new Color32(45, 105, 230, 255));
+
+            return (root.gameObject, scenarioText, durationText, profileName, retryButton, nextButton,
+                homeButton, historyButton, helpButton, topHomeButton, helpPanel.gameObject, helpCloseButton);
+        }
+
+        private static void CreateHighlight(Transform parent, TMP_FontAsset font, string name, string iconPath,
+            float x, float y, string title, string description)
+        {
+            CreateRaster(name + "Icon", parent, iconPath, x, y, 68, 68, true);
+            MakeText(name + "Title", parent, title, 18, White, font, x + 78, y + 8, 205, 28, true);
+            MakeText(name + "Description", parent, description, 13,
+                new Color(0.88f, 0.92f, 1f), font, x + 78, y + 38, 205, 24, false);
         }
 
         private static void BuildProfile(Transform parent, TMP_FontAsset font)
@@ -458,6 +793,16 @@ namespace Artti.Editor
             image.preserveAspect = preserveAspect;
             image.raycastTarget = false;
             return image;
+        }
+
+        private static Button CreateRasterButton(string name, Transform parent, string path,
+            float x, float y, float width, float height)
+        {
+            var image = CreateRaster(name, parent, path, x, y, width, height, true);
+            image.raycastTarget = true;
+            var button = image.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            return button;
         }
 
         private static void AddFillPiece(Transform parent, string name, string path, float x, float y, float width, float height)
