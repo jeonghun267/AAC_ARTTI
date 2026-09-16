@@ -93,6 +93,11 @@ public class OrderManager : MonoBehaviour
         GoToMenu();                                  // 다음 단계: 음료
     }
 
+    public void SelectTemperature(string temp)
+    {
+        SelectTemp(temp);
+    }
+
     // 사이즈 버튼: "작은" / "중간" / "큰"
     public void SelectSize(string size)
     {
