@@ -3,6 +3,7 @@ using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using Artti.Common;
 
 namespace Artti.Training
 {
@@ -43,9 +44,15 @@ namespace Artti.Training
         [SerializeField] private TMP_Text completionScenarioText;
         [SerializeField] private TMP_Text completionDurationText;
         [SerializeField] private TMP_Text completionStepsText;
+        [SerializeField] private TMP_Text completionProfileNameText;
         [SerializeField] private Button retryBtn;
         [SerializeField] private Button hubBtn;
         [SerializeField] private Button homeBtn;
+        [SerializeField] private Button completionHistoryBtn;
+        [SerializeField] private Button completionTopHomeBtn;
+        [SerializeField] private Button completionHelpBtn;
+        [SerializeField] private GameObject completionHelpPanel;
+        [SerializeField] private Button completionHelpCloseBtn;
         [SerializeField] private RectTransform confettiRoot;
 
         public event Action OnExitRequested;
@@ -53,6 +60,7 @@ namespace Artti.Training
         public event Action OnRetrySession;
         public event Action OnGoHub;
         public event Action OnGoHome;
+        public event Action OnGoReport;
 
         private static readonly Color DotDone      = new Color32(26, 86, 219, 255);
         private static readonly Color DotCurrent   = new Color32(255, 138, 61, 255); // accent 주황
@@ -75,9 +83,14 @@ namespace Artti.Training
             if (retryBtn != null) retryBtn.onClick.AddListener(() => OnRetrySession?.Invoke());
             if (hubBtn != null) hubBtn.onClick.AddListener(() => OnGoHub?.Invoke());
             if (homeBtn != null) homeBtn.onClick.AddListener(() => OnGoHome?.Invoke());
+            if (completionHistoryBtn != null) completionHistoryBtn.onClick.AddListener(() => OnGoReport?.Invoke());
+            if (completionTopHomeBtn != null) completionTopHomeBtn.onClick.AddListener(() => OnGoHome?.Invoke());
+            if (completionHelpBtn != null) completionHelpBtn.onClick.AddListener(() => SetActiveSafe(completionHelpPanel, true));
+            if (completionHelpCloseBtn != null) completionHelpCloseBtn.onClick.AddListener(() => SetActiveSafe(completionHelpPanel, false));
 
             SetActiveSafe(pauseModal, false);
             SetActiveSafe(completionRoot, false);
+            SetActiveSafe(completionHelpPanel, false);
             SetActiveSafe(thinkingRoot, false);
             SetActiveSafe(userBubble, false);
         }
@@ -164,6 +177,11 @@ namespace Artti.Training
             if (completionScenarioText != null) completionScenarioText.text = scenarioName;
             if (completionDurationText != null) completionDurationText.text = durationText;
             if (completionStepsText != null) completionStepsText.text = stepsText;
+            if (completionProfileNameText != null)
+            {
+                string nickname = AppBootstrap.Instance?.ProfileManager?.ActiveProfile?.nickname;
+                completionProfileNameText.text = string.IsNullOrWhiteSpace(nickname) ? "김연영님" : $"{nickname}님";
+            }
             SetActiveSafe(thinkingRoot, false);
             SetActiveSafe(completionRoot, true);
         }
