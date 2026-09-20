@@ -92,6 +92,13 @@ namespace Artti.Editor
         // 원본 설명문 60~70px -> 32.1~37.4, 버튼 글자 65~70px -> 34.8~37.4 (배율 0.535)
         const int AacDescFont  = 34;
         const int AacLabelFont = 36;
+        // NotoSansKR-Medium SDF의 줄 높이는 130.32 / 90 = 1.448em이다(폰트 에셋 m_LineHeight / m_PointSize).
+        // TMP는 줄 높이가 박스보다 크면 세로 오버플로로 판정하는데(TextMeshProUGUI.cs:3393),
+        // Ellipsis 모드에서는 말줄임 후보 스택이 비어 있으면 m_characterCount를 0으로 만들어
+        // 글자를 통째로 지운다(:3460). 그래서 텍스트 박스 높이는 반드시 줄 높이보다 커야 한다.
+        // 높이를 손으로 적으면 폰트를 조정할 때 같은 함정에 다시 빠지므로 폰트에서 유도한다.
+        const float AacLineHeight = 1.448f;
+        static int AacTextBoxH(int font) => Mathf.CeilToInt(font * AacLineHeight) + 4;
 
         // 훈련 카드 시안(824x1162)을 폭 500에 맞춘 크기. 배율 500/824 = 0.6068, 1162x0.6068 = 705.1
         // 두 카드는 항상 같은 크기를 유지한다 (AR 시안이 나오면 같은 규격으로 맞춤).
@@ -210,18 +217,31 @@ namespace Artti.Editor
 
             // 기존 노란 별(StarGlow + Sticker_02_yellow_star)을 대체. 같은 Twinkle 모션을 붙인다.
             var sparkleRT = AacChild("Sparkle", aacBody, AacSparklePath, 924, 407, 154, 224);
-            sparkleRT.gameObject.AddComponent<HomeDecorMotion>().Configure(HomeDecorMotion.Mode.Twinkle);
+            var sparkleMotion = sparkleRT.gameObject.AddComponent<HomeDecorMotion>();
+            sparkleMotion.Configure(HomeDecorMotion.Mode.Twinkle);
+            // 기본 Twinkle은 크기 ±14% + 알파 0.5~1.0 + 회전 ±2.4도를 0.9초 주기로 반복해
+            // 배경 장식으로는 과하다. 회전과 투명도를 끄고 크기만 아주 미세하게, 느리게 남긴다.
+            // 네 필드 모두 [SerializeField] private이라 이 인스턴스의 직렬화 값만 덮어쓴다.
+            // 배경 스티커 11개(파란 별 2개 포함)와 SplashScene의 9개는 영향받지 않는다.
+            var soSparkle = new SerializedObject(sparkleMotion);
+            soSparkle.FindProperty("rotAmp").floatValue          = 0f;     // 회전 제거 (:76이 rotAmp x 0.4 사용)
+            soSparkle.FindProperty("twinkleAlphaMin").floatValue = 1f;     // 알파 1.0 고정 (:73 Lerp(1,1,x)=1)
+            soSparkle.FindProperty("twinkleScaleAmp").floatValue = 0.03f;  // ±14% -> ±3% (세로 ±16.8px -> ±3.6px)
+            soSparkle.FindProperty("twinkleSpeed").floatValue    = 0.25f;  // 1.1Hz -> 0.25Hz (주기 0.9초 -> 4초)
+            soSparkle.ApplyModifiedProperties();
 
             // 문구 확정. aac_body.png의 구름 외곽선이 이 두 줄 모양을 따라 만들어져 있어,
             // 문구를 바꾸면 배경 이미지를 다시 만들어야 한다.
+            var descBoxH = AacTextBoxH(AacDescFont);   // 폰트 34 -> 54 (줄 높이 49.23보다 커야 함)
+
             var desc1 = MakeText("Desc1", aacBody, "대화가 어려울 때,", AacDescFont, AacDescColor, font, bold: false);
             desc1.alignment = TextAlignmentOptions.Left;
-            Anchor(desc1.rectTransform, new Vector2(0f, 1f), AacTextPos(211, 815, 75, 48), new Vector2(290, 48));
+            Anchor(desc1.rectTransform, new Vector2(0f, 1f), AacTextPos(211, 815, 75, descBoxH), new Vector2(290, descBoxH));
 
             var desc2 = MakeText("Desc2", aacBody, "AAC와 함께 소통해요", AacDescFont, AacDescColor, font, bold: false);
             desc2.alignment = TextAlignmentOptions.Left;
             // 원본 x는 212지만 두 행을 같은 기준(211)으로 왼쪽 정렬한다.
-            Anchor(desc2.rectTransform, new Vector2(0f, 1f), AacTextPos(211, 907, 69, 48), new Vector2(350, 48));
+            Anchor(desc2.rectTransform, new Vector2(0f, 1f), AacTextPos(211, 907, 69, descBoxH), new Vector2(350, descBoxH));
 
             // 프로필 버튼 (아바타 + 프로필 이름 + 꺾쇠) → 프로필 선택 화면.
             // 구름 바깥 아래에 떠 있는 알약 버튼. 배경은 aac_cta.png 한 장으로 끝난다.
@@ -244,9 +264,11 @@ namespace Artti.Editor
             var profileLabel = MakeText("Label", chip, "프로필", AacLabelFont, AacLabelColor, font, bold: true);
             profileLabel.alignment = TextAlignmentOptions.Left;
             // 닉네임이 길어도 꺾쇠를 침범하지 않도록 박스 폭에서 말줄임 처리한다.
+            // Ellipsis는 박스가 줄 높이보다 낮으면 글자를 통째로 지우므로 높이를 폰트에서 유도한다.
             profileLabel.overflowMode = TextOverflowModes.Ellipsis;
+            var labelBoxH = AacTextBoxH(AacLabelFont);  // 폰트 36 -> 57 (줄 높이 52.13보다 커야 함)
             Anchor(profileLabel.rectTransform, new Vector2(0f, 1f),
-                AacTextPos(501 - 189, 1108 - 1026, 74, 50), new Vector2(150, 50));
+                AacTextPos(501 - 189, 1108 - 1026, 74, labelBoxH), new Vector2(150, labelBoxH));
 
             AacChildIn("Chevron", chip, AacChevronPath, 189, 1026, 767, 1113, 37, 62);
 
@@ -353,6 +375,10 @@ namespace Artti.Editor
             public string bodyPath;       // null이면 호출부의 backPath 사용
             public string titleIconPath;  // null이면 제목 아이콘 없음
             public Vector2 titleIconPos, titleIconSize;
+            // 기록: 카드 제목은 폰트 62에 박스 87이라 줄 높이(62 x 1.448 = 89.8)를 넘는 세로 오버플로
+            // 상태다. overflowMode가 기본 Overflow라 TMP가 세로 경계를 무시해 지금은 정상 렌더링된다.
+            // 다만 카드 제목에 Ellipsis를 켜면 좌측 Label과 같은 증상(글자 전부 사라짐)이 난다.
+            // 그때는 AacTextBoxH와 같은 방식으로 박스 높이를 폰트에서 유도해야 한다.
             public Vector2 titlePos, titleSize;
             public Vector2 descPos,  descSize;
             public Vector2 charPos,  charSize;
