@@ -225,7 +225,7 @@ namespace Artti.Editor
 
             // open.png 배치: 카드 2개를 더 붙여서 우측에(좌측 패널과 균형)
             var train = MakeCharacterCard(cards, "TrainingModeBtn", new Vector2(-40, 0),
-                TrainAccent, "말하기 훈련모드", "다양한 상황에서 말을 연습해요", "훈련 시작하기",
+                TrainAccent, "훈련모드", "다양한 상황에서 말을 연습해요", "훈련 시작하기",
                 TrainCharPath, null, null, font, ocrEmoji: null,
                 style: CardStyle.TrainingV2);
 
@@ -337,14 +337,19 @@ namespace Artti.Editor
             };
 
             // 크롭본 824x1162 기준, 배율 500/824 = 0.6068.
-            // 아이콘/제목 x는 묶음 중심을 카드 중심에 정확히 맞춘 값(원본 대비 좌로 2.4px 보정).
+            // 아이콘/제목 x는 [아이콘 82][간격 18.2][제목 글리프 G] 묶음을 카드 중심에 맞춘 값.
+            //   제목 중심 = (82 + 18.2) / 2 = 50.1  (묶음 오른쪽 끝 요소라 G와 무관한 상수)
+            //   아이콘 중심 = -9.1 - G/2
+            // "훈련모드"(한글 4자)의 G는 에디터 실측 약 244 -> 아이콘 -9.1 - 122 = -131.
+            // NotoSansKR은 한글을 거의 전각으로 그린다(폰트 62 기준 자당 약 61px = 0.98em).
+            // 제목 문구를 바꾸면 G = 61 x 한글자수로 잡고 아이콘 x만 위 식으로 다시 계산하면 된다.
             public static CardStyle TrainingV2 => new CardStyle
             {
                 useAccentColor = false,
                 bodyPath = TrainBodyPath, titleIconPath = TrainIconPath,
-                titleIconPos = new Vector2(-155.6f, -40.0f), titleIconSize = new Vector2(82, 86),
+                titleIconPos = new Vector2(-131f, -40.0f), titleIconSize = new Vector2(82, 86),
                 titlePos = new Vector2(50.1f, -41.5f),  titleSize = new Vector2(310, 87), titleFont = 62,
-                descPos  = new Vector2(0f, -119.1f),    descSize  = new Vector2(350, 50), descFont  = 36,
+                descPos  = new Vector2(0f, -119.1f),    descSize  = new Vector2(350, 50), descFont  = 28,
                 charPos  = new Vector2(0f, 140.8f),     charSize  = new Vector2(470, 407),
                 ctaPos   = new Vector2(0f, 32.8f),      ctaSize   = new Vector2(440, 105), ctaFont  = 47,
                 titleColor = new Color32(0x58, 0x1B, 0xEE, 255),
