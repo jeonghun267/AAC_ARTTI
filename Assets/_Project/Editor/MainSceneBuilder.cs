@@ -30,6 +30,8 @@ namespace Artti.Editor
         static readonly Color32 TitleColor = new Color32(33, 41, 60, 255);
         static readonly Color32 SubColor   = new Color32(110, 118, 135, 255);
         static readonly Color   White      = Color.white;
+        static readonly Color32 AacDescColor  = new Color32(0x3B, 0x47, 0x70, 255);  // #3B4770 좌측 설명문
+        static readonly Color32 AacLabelColor = new Color32(0x0C, 0x21, 0x4E, 255);  // #0C214E 프로필 버튼 글자
 
         const string RoundedPath  = "Assets/_Project/Art/UI/RoundedRect.png";
         const string HomeDir      = "Assets/_Project/Art/UI/Home/";
@@ -59,6 +61,18 @@ namespace Artti.Editor
         const string ArCharBgPath = HomeDir + "ar_character_bg.png";
         const string ArCharFgPath = HomeDir + "ar_character_only.png";
 
+        // 좌측 AAC 블록 v2 시안. 원본 캔버스 1122x1402 (카드와 다름).
+        // 주의: aac_body.png의 구름 외곽선은 설명 문구("대화가 어려울 때, / AAC와 함께 소통해요")
+        //       모양을 따라 만들어져 있다. Desc1/Desc2 문구를 바꾸면 이미지를 다시 만들어야 한다.
+        // 구름 잉크는 y 196~1016까지고 CTA(y 1026~1257)는 구름 바깥 아래에 떠 있는 구조다.
+        const string AacBodyPath    = HomeDir + "aac_body.png";
+        const string AacTitlePath   = HomeDir + "aac_title.png";
+        const string AacLogoPath    = HomeDir + "aac_logo.png";
+        const string AacSparklePath = HomeDir + "aac_sparkle.png";
+        const string AacCtaPath     = HomeDir + "aac_cta.png";
+        const string AacProfileIcon = HomeDir + "aac_profile_icon.png";
+        const string AacChevronPath = HomeDir + "aac_chevron_icon.png";
+
         const string EmojiDir   = "Assets/_Project/openmoji-master/color/svg/";
         const string Sparkle    = EmojiDir + "2728.svg";   // ✨
         const string Leaf       = EmojiDir + "1F343.svg";  // 🍃
@@ -67,6 +81,17 @@ namespace Artti.Editor
         const string OcrIcon    = EmojiDir + "1F50D.svg";  // 🔍 OCR(스캔)
         const string Bulb       = EmojiDir + "1F4A1.svg";  // 💡
         const string IconExit   = EmojiDir + "E0A8.svg";   // 비상구
+
+        // 좌측 AAC 블록의 화면 크기와 위치. 보고 나서 조정할 수 있게 한 곳에 모아 둔다.
+        // 이 둘만 바꾸면 내부 요소는 배율에 따라 함께 움직인다(AacScale 참조).
+        static readonly Vector2 AacBodySize = new Vector2(600, 750);
+        static readonly Vector2 AacBodyPos  = new Vector2(-638f, 0f);
+        // 원본 1122x1402 -> 화면 배율. sx = 600/1122 = 0.53476, sy = 750/1402 = 0.53495 (차이 0.04%)
+        static Vector2 AacScale => new Vector2(AacBodySize.x / 1122f, AacBodySize.y / 1402f);
+        // 생성 이미지라 원본 폰트 메트릭이 일관되지 않는다. 화면에서 보고 조정할 시작값이다.
+        // 원본 설명문 60~70px -> 32.1~37.4, 버튼 글자 65~70px -> 34.8~37.4 (배율 0.535)
+        const int AacDescFont  = 34;
+        const int AacLabelFont = 36;
 
         // 훈련 카드 시안(824x1162)을 폭 500에 맞춘 크기. 배율 500/824 = 0.6068, 1162x0.6068 = 705.1
         // 두 카드는 항상 같은 크기를 유지한다 (AR 시안이 나오면 같은 규격으로 맞춤).
@@ -168,61 +193,62 @@ namespace Artti.Editor
             var leftPanel = ChildRect("LeftPanel", canvasGo.transform);
             StretchFull(leftPanel, 0);
 
-            // 좌상단 토스트바 자리를 비우려 타이틀 블록을 아래로 (open.png 배치)
-            var kicker = MakeText("Kicker", leftPanel, "내 손 안의", 50, TitleColor, font, bold: true);
-            kicker.alignment = TextAlignmentOptions.TopLeft;
-            Anchor(kicker.rectTransform, new Vector2(0f, 1f), new Vector2(64, -432), new Vector2(540, 64));
+            // 구름 스티커 본체. 내부 요소는 전부 이 rect 기준 좌상단 앵커로 배치한다.
+            // 크기/위치는 AacBodySize, AacBodyPos 두 상수만 바꾸면 내부가 함께 따라온다.
+            var aacBody = ChildRect("AacBody", leftPanel);
+            aacBody.anchorMin = aacBody.anchorMax = new Vector2(0.5f, 0.5f);
+            aacBody.pivot = new Vector2(0.5f, 0.5f);
+            aacBody.anchoredPosition = AacBodyPos;
+            aacBody.sizeDelta = AacBodySize;
+            var aacBodyImg = aacBody.gameObject.AddComponent<Image>();
+            aacBodyImg.sprite = LoadPngSprite(AacBodyPath);
+            aacBodyImg.preserveAspect = true;
+            aacBodyImg.raycastTarget = false;
 
-            // AAC: 파란 세로 그라데이션 + Bloom (중앙, 크게)
-            var aac = MakeText("AAC", leftPanel, "AAC", 185, Color.white, font, bold: true);
-            aac.alignment = TextAlignmentOptions.TopLeft;
-            aac.enableVertexGradient = true;
-            aac.colorGradient = new VertexGradient(
-                new Color32(206, 228, 255, 255), new Color32(206, 228, 255, 255), // 위: 거의 흰 하늘파랑
-                new Color32(13, 52, 180, 255),   new Color32(13, 52, 180, 255));  // 아래: 아주 진한 파랑
-            Anchor(aac.rectTransform, new Vector2(0f, 1f), new Vector2(60, -490), new Vector2(510, 220));
-            aac.gameObject.AddComponent<HomeBloomText>().SetIntensity(0.9f); // 노출 올린 만큼 AAC HDR은 낮춰 그라데이션 보존
+            AacChild("Title", aacBody, AacTitlePath, 189, 242, 727, 180);
+            AacChild("Logo",  aacBody, AacLogoPath,  113, 449, 860, 331);
 
-            // AAC 옆 노란 별 — 뒤에 따뜻한 후광부터 깔고(먼저 추가=뒤), 그 위에 별을 얹어 반짝이게
-            AddGlowHalo(leftPanel, new Vector2(0f, 1f), new Vector2(470, -498), 170f, new Color32(255, 214, 92, 255), 0.45f);
-            AddSticker(leftPanel, "02_yellow_star.png", new Vector2(0f, 1f), new Vector2(470, -498), 108, HomeDecorMotion.Mode.Twinkle, 1f);
+            // 기존 노란 별(StarGlow + Sticker_02_yellow_star)을 대체. 같은 Twinkle 모션을 붙인다.
+            var sparkleRT = AacChild("Sparkle", aacBody, AacSparklePath, 924, 407, 154, 224);
+            sparkleRT.gameObject.AddComponent<HomeDecorMotion>().Configure(HomeDecorMotion.Mode.Twinkle);
 
-            var subtitle = MakeText("Subtitle", leftPanel, "대화가 어려울 때,\nAAC와 함께 소통해요", 33, SubColor, font, bold: false);
-            subtitle.alignment = TextAlignmentOptions.TopLeft;
-            subtitle.textWrappingMode = TextWrappingModes.Normal;
-            Anchor(subtitle.rectTransform, new Vector2(0f, 1f), new Vector2(66, -712), new Vector2(500, 120));
+            // 문구 확정. aac_body.png의 구름 외곽선이 이 두 줄 모양을 따라 만들어져 있어,
+            // 문구를 바꾸면 배경 이미지를 다시 만들어야 한다.
+            var desc1 = MakeText("Desc1", aacBody, "대화가 어려울 때,", AacDescFont, AacDescColor, font, bold: false);
+            desc1.alignment = TextAlignmentOptions.Left;
+            Anchor(desc1.rectTransform, new Vector2(0f, 1f), AacTextPos(211, 815, 75, 48), new Vector2(290, 48));
 
-            // 프로필 버튼 (아바타 + "프로필") → 프로필 선택 화면 (open.png)
-            var chip = ChildRect("ProfileBtn", leftPanel);
-            Anchor(chip, new Vector2(0f, 1f), new Vector2(64, -832), new Vector2(300, 88));
-            // 바깥 테두리(링): chip 자체 Image = 테두리색, 안쪽 Fill을 살짝 inset 해서 글래스 채움 → 또렷한 테두리
-            var chipImg = chip.gameObject.AddComponent<Image>();
-            chipImg.sprite = Rounded(); chipImg.type = Image.Type.Sliced; chipImg.pixelsPerUnitMultiplier = 1f;
-            chipImg.color = new Color(Primary.r / 255f, Primary.g / 255f, Primary.b / 255f, 0.55f); // 파란 테두리
+            var desc2 = MakeText("Desc2", aacBody, "AAC와 함께 소통해요", AacDescFont, AacDescColor, font, bold: false);
+            desc2.alignment = TextAlignmentOptions.Left;
+            // 원본 x는 212지만 두 행을 같은 기준(211)으로 왼쪽 정렬한다.
+            Anchor(desc2.rectTransform, new Vector2(0f, 1f), AacTextPos(211, 907, 69, 48), new Vector2(350, 48));
+
+            // 프로필 버튼 (아바타 + 프로필 이름 + 꺾쇠) → 프로필 선택 화면.
+            // 구름 바깥 아래에 떠 있는 알약 버튼. 배경은 aac_cta.png 한 장으로 끝난다.
+            var chip = AacChild("ProfileBtn", aacBody, AacCtaPath, 189, 1026, 731, 231);
+            var chipImg = chip.GetComponent<Image>();
+            chipImg.raycastTarget = true;   // 버튼이므로 레이캐스트를 받아야 한다
             var profileBtn = chip.gameObject.AddComponent<Button>();
             profileBtn.targetGraphic = chipImg;
-
-            var chipFill = ChildRect("Fill", chip);
-            chipFill.anchorMin = Vector2.zero; chipFill.anchorMax = Vector2.one;
-            chipFill.offsetMin = new Vector2(3f, 3f); chipFill.offsetMax = new Vector2(-3f, -3f); // 3px 테두리 두께
-            var chipFillImg = chipFill.gameObject.AddComponent<Image>();
-            chipFillImg.sprite = Rounded(); chipFillImg.type = Image.Type.Sliced; chipFillImg.pixelsPerUnitMultiplier = 1f;
-            chipFillImg.color = new Color(1f, 1f, 1f, 0.82f); // 글래스 채움(조금 더 또렷하게)
-            chipFillImg.raycastTarget = false;
             var pcolors = profileBtn.colors;
-            pcolors.highlightedColor = new Color(0.93f, 0.96f, 1f, 1f);
-            pcolors.pressedColor = new Color(0.85f, 0.9f, 1f, 1f);
+            pcolors.highlightedColor = new Color(0.95f, 0.97f, 1f, 1f);
+            pcolors.pressedColor = new Color(0.88f, 0.92f, 1f, 1f);
             pcolors.fadeDuration = 0.08f;
             profileBtn.colors = pcolors;
 
-            var avatar = ChildRect("Avatar", chip);
-            Anchor(avatar, new Vector2(0f, 0.5f), new Vector2(20, 0), new Vector2(58, 58));
-            var avatarImg = avatar.gameObject.AddComponent<Image>();
-            avatarImg.preserveAspect = true; avatarImg.raycastTarget = false;
+            // 아바타 자리. 활성 프로필이 있으면 MainSceneView가 sprite를 덮어쓰고,
+            // 없으면 MainSceneView.defaultAvatar(aac_profile_icon.png)로 폴백한다.
+            var icon = AacChildIn("Icon", chip, AacProfileIcon, 189, 1026, 330, 1088, 108, 136);
+            var iconImg = icon.GetComponent<Image>();
 
-            var profileLabel = MakeText("Label", chip, "프로필", 32, TitleColor, font, bold: true);
+            var profileLabel = MakeText("Label", chip, "프로필", AacLabelFont, AacLabelColor, font, bold: true);
             profileLabel.alignment = TextAlignmentOptions.Left;
-            Anchor(profileLabel.rectTransform, new Vector2(0f, 0.5f), new Vector2(96, 0), new Vector2(180, 56));
+            // 닉네임이 길어도 꺾쇠를 침범하지 않도록 박스 폭에서 말줄임 처리한다.
+            profileLabel.overflowMode = TextOverflowModes.Ellipsis;
+            Anchor(profileLabel.rectTransform, new Vector2(0f, 1f),
+                AacTextPos(501 - 189, 1108 - 1026, 74, 50), new Vector2(150, 50));
+
+            AacChildIn("Chevron", chip, AacChevronPath, 189, 1026, 767, 1113, 37, 62);
 
             var pback = chip.gameObject.AddComponent<Artti.Common.SceneBackButton>();
             pback.SetTarget("ProfileSelectScene");
@@ -284,7 +310,7 @@ namespace Artti.Editor
             var parallax = canvasGo.AddComponent<HomeParallax>();
             parallax.AddLayer(decor, 15f);      // 배경
             parallax.AddLayer(cards, 10f);      // 캐릭터(카드)
-            parallax.AddLayer(aac.rectTransform, 2f); // AAC
+            // 기존 AAC 글자 레이어는 제거. 좌측 블록은 통이미지라 패럴랙스 대상에서 뺀다.
             parallax.enabled = false;
 
             // ===== MainSceneView 와이어링 =====
@@ -292,9 +318,11 @@ namespace Artti.Editor
             var so = new SerializedObject(view);
             so.FindProperty("trainingModeBtn").objectReferenceValue = train.button;
             so.FindProperty("arFieldModeBtn").objectReferenceValue = ar.button;
-            so.FindProperty("greetingAvatar").objectReferenceValue = avatarImg;
+            so.FindProperty("greetingAvatar").objectReferenceValue = iconImg;
             so.FindProperty("profileNameLabel").objectReferenceValue = profileLabel;
-            so.FindProperty("profileButtonAvatar").objectReferenceValue = avatarImg;
+            so.FindProperty("profileButtonAvatar").objectReferenceValue = iconImg;
+            // 활성 프로필이 없을 때 쓸 기본 아이콘. 비워 두면 MainSceneView는 기존처럼 숨기기만 한다.
+            so.FindProperty("defaultAvatar").objectReferenceValue = LoadPngSprite(AacProfileIcon);
             // reportBtn은 햄버거 메뉴(HomeMenu)가 처리
             so.ApplyModifiedProperties();
 
@@ -834,6 +862,35 @@ namespace Artti.Editor
             rt.pivot = anchor;
             rt.anchoredPosition = pos;
             rt.sizeDelta = size;
+        }
+
+        // ===== 좌측 AAC 블록 헬퍼 (원본 1122x1402 좌표 -> 화면) =====
+
+        // 원본 좌표의 이미지 자식을 만든다. 앵커/피벗은 좌상단이라 좌표 변환이 그대로 대응된다.
+        static RectTransform AacChild(string name, Transform parent, string pngPath,
+            float x, float y, float w, float h)
+        {
+            var rt = ChildRect(name, parent);
+            var s = AacScale;
+            Anchor(rt, new Vector2(0f, 1f), new Vector2(x * s.x, -y * s.y), new Vector2(w * s.x, h * s.y));
+            var img = rt.gameObject.AddComponent<Image>();
+            img.sprite = LoadPngSprite(pngPath);
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+            return rt;
+        }
+
+        // 부모가 AacBody가 아닌 중간 요소(예: CTA)일 때. 부모의 원본 좌상단(px, py)을 빼서 상대 좌표로 만든다.
+        static RectTransform AacChildIn(string name, Transform parent, string pngPath,
+            float px, float py, float x, float y, float w, float h)
+            => AacChild(name, parent, pngPath, x - px, y - py, w, h);
+
+        // 설계 글리프 박스(glyphTop ~ glyphTop+glyphH)의 세로 중심에 TMP 박스(boxH)의 중심을 맞춘다.
+        // 폰트를 바꿔도 글자가 설계 위치에 머무르도록 하기 위한 계산이다.
+        static Vector2 AacTextPos(float x, float glyphTop, float glyphH, float boxH)
+        {
+            var s = AacScale;
+            return new Vector2(x * s.x, -((glyphTop + glyphH * 0.5f) * s.y - boxH * 0.5f));
         }
 
         // openmoji는 SVG. Vector Graphics 임포터가 생성한 Sprite 서브에셋을 사용.
