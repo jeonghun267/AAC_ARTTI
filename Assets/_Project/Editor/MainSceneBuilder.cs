@@ -72,6 +72,9 @@ namespace Artti.Editor
         const string AacCtaPath     = HomeDir + "aac_cta.png";
         const string AacProfileIcon = HomeDir + "aac_profile_icon.png";
         const string AacChevronPath = HomeDir + "aac_chevron_icon.png";
+        // 주의: Stickers/settings_button.png(240x128, 구버전)와 파일명이 같다.
+        //       이쪽은 Home/ 직하의 865x384 신규 시안이다. 경로를 혼동하지 않도록 상수로 고정한다.
+        const string AacSettingsPath = HomeDir + "settings_button.png";
 
         const string EmojiDir   = "Assets/_Project/openmoji-master/color/svg/";
         const string Sparkle    = EmojiDir + "2728.svg";   // ✨
@@ -299,13 +302,29 @@ namespace Artti.Editor
             // ===== 하단 중앙 팁 바 =====
             MakeTipBar(canvasGo.transform, font);
 
-            // ===== 우상단 설정 버튼 (설정씬 미구현 — 비주얼/추후 연결) =====
+            // ===== 우상단 설정 버튼 =====
+            // 설정씬 미구현. 비주얼만 있고 onClick 리스너가 없다(ScenePaths에도 SettingsScene이 없음).
+            // SettingsScene이 생기면 ProfileBtn처럼 SceneBackButton + AddPersistentListener로 연결한다.
+            //
+            // [72dp 터치 영역 미달 기록 — 나중에 이 주석을 "72dp"로 검색할 것]
+            // PLAN.md:642는 "카드 터치 영역은 모바일 기준 72dp 이상"을 요구한다. 카드 2장은
+            // 705단위 = 약 320dp로 충족하지만, 화면 크롬 버튼 3종은 전부 미달이다.
+            // (2400x1080 폰 / density 2.75 / 가로 기준 스케일 환산, 1 캔버스 단위 = 0.455dp)
+            //   ProfileBtn  124단위 = 56.4dp
+            //   SettingsBtn 112단위 = 50.9dp   <- 여기
+            //   ToastBar     88단위 = 40.0dp
+            // PLAN.md:642의 기준 대상은 "카드"이고, PLAN.md:886에 보호자용 UI를 예외로 둔 선례가
+            // 있어 당장 위반은 아니다. 다만 설정 버튼만 160단위(72dp)로 키우면 rect가 y 62~222가
+            // 되어 AR 카드 상단(187.5)과 x 1660~1730에서 겹치고, 생성 순서상 위에 있어 카드 클릭을
+            // 가로챈다. 고치려면 크롬 3종의 배치를 함께 재검토하는 별도 작업이 필요하다.
             var settings = ChildRect("SettingsBtn", canvasGo.transform);
             settings.anchorMin = settings.anchorMax = new Vector2(1f, 1f); settings.pivot = new Vector2(1f, 1f);
             settings.anchoredPosition = new Vector2(-48, -62);
-            settings.sizeDelta = new Vector2(210, 112); // 240x128 비율
+            // rect는 그대로 두고 preserveAspect가 맞춘다. 865x384(비율 2.2526)가 210x93.2로 표시되고
+            // 위아래 9.4씩 레터박스된다. 터치 영역을 우선해 세로 112를 유지한다.
+            settings.sizeDelta = new Vector2(210, 112);
             var setImg = settings.gameObject.AddComponent<Image>();
-            setImg.sprite = LoadPngSprite(StickerDir + "settings_button.png");
+            setImg.sprite = LoadPngSprite(AacSettingsPath);
             setImg.preserveAspect = true;
             var setBtn = settings.gameObject.AddComponent<Button>();
             setBtn.targetGraphic = setImg;
