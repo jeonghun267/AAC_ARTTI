@@ -334,6 +334,9 @@ namespace Artti.Editor
             public float ctaPpu, ctaPad;
             public string ctaSuffix;
             public string charBgPath;      // null이면 캐릭터 단일 레이어(기존 동작)
+            // 배경 레이어(CharacterBg)만 세로로 줄일 때 쓴다. 누끼(CharacterFg)는 건드리지 않는다.
+            // 0이면 미지정으로 보고 1배를 적용한다 -> Legacy/TrainingV2는 값을 두지 않아도 기존 동작 유지.
+            public float charBgScaleY;
             // HomeCharacterIdle의 [SerializeField] private 모션 값을 인스턴스 단위로 덮어쓸지.
             // false면 스크립트 기본값 그대로 -> AR 카드는 지금과 완전히 동일하게 동작한다.
             public bool overrideIdleMotion;
@@ -395,6 +398,7 @@ namespace Artti.Editor
                 useAccentColor = false,
                 bodyPath = ArBodyPath, titleIconPath = ArIconPath,
                 charBgPath = ArCharBgPath,
+                charBgScaleY = 0.88333f,   // 배경만 세로 축소(에디터 실측). 434 -> 383.4, 위아래 25.3px씩
                 // 누끼 잉크가 rect 바닥에 닿아 있어(여백 0) 세로 이동·축소는 금지.
                 // 좌우는 오른쪽 31.2px / 왼쪽 18.5px 여백이 있어 3px 흔들림에 잘리지 않는다.
                 overrideIdleMotion = true,
@@ -513,6 +517,9 @@ namespace Artti.Editor
                 var charBgRT = ChildRect("CharacterBg", charRT);
                 StretchFull(charBgRT, 0);
                 charBgRT.pivot = new Vector2(0.5f, 0.5f);
+                // 배경만 세로로 줄이는 경우. pivot이 Center라 위아래로 균등하게 안쪽으로 당겨진다.
+                float bgScaleY = style.charBgScaleY > 0f ? style.charBgScaleY : 1f;
+                if (bgScaleY != 1f) charBgRT.localScale = new Vector3(1f, bgScaleY, 1f);
                 var charBgImg = charBgRT.gameObject.AddComponent<Image>();
                 charBgImg.sprite = LoadPngSprite(style.charBgPath);
                 charBgImg.preserveAspect = true;
