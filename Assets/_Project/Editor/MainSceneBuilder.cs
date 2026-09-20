@@ -52,6 +52,13 @@ namespace Artti.Editor
         const string TrainCharBgPath = HomeDir + "training_character_bg.png";
         const string TrainCharFgPath = HomeDir + "training_character_only.png";
 
+        // AR 카드 v2 시안. card_body는 카드 외곽만 잘라낸 865x1227 크롭본(실측).
+        // character는 810x756 같은 캔버스 2장(배경/누끼), title_icon은 136x164.
+        const string ArBodyPath   = HomeDir + "ar_card_body_cropped.png";
+        const string ArIconPath   = HomeDir + "ar_title_icon.png";
+        const string ArCharBgPath = HomeDir + "ar_character_bg.png";
+        const string ArCharFgPath = HomeDir + "ar_character_only.png";
+
         const string EmojiDir   = "Assets/_Project/openmoji-master/color/svg/";
         const string Sparkle    = EmojiDir + "2728.svg";   // ✨
         const string Leaf       = EmojiDir + "1F343.svg";  // 🍃
@@ -234,9 +241,9 @@ namespace Artti.Editor
                 style: CardStyle.TrainingV2);
 
             var ar = MakeCharacterCard(cards, "ARFieldModeBtn", new Vector2(520, 0),
-                ARAccent, "AR 현장도우미", "실생활에서 도움을 받아요", "도움 시작하기",
-                ManOpen, ManClose, ManBack, font, ocrEmoji: OcrIcon,
-                style: CardStyle.Legacy);
+                ARAccent, "현장모드", "실생활에서 도움을 받아요", "도움 시작하기",
+                ArCharFgPath, null, null, font, ocrEmoji: null,
+                style: CardStyle.ARFieldV2);
 
             // ===== 좌상단 토스트바(햄버거 메뉴) — 레포트 보기 / 종료하기 =====
             MakeToastMenu(canvasGo.transform, font);
@@ -374,6 +381,36 @@ namespace Artti.Editor
                 descColor  = new Color32(0x69, 0x69, 0x9A, 255),
                 ctaColor   = new Color32(0x7B, 0x43, 0xF8, 255),  // #8A4DFE~#6C39F2 중간값(단색 근사)
                 ctaPpu = 88f / 105f,   // 반경 = 높이/2 (완전 pill)
+                ctaPad = 8f, ctaSuffix = "   →",
+            };
+
+            // 크롭본 865x1227(실측) 기준. sx = 500/865 = 0.5780, sy = 705/1227 = 0.5746.
+            // 이미지 비율 0.7050이 카드 rect 0.7092보다 0.6% 낮아 세로가 4.3px 압축된다(육안 무시 가능).
+            // 아이콘/제목 x는 훈련 카드와 같은 식:
+            //   제목 중심  = (아이콘폭 78.6 + 간격 15.6) / 2 = +47.1  (G와 무관한 상수)
+            //   아이콘 중심 = -7.8 - G/2,  "현장모드"(한글 4자) G = 244 -> -129.8
+            // 설명 폰트/박스는 훈련 카드에서 눈으로 맞춘 값(28, 350x50)을 그대로 쓴다.
+            public static CardStyle ARFieldV2 => new CardStyle
+            {
+                useAccentColor = false,
+                bodyPath = ArBodyPath, titleIconPath = ArIconPath,
+                charBgPath = ArCharBgPath,
+                // 누끼 잉크가 rect 바닥에 닿아 있어(여백 0) 세로 이동·축소는 금지.
+                // 좌우는 오른쪽 31.2px / 왼쪽 18.5px 여백이 있어 3px 흔들림에 잘리지 않는다.
+                overrideIdleMotion = true,
+                idleBreathAmplitude = 0f,
+                idleBreathScale     = 0f,
+                idleSwayAmplitude   = 3f,
+                idleNodAngle        = 1.5f,
+                titleIconPos = new Vector2(-129.8f, -37.9f), titleIconSize = new Vector2(79, 94),
+                titlePos = new Vector2(47.1f, -41.0f),  titleSize = new Vector2(310, 87), titleFont = 62,
+                descPos  = new Vector2(0f, -114.9f),    descSize  = new Vector2(350, 50), descFont  = 28,
+                charPos  = new Vector2(4.9f, 133.3f),   charSize  = new Vector2(468, 434),
+                ctaPos   = new Vector2(0f, 27.2f),      ctaSize   = new Vector2(433, 105), ctaFont  = 47,
+                titleColor = new Color32(0x03, 0x59, 0xFA, 255),
+                descColor  = new Color32(0x52, 0x68, 0xA7, 255),
+                ctaColor   = new Color32(0x2B, 0x7C, 0xFC, 255),  // #409CFB~#165CFC 중간값(단색 근사)
+                ctaPpu = 88f / 105f,   // 반경 52.5 = 높이/2 (완전 pill)
                 ctaPad = 8f, ctaSuffix = "   →",
             };
         }
