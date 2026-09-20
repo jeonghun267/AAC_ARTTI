@@ -42,6 +42,12 @@ namespace Artti.Editor
         const string VolumePath   = HomeDir + "HomeVolume.asset";
         const string StickerDir   = HomeDir + "Stickers/";
 
+        // 훈련 카드 v2 시안. card_body는 원본 1086x1448에서 카드 외곽(x131~955, y151~1313)만
+        // 잘라낸 824x1162. character/title_icon은 자르지 않은 원본 크기 그대로.
+        const string TrainBodyPath = HomeDir + "training_card_body.png";
+        const string TrainCharPath = HomeDir + "training_character.png";
+        const string TrainIconPath = HomeDir + "training_title_icon.png";
+
         const string EmojiDir   = "Assets/_Project/openmoji-master/color/svg/";
         const string Sparkle    = EmojiDir + "2728.svg";   // ✨
         const string Leaf       = EmojiDir + "1F343.svg";  // 🍃
@@ -51,8 +57,9 @@ namespace Artti.Editor
         const string Bulb       = EmojiDir + "1F4A1.svg";  // 💡
         const string IconExit   = EmojiDir + "E0A8.svg";   // 비상구
 
-        // 세로로 긴 카드 (배경 이미지는 약간 세로로 늘어남)
-        static readonly Vector2 CardSize = new Vector2(500, 690);
+        // 훈련 카드 시안(824x1162)을 폭 500에 맞춘 크기. 배율 500/824 = 0.6068, 1162x0.6068 = 705.1
+        // 두 카드는 항상 같은 크기를 유지한다 (AR 시안이 나오면 같은 규격으로 맞춤).
+        static readonly Vector2 CardSize = new Vector2(500, 705);
 
         [MenuItem("Artti/Build MainScene Hierarchy")]
         public static void BuildMenu() => Build();
@@ -219,11 +226,13 @@ namespace Artti.Editor
             // open.png 배치: 카드 2개를 더 붙여서 우측에(좌측 패널과 균형)
             var train = MakeCharacterCard(cards, "TrainingModeBtn", new Vector2(-40, 0),
                 TrainAccent, "말하기 훈련모드", "다양한 상황에서 말을 연습해요", "훈련 시작하기",
-                GirlOpen, GirlClose, GirlBack, font, ocrEmoji: null);
+                TrainCharPath, null, null, font, ocrEmoji: null,
+                style: CardStyle.TrainingV2);
 
             var ar = MakeCharacterCard(cards, "ARFieldModeBtn", new Vector2(520, 0),
                 ARAccent, "AR 현장도우미", "실생활에서 도움을 받아요", "도움 시작하기",
-                ManOpen, ManClose, ManBack, font, ocrEmoji: OcrIcon);
+                ManOpen, ManClose, ManBack, font, ocrEmoji: OcrIcon,
+                style: CardStyle.Legacy);
 
             // ===== 좌상단 토스트바(햄버거 메뉴) — 레포트 보기 / 종료하기 =====
             MakeToastMenu(canvasGo.transform, font);
@@ -297,9 +306,59 @@ namespace Artti.Editor
             public HomeCharacterIdle idle;
         }
 
+        // 카드 레이아웃 프리셋. AR 카드는 Legacy를 그대로 써서 기존 산출물이 바뀌지 않게 한다.
+        // AR 시안이 나오면 ARFieldV2 프리셋을 추가하는 방식으로 확장한다.
+        struct CardStyle
+        {
+            public bool useAccentColor;   // true면 Title/CTA 색에 accent 사용 (기존 동작)
+            public string bodyPath;       // null이면 호출부의 backPath 사용
+            public string titleIconPath;  // null이면 제목 아이콘 없음
+            public Vector2 titleIconPos, titleIconSize;
+            public Vector2 titlePos, titleSize;
+            public Vector2 descPos,  descSize;
+            public Vector2 charPos,  charSize;
+            public Vector2 ctaPos,   ctaSize;
+            public Color32 titleColor, descColor, ctaColor;
+            public int titleFont, descFont, ctaFont;
+            public float ctaPpu, ctaPad;
+            public string ctaSuffix;
+
+            // 기존 하드코딩 값을 1:1로 옮긴 것. 값을 바꾸면 AR 카드 씬 산출물이 달라진다.
+            public static CardStyle Legacy => new CardStyle
+            {
+                useAccentColor = true,
+                bodyPath = null, titleIconPath = null,
+                titlePos = new Vector2(0, -28),  titleSize = new Vector2(460, 56), titleFont = 40,
+                descPos  = new Vector2(0, -84),  descSize  = new Vector2(460, 38), descFont  = 24,
+                charPos  = new Vector2(0, 150),  charSize  = new Vector2(380, 360),
+                ctaPos   = new Vector2(0, 26),   ctaSize   = new Vector2(400, 82), ctaFont   = 32,
+                descColor = SubColor,
+                ctaPpu = 1f, ctaPad = 6f, ctaSuffix = "   →",
+            };
+
+            // 크롭본 824x1162 기준, 배율 500/824 = 0.6068.
+            // 아이콘/제목 x는 묶음 중심을 카드 중심에 정확히 맞춘 값(원본 대비 좌로 2.4px 보정).
+            public static CardStyle TrainingV2 => new CardStyle
+            {
+                useAccentColor = false,
+                bodyPath = TrainBodyPath, titleIconPath = TrainIconPath,
+                titleIconPos = new Vector2(-155.6f, -40.0f), titleIconSize = new Vector2(82, 86),
+                titlePos = new Vector2(50.1f, -41.5f),  titleSize = new Vector2(310, 87), titleFont = 62,
+                descPos  = new Vector2(0f, -119.1f),    descSize  = new Vector2(350, 50), descFont  = 36,
+                charPos  = new Vector2(0f, 140.8f),     charSize  = new Vector2(470, 407),
+                ctaPos   = new Vector2(0f, 32.8f),      ctaSize   = new Vector2(440, 105), ctaFont  = 47,
+                titleColor = new Color32(0x58, 0x1B, 0xEE, 255),
+                descColor  = new Color32(0x69, 0x69, 0x9A, 255),
+                ctaColor   = new Color32(0x7B, 0x43, 0xF8, 255),  // #8A4DFE~#6C39F2 중간값(단색 근사)
+                ctaPpu = 88f / 105f,   // 반경 = 높이/2 (완전 pill)
+                ctaPad = 8f, ctaSuffix = "   →",
+            };
+        }
+
         static CardRefs MakeCharacterCard(Transform parent, string goName, Vector2 pos,
             Color32 accent, string cardTitle, string desc, string cta,
-            string charOpenPath, string charClosePath, string backPath, TMP_FontAsset font, string ocrEmoji)
+            string charOpenPath, string charClosePath, string backPath, TMP_FontAsset font, string ocrEmoji,
+            CardStyle style)
         {
             var root = ChildRect(goName, parent);
             root.anchorMin = root.anchorMax = new Vector2(0.5f, 0.5f);
@@ -337,7 +396,9 @@ namespace Artti.Editor
             var body = ChildRect("Body", root);
             StretchFull(body, 0);
             var bodyImg = body.gameObject.AddComponent<Image>();
-            var backSprite = LoadPngSprite(backPath);
+            // 크롭본(824x1162)은 카드 외곽과 크기가 같으므로 StretchFull 그대로 두면 된다.
+            var bodySpritePath = style.bodyPath ?? backPath;
+            var backSprite = string.IsNullOrEmpty(bodySpritePath) ? null : LoadPngSprite(bodySpritePath);
             if (backSprite != null)
             {
                 bodyImg.sprite = backSprite; bodyImg.type = Image.Type.Simple; bodyImg.preserveAspect = false;
@@ -351,20 +412,34 @@ namespace Artti.Editor
 
             // (카드 위 프로스트 오버레이는 제거 — 장면이 또렷하게 보이도록)
 
-            var titleText = MakeText("Title", body, cardTitle, 40,
-                new Color32(accent.r, accent.g, accent.b, 255), font, bold: true);
-            Anchor(titleText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0, -28), new Vector2(460, 56));
+            // 제목 왼쪽 말풍선 아이콘 (v2 전용). 앵커 (0.5,1)이라 x가 곧 박스 중심 오프셋이 되어
+            // 박스 폭에 여유를 둬도 글리프 중심이 어긋나지 않는다.
+            if (!string.IsNullOrEmpty(style.titleIconPath))
+            {
+                var titleIcon = ChildRect("TitleIcon", body);
+                Anchor(titleIcon, new Vector2(0.5f, 1f), style.titleIconPos, style.titleIconSize);
+                var titleIconImg = titleIcon.gameObject.AddComponent<Image>();
+                titleIconImg.sprite = LoadPngSprite(style.titleIconPath);
+                titleIconImg.preserveAspect = true;
+                titleIconImg.raycastTarget = false;
+            }
 
-            var descText = MakeText("Desc", body, desc, 24, SubColor, font, bold: false);
-            Anchor(descText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0, -84), new Vector2(460, 38));
+            var titleColor = style.useAccentColor
+                ? new Color32(accent.r, accent.g, accent.b, 255)
+                : style.titleColor;
+            var titleText = MakeText("Title", body, cardTitle, style.titleFont, titleColor, font, bold: true);
+            Anchor(titleText.rectTransform, new Vector2(0.5f, 1f), style.titlePos, style.titleSize);
+
+            var descText = MakeText("Desc", body, desc, style.descFont, style.descColor, font, bold: false);
+            Anchor(descText.rectTransform, new Vector2(0.5f, 1f), style.descPos, style.descSize);
 
             // 캐릭터
             var charRT = ChildRect("Character", body);
             charRT.anchorMin = charRT.anchorMax = new Vector2(0.5f, 0f);
             charRT.pivot = new Vector2(0.5f, 0f);
-            charRT.anchoredPosition = new Vector2(0, 150);
             // 높이 기준 캡 — 가로형(남자)/세로형(여자) 컷아웃 모두 글자 영역 안 넘게
-            charRT.sizeDelta = new Vector2(380, 360);
+            charRT.anchoredPosition = style.charPos;
+            charRT.sizeDelta = style.charSize;
             var charImg = charRT.gameObject.AddComponent<Image>();
             charImg.sprite = LoadPngSprite(charOpenPath);
             charImg.preserveAspect = true;
@@ -374,13 +449,15 @@ namespace Artti.Editor
             var ctaRT = ChildRect("CTA", body);
             ctaRT.anchorMin = ctaRT.anchorMax = new Vector2(0.5f, 0f);
             ctaRT.pivot = new Vector2(0.5f, 0f);
-            ctaRT.anchoredPosition = new Vector2(0, 26);
-            ctaRT.sizeDelta = new Vector2(400, 82);
+            ctaRT.anchoredPosition = style.ctaPos;
+            ctaRT.sizeDelta = style.ctaSize;
             var ctaImg = ctaRT.gameObject.AddComponent<Image>();
-            ctaImg.sprite = Rounded(); ctaImg.type = Image.Type.Sliced; ctaImg.pixelsPerUnitMultiplier = 1f;
-            ctaImg.color = accent; ctaImg.raycastTarget = false;
-            var ctaText = MakeText("Text", ctaRT, cta + "   →", 32, White, font, bold: true);
-            StretchFull(ctaText.rectTransform, 6);
+            ctaImg.sprite = Rounded(); ctaImg.type = Image.Type.Sliced;
+            ctaImg.pixelsPerUnitMultiplier = style.ctaPpu;
+            ctaImg.color = style.useAccentColor ? (Color)accent : (Color)style.ctaColor;
+            ctaImg.raycastTarget = false;
+            var ctaText = MakeText("Text", ctaRT, cta + style.ctaSuffix, style.ctaFont, White, font, bold: true);
+            StretchFull(ctaText.rectTransform, style.ctaPad);
 
             // 카드 버튼
             var btn = root.gameObject.AddComponent<Button>();
@@ -399,7 +476,12 @@ namespace Artti.Editor
 
             // Idle + 눈 깜빡임 (진입 끝난 뒤 활성)
             var idle = charRT.gameObject.AddComponent<HomeCharacterIdle>();
-            idle.Setup(charRT, charImg, LoadPngSprite(charOpenPath), LoadPngSprite(charClosePath));
+            // Close 변형이 없는 캐릭터는 null을 넘긴다. HomeCharacterIdle.cs:58이 eyesClosed==null이면
+            // BlinkLoop를 시작하지 않으므로 Image.sprite가 null로 덮여 캐릭터가 사라지는 일이 없다.
+            // LoadPngSprite(null)은 AssetDatabase 호출에서 예외를 던질 수 있어 호출 자체를 막는다.
+            idle.Setup(charRT, charImg,
+                LoadPngSprite(charOpenPath),
+                string.IsNullOrEmpty(charClosePath) ? null : LoadPngSprite(charClosePath));
             idle.enabled = false;
 
             return new CardRefs { button = btn, card = root, charRT = charRT, idle = idle };
