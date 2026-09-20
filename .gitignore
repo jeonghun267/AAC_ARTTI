@@ -121,3 +121,5 @@ Assets/_Project/Data/Resources/gemini_key.txt
 # Burst / IL2CPP 빌드 디버그 산출물 (배포 금지 폴더)
 *_BurstDebugInformation_DoNotShip/
 *_BackUpThisFolder_ButDontShipItWithYourGame/
+Assets/Fonts/NotoSansKR-Medium SDF.asset
+Assets/Fonts/NotoSansKR-Medium SDF.asset
