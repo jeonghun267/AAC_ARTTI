@@ -45,8 +45,12 @@ namespace Artti.Editor
         // 훈련 카드 v2 시안. card_body는 원본 1086x1448에서 카드 외곽(x131~955, y151~1313)만
         // 잘라낸 824x1162. character/title_icon은 자르지 않은 원본 크기 그대로.
         const string TrainBodyPath = HomeDir + "training_card_body.png";
-        const string TrainCharPath = HomeDir + "training_character.png";
+        const string TrainCharPath = HomeDir + "training_character.png";  // 단일 레이어 구버전(미사용, 보존)
         const string TrainIconPath = HomeDir + "training_title_icon.png";
+        // 캐릭터를 배경(고정) + 누끼(흔들림) 2레이어로 분리. 둘 다 774x670 같은 캔버스라
+        // 같은 rect에 겹쳐 두면 TrainCharPath 원본과 동일하게 합성된다.
+        const string TrainCharBgPath = HomeDir + "training_character_bg.png";
+        const string TrainCharFgPath = HomeDir + "training_character_only.png";
 
         const string EmojiDir   = "Assets/_Project/openmoji-master/color/svg/";
         const string Sparkle    = EmojiDir + "2728.svg";   // ✨
@@ -226,7 +230,7 @@ namespace Artti.Editor
             // open.png 배치: 카드 2개를 더 붙여서 우측에(좌측 패널과 균형)
             var train = MakeCharacterCard(cards, "TrainingModeBtn", new Vector2(-40, 0),
                 TrainAccent, "훈련모드", "다양한 상황에서 말을 연습해요", "훈련 시작하기",
-                TrainCharPath, null, null, font, ocrEmoji: null,
+                TrainCharFgPath, null, null, font, ocrEmoji: null,
                 style: CardStyle.TrainingV2);
 
             var ar = MakeCharacterCard(cards, "ARFieldModeBtn", new Vector2(520, 0),
@@ -322,12 +326,18 @@ namespace Artti.Editor
             public int titleFont, descFont, ctaFont;
             public float ctaPpu, ctaPad;
             public string ctaSuffix;
+            public string charBgPath;      // null이면 캐릭터 단일 레이어(기존 동작)
+            // HomeCharacterIdle의 [SerializeField] private 모션 값을 인스턴스 단위로 덮어쓸지.
+            // false면 스크립트 기본값 그대로 -> AR 카드는 지금과 완전히 동일하게 동작한다.
+            public bool overrideIdleMotion;
+            public float idleBreathAmplitude, idleBreathScale, idleSwayAmplitude, idleNodAngle;
 
             // 기존 하드코딩 값을 1:1로 옮긴 것. 값을 바꾸면 AR 카드 씬 산출물이 달라진다.
             public static CardStyle Legacy => new CardStyle
             {
                 useAccentColor = true,
                 bodyPath = null, titleIconPath = null,
+                charBgPath = null, overrideIdleMotion = false,   // 단일 레이어 + 스크립트 기본 모션
                 titlePos = new Vector2(0, -28),  titleSize = new Vector2(460, 56), titleFont = 40,
                 descPos  = new Vector2(0, -84),  descSize  = new Vector2(460, 38), descFont  = 24,
                 charPos  = new Vector2(0, 150),  charSize  = new Vector2(380, 360),
@@ -347,6 +357,14 @@ namespace Artti.Editor
             {
                 useAccentColor = false,
                 bodyPath = TrainBodyPath, titleIconPath = TrainIconPath,
+                charBgPath = TrainCharBgPath,
+                // 캐릭터 잉크가 rect 아래·오른쪽 끝에 닿아 있어 세로로 움직이면 잘린 단면이 뜨고,
+                // 스케일이 1 아래로 내려가도 바닥이 들린다. 좌우 흔들림과 미세 회전만 남긴다.
+                overrideIdleMotion = true,
+                idleBreathAmplitude = 0f,    // 상하 이동 끔 (스크립트 기본 6px)
+                idleBreathScale     = 0f,    // 스케일 호흡 끔 (스크립트 기본 0.012)
+                idleSwayAmplitude   = 3f,    // 좌우 흔들림 유지 (기본값과 동일)
+                idleNodAngle        = 1.5f,  // 미세 회전 (스크립트 기본 3.5도)
                 titleIconPos = new Vector2(-131f, -40.0f), titleIconSize = new Vector2(82, 86),
                 titlePos = new Vector2(50.1f, -41.5f),  titleSize = new Vector2(310, 87), titleFont = 62,
                 descPos  = new Vector2(0f, -119.1f),    descSize  = new Vector2(350, 50), descFont  = 28,
@@ -445,10 +463,44 @@ namespace Artti.Editor
             // 높이 기준 캡 — 가로형(남자)/세로형(여자) 컷아웃 모두 글자 영역 안 넘게
             charRT.anchoredPosition = style.charPos;
             charRT.sizeDelta = style.charSize;
-            var charImg = charRT.gameObject.AddComponent<Image>();
-            charImg.sprite = LoadPngSprite(charOpenPath);
-            charImg.preserveAspect = true;
-            charImg.raycastTarget = false;
+
+            RectTransform motionRT;  // HomeCharacterIdle이 실제로 움직일 대상
+            Image charImg;           // 눈 깜빡임(faceImage) 대상
+            if (!string.IsNullOrEmpty(style.charBgPath))
+            {
+                // 2레이어: 배경은 고정, 누끼만 흔들린다. 누끼가 사각 영역을 벗어나지 못하도록
+                // 부모에 클리핑을 건다. 클립 경계는 원본 이미지의 사각 경계와 같은 선이라
+                // 새로운 잘린 면이 생기지 않는다.
+                charRT.gameObject.AddComponent<RectMask2D>();
+
+                var charBgRT = ChildRect("CharacterBg", charRT);
+                StretchFull(charBgRT, 0);
+                charBgRT.pivot = new Vector2(0.5f, 0.5f);
+                var charBgImg = charBgRT.gameObject.AddComponent<Image>();
+                charBgImg.sprite = LoadPngSprite(style.charBgPath);
+                charBgImg.preserveAspect = true;
+                charBgImg.raycastTarget = false;
+
+                var charFgRT = ChildRect("CharacterFg", charRT);
+                StretchFull(charFgRT, 0);
+                // 발을 고정하고 상체만 기울도록 회전 원점을 바닥 중앙에 둔다.
+                // 풀 스트레치(offsetMin=offsetMax=0)라 sizeDelta와 anchoredPosition이 모두 (0,0)이고,
+                // pivot을 바꿔도 그 값이 달라지지 않으므로 위치 보정은 필요 없다.
+                charFgRT.pivot = new Vector2(0.5f, 0f);
+                charImg = charFgRT.gameObject.AddComponent<Image>();
+                charImg.sprite = LoadPngSprite(charOpenPath);
+                charImg.preserveAspect = true;
+                charImg.raycastTarget = false;
+                motionRT = charFgRT;
+            }
+            else
+            {
+                charImg = charRT.gameObject.AddComponent<Image>();
+                charImg.sprite = LoadPngSprite(charOpenPath);
+                charImg.preserveAspect = true;
+                charImg.raycastTarget = false;
+                motionRT = charRT;
+            }
 
             // CTA 알약 버튼(시각용 — 클릭은 카드 전체가 받음)
             var ctaRT = ChildRect("CTA", body);
@@ -484,9 +536,22 @@ namespace Artti.Editor
             // Close 변형이 없는 캐릭터는 null을 넘긴다. HomeCharacterIdle.cs:58이 eyesClosed==null이면
             // BlinkLoop를 시작하지 않으므로 Image.sprite가 null로 덮여 캐릭터가 사라지는 일이 없다.
             // LoadPngSprite(null)은 AssetDatabase 호출에서 예외를 던질 수 있어 호출 자체를 막는다.
-            idle.Setup(charRT, charImg,
+            // 2레이어일 때 motionRT는 CharacterFg다. 배경(CharacterBg)은 움직이지 않는다.
+            idle.Setup(motionRT, charImg,
                 LoadPngSprite(charOpenPath),
                 string.IsNullOrEmpty(charClosePath) ? null : LoadPngSprite(charClosePath));
+
+            // 모션 값은 [SerializeField] private이라 Setup으로 못 넘긴다. 스크립트를 고치는 대신
+            // 이 인스턴스의 직렬화 값만 덮어쓴다(MainSceneView 와이어링과 같은 방식).
+            if (style.overrideIdleMotion)
+            {
+                var soIdle = new SerializedObject(idle);
+                soIdle.FindProperty("breathAmplitude").floatValue = style.idleBreathAmplitude;
+                soIdle.FindProperty("breathScale").floatValue     = style.idleBreathScale;
+                soIdle.FindProperty("swayAmplitude").floatValue   = style.idleSwayAmplitude;
+                soIdle.FindProperty("nodAngle").floatValue        = style.idleNodAngle;
+                soIdle.ApplyModifiedProperties();
+            }
             idle.enabled = false;
 
             return new CardRefs { button = btn, card = root, charRT = charRT, idle = idle };
