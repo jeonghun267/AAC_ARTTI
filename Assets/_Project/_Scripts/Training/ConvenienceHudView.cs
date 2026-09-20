@@ -118,31 +118,40 @@ namespace Artti.Training
         {
             if (stepDots != null)
             {
+                int clamped = Mathf.Clamp(index, 0, Mathf.Max(0, stepDots.Length - 1));
                 for (int i = 0; i < stepDots.Length; i++)
                 {
                     if (stepDots[i] == null) continue;
                     if (stepNodeOnSprite != null && stepNodeOffSprite != null)
                     {
-                        stepDots[i].sprite = i <= index ? stepNodeOnSprite : stepNodeOffSprite;
+                        stepDots[i].sprite = i <= clamped ? stepNodeOnSprite : stepNodeOffSprite;
                         stepDots[i].color = Color.white;
                     }
                     else
                     {
-                        stepDots[i].color = i < index ? DotDone : (i == index ? DotCurrent : DotPending);
+                        stepDots[i].color = i < clamped ? DotDone : (i == clamped ? DotCurrent : DotPending);
                     }
                 }
 
-                int clamped = Mathf.Clamp(index, 0, Mathf.Max(0, stepDots.Length - 1));
                 if (stepCounter != null) stepCounter.text = $"{clamped + 1} / {stepDots.Length} 단계";
                 if (stepFillMask != null && stepFillWidth > 0f)
                 {
-                    float ratio = stepDots.Length > 0 ? (clamped + 1f) / stepDots.Length : 0f;
+                    // 점들은 0부터 stepFillWidth까지 균등 배치된다. 현재 점의 좌표에 맞춰야
+                    // 채움 끝이 점 사이가 아니라 정확히 현재 단계 체크포인트에서 멈춘다.
+                    float ratio = CalculateStepFillRatio(clamped, stepDots.Length);
                     var size = stepFillMask.sizeDelta;
                     size.x = stepFillWidth * ratio;
                     stepFillMask.sizeDelta = size;
                 }
             }
             if (stepLabel != null) stepLabel.text = label;
+        }
+
+        private static float CalculateStepFillRatio(int index, int stepCount)
+        {
+            if (stepCount <= 0) return 0f;
+            if (stepCount == 1) return 1f;
+            return Mathf.Clamp01((float)index / (stepCount - 1));
         }
 
         public void SetUserUtterance(string text)

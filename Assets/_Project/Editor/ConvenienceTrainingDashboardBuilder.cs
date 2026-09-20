@@ -26,24 +26,44 @@ namespace Artti.Editor
             Art + "product_can_coffee.png", Art + "product_water.png",
             Art + "product_milk.png", Art + "product_chocolate.png",
             Art + "product_gum.png", Art + "product_triangle_gimbap.png",
-            Art + "product_sandwich.png", Art + "product_cup_ramen.png"
+            Art + "product_sandwich.png", Art + "product_cup_ramen.png",
+            Art + "product_charger.png", Art + "product_mask.png",
+            Art + "product_umbrella.png", Art + "product_tissue.png"
         };
+
+        private static readonly string[] CategoryPaths =
+        {
+            Art + "category_drinks.png", Art + "category_snacks.png",
+            Art + "category_meals.png", Art + "category_daily.png"
+        };
+
+        private static readonly string[] CategoryIds =
+            { "drinks", "snacks", "meals", "daily" };
 
         private static readonly string[] ProductIds =
         {
             "can_coffee", "water", "milk", "chocolate",
-            "gum", "triangle_gimbap", "sandwich", "cup_ramen"
+            "gum", "triangle_gimbap", "sandwich", "cup_ramen",
+            "charger", "mask", "umbrella", "tissue"
         };
 
         private static readonly string[] ProductNames =
         {
-            "캔커피", "생수", "우유", "초콜릿", "껌", "삼각김밥", "샌드위치", "컵라면"
+            "캔커피", "생수", "우유", "초콜릿", "껌", "삼각김밥", "샌드위치", "컵라면",
+            "충전기", "마스크", "우산", "휴지"
         };
 
         private static readonly string[] ProductUtterances =
         {
             "캔커피 주세요", "생수 주세요", "우유 주세요", "초콜릿 주세요",
-            "껌 주세요", "삼각김밥 주세요", "샌드위치 주세요", "컵라면 주세요"
+            "껌 주세요", "삼각김밥 주세요", "샌드위치 주세요", "컵라면 주세요",
+            "충전기 주세요", "마스크 주세요", "우산 주세요", "휴지 주세요"
+        };
+
+        private static readonly string[] ProductCategoryIds =
+        {
+            "drinks", "drinks", "drinks", "snacks", "snacks",
+            "meals", "meals", "meals", "daily", "daily", "daily", "daily"
         };
 
         private static readonly string[] QuickPhrases =
@@ -160,6 +180,9 @@ namespace Artti.Editor
             StretchHorizontalBottom(bottomShade.rectTransform, 264f);
             var clerk = CreateRaster("Clerk", canvasGo.transform, Art + "clerk.png", 548, 182, 440, 660, true);
             PlaceTopCenter(clerk.rectTransform, 0, 182, 440, 660);
+            // v09 3D 점원: 같은 Rect에 RenderTexture RawImage(Clerk3D)를 놓고 래스터 Clerk는 비활성 보존.
+            // ClerkView/LipSync/카메라 무대 생성과 TrainingSceneRoot.clerkView 연결까지 Apply가 처리한다 (v10 컨트롤러 필요).
+            Artti.EditorTools.ArttiClerkSceneIntegration.Apply(canvasGo, clerk, sceneRoot);
             var logo = CreateRaster("ARTTILogo", canvasGo.transform, Art + "artti_logo.png", 443, -38, 650, 325, true);
             PlaceTopCenter(logo.rectTransform, 0, -38, 650, 325);
 
@@ -167,10 +190,10 @@ namespace Artti.Editor
             var mission = BuildMission(canvasGo.transform, font);
             var npc = BuildNpcBubble(canvasGo.transform, font);
             var dialogueHints = BuildDialogueHints(canvasGo.transform, font);
-            var tip = CreateRaster("TodayTip", canvasGo.transform, Art + "tip_panel.png", 1190, 568, 310, 232, true);
-            PlaceTopRight(tip.rectTransform, 36, 568, 310, 232);
+            var speechPractice = BuildSpeechPracticeCard(canvasGo.transform, font);
             var recommended = BuildRecommendedProducts(canvasGo.transform, font);
             var voiceButton = BuildVoiceButton(canvasGo.transform);
+            var micIndicator = BuildMicIndicator(canvasGo.transform, font);
             var chrome = BuildTopChrome(canvasGo.transform);
             var help = BuildHelpModal(canvasGo.transform, font);
             var pause = BuildPauseModal(canvasGo.transform, font);
@@ -180,6 +203,7 @@ namespace Artti.Editor
             var uiSo = new SerializedObject(uiView);
             uiSo.FindProperty("npcDialoguePanel").objectReferenceValue = npc.text;
             uiSo.FindProperty("freeTalkButton").objectReferenceValue = voiceButton;
+            uiSo.FindProperty("micIndicator").objectReferenceValue = micIndicator;
             uiSo.ApplyModifiedPropertiesWithoutUndo();
 
             var hud = canvasGo.AddComponent<ConvenienceHudView>();
@@ -214,14 +238,22 @@ namespace Artti.Editor
             var dashboard = canvasGo.AddComponent<ConvenienceDashboardView>();
             var dashSo = new SerializedObject(dashboard);
             dashSo.FindProperty("productScroll").objectReferenceValue = recommended.scroll;
+            SetObjectArray(dashSo.FindProperty("categoryButtons"), recommended.categoryButtons);
+            SetStringArray(dashSo.FindProperty("categoryIds"), CategoryIds);
+            dashSo.FindProperty("categoryContent").objectReferenceValue = recommended.categoryContent;
             SetObjectArray(dashSo.FindProperty("productButtons"), recommended.productButtons);
             SetStringArray(dashSo.FindProperty("productIds"), ProductIds);
             SetStringArray(dashSo.FindProperty("productNames"), ProductNames);
             SetStringArray(dashSo.FindProperty("productUtterances"), ProductUtterances);
+            SetStringArray(dashSo.FindProperty("productCategoryIds"), ProductCategoryIds);
+            dashSo.FindProperty("productContent").objectReferenceValue = recommended.productContent;
             dashSo.FindProperty("previousButton").objectReferenceValue = recommended.previous;
             dashSo.FindProperty("nextButton").objectReferenceValue = recommended.next;
             SetObjectArray(dashSo.FindProperty("quickPhraseButtons"), dialogueHints.buttons);
             SetStringArray(dashSo.FindProperty("quickPhrases"), QuickPhrases);
+            SetObjectArray(dashSo.FindProperty("quickPhraseLabels"), dialogueHints.labels);
+            dashSo.FindProperty("quickPhraseGuide").objectReferenceValue = dialogueHints.guide;
+            dashSo.FindProperty("speechPracticeText").objectReferenceValue = speechPractice;
             dashSo.FindProperty("helpButton").objectReferenceValue = chrome.helpButton;
             dashSo.FindProperty("helpCloseButton").objectReferenceValue = help.close;
             dashSo.FindProperty("helpPanel").objectReferenceValue = help.root;
@@ -239,6 +271,7 @@ namespace Artti.Editor
             pause.root.SetActive(false);
             completion.helpPanel.SetActive(false);
             completion.root.SetActive(false);
+            micIndicator.SetActive(false);
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
             Debug.Log("[ConvenienceTrainingDashboardBuilder] PNG 대시보드 화면 생성 완료");
@@ -567,12 +600,14 @@ namespace Artti.Editor
 
         private static (TMP_Text text, Button replayButton) BuildNpcBubble(Transform parent, TMP_FontAsset font)
         {
-            var root = CreateRoundedPanel("NPCBubble", parent, 882, 236, 286, 118, new Color(1f, 1f, 1f, 0.96f));
-            PlaceTopCenter(root.GetComponent<RectTransform>(), 257, 236, 286, 118);
-            var text = MakeText("Text", root.transform, "찾으시는 물건이\n있으신가요?", 22, Ink, font, 24, 21, 235, 75, true);
+            var root = CreateRoundedPanel("NPCBubble", parent, 813, 220, 360, 142, new Color(1f, 1f, 1f, 0.96f));
+            PlaceTopCenter(root.GetComponent<RectTransform>(), 225, 220, 360, 142);
+            var text = MakeText("Text", root.transform, "찾으시는 물건이\n있으신가요?", 20, Ink, font, 24, 18, 312, 102, true);
             text.textWrappingMode = TextWrappingModes.Normal;
+            text.overflowMode = TextOverflowModes.Overflow;
+            text.alignment = TextAlignmentOptions.MidlineLeft;
             var tail = ChildRect("Tail", root.transform);
-            Place(tail, 18, 103, 30, 22);
+            Place(tail, 24, 128, 30, 22);
             var tailImage = tail.gameObject.AddComponent<Image>();
             tailImage.color = new Color(1f, 1f, 1f, 0.96f);
             tail.transform.localRotation = Quaternion.Euler(0f, 0f, 45f);
@@ -582,7 +617,7 @@ namespace Artti.Editor
             return (text, replay);
         }
 
-        private static (Button[] buttons, string[] phrases) BuildDialogueHints(Transform parent, TMP_FontAsset font)
+        private static (Button[] buttons, TMP_Text[] labels, TMP_Text guide, string[] phrases) BuildDialogueHints(Transform parent, TMP_FontAsset font)
         {
             var root = ChildRect("DialogueHints", parent);
             PlaceTopRight(root, 36, 164, 310, 414);
@@ -592,6 +627,9 @@ namespace Artti.Editor
             image.raycastTarget = false;
             string[] hints = QuickPhrases;
             var buttons = new Button[hints.Length];
+            var labels = new TMP_Text[hints.Length];
+            var guide = MakeText("NextGuide", root, "상품을 선택하거나 대화 문장을 눌러보세요", 13, new Color32(31, 94, 220, 255), font, 24, 55, 262, 25, true);
+            guide.alignment = TextAlignmentOptions.MidlineLeft;
             for (int i = 0; i < hints.Length; i++)
             {
                 var dot = ChildRect($"AvatarDot_{i + 1}", root);
@@ -604,12 +642,51 @@ namespace Artti.Editor
                 initial.alignment = TextAlignmentOptions.Center;
                 var hint = MakeText($"Hint_{i + 1}", root, hints[i], 19, Ink, font, 68, 88 + i * 61, 208, 34, true);
                 hint.alignment = TextAlignmentOptions.MidlineLeft;
+                labels[i] = hint;
                 buttons[i] = MakeHitButton($"HintButton_{i + 1}", root, 16, 79 + i * 61, 278, 50);
             }
-            return (buttons, hints);
+            return (buttons, labels, guide, hints);
         }
 
-        private static (ScrollRect scroll, Button[] productButtons, Button previous, Button next) BuildRecommendedProducts(Transform parent, TMP_FontAsset font)
+        private static GameObject BuildMicIndicator(Transform parent, TMP_FontAsset font)
+        {
+            var root = CreateRoundedPanel("MicListeningIndicator", parent, 548, 396, 440, 78,
+                new Color(0.025f, 0.075f, 0.22f, 0.96f));
+            PlaceTopCenter(root.GetComponent<RectTransform>(), 0, 396, 440, 78);
+            var dot = CreateColorPanel("LiveDot", root.transform, 24, 25, 20, 20, new Color32(255, 76, 91, 255));
+            dot.sprite = Builtin("UI/Skin/Knob.psd");
+            dot.preserveAspect = true;
+            var text = MakeText("Status", root.transform, "듣고 있어요 · 지금 말씀하세요", 20, White, font, 58, 7, 350, 38, true);
+            text.alignment = TextAlignmentOptions.MidlineLeft;
+            var sub = MakeText("StopGuide", root.transform, "말을 마치면 자동으로 인식해요", 13,
+                new Color(0.78f, 0.86f, 1f), font, 58, 40, 350, 25, false);
+            sub.alignment = TextAlignmentOptions.MidlineLeft;
+            return root;
+        }
+
+        private static TMP_Text BuildSpeechPracticeCard(Transform parent, TMP_FontAsset font)
+        {
+            var root = CreateRoundedPanel("SpeechPracticeCard", parent, 1190, 568, 310, 232,
+                new Color(0.055f, 0.09f, 0.34f, 0.97f));
+            PlaceTopRight(root.GetComponent<RectTransform>(), 36, 568, 310, 232);
+            var accent = CreateColorPanel("Accent", root.transform, 18, 18, 6, 38, new Color32(68, 213, 255, 255));
+            accent.raycastTarget = false;
+            var title = MakeText("Title", root.transform, "말하기 연습", 20, White, font, 38, 15, 240, 42, true);
+            title.alignment = TextAlignmentOptions.MidlineLeft;
+            var prompt = MakeText("Prompt", root.transform,
+                "원하는 상품명을 말해보세요.\n예: ‘물 주세요’", 19,
+                new Color(0.91f, 0.95f, 1f), font, 24, 72, 262, 88, true);
+            prompt.textWrappingMode = TextWrappingModes.Normal;
+            prompt.overflowMode = TextOverflowModes.Overflow;
+            var guide = MakeText("Guide", root.transform, "아래 음성 버튼을 누르고 말하세요", 14,
+                new Color32(102, 220, 255, 255), font, 24, 174, 262, 32, false);
+            guide.alignment = TextAlignmentOptions.MidlineLeft;
+            return prompt;
+        }
+
+        private static (ScrollRect scroll, Button[] categoryButtons, RectTransform categoryContent,
+            Button[] productButtons, RectTransform productContent, Button previous, Button next)
+            BuildRecommendedProducts(Transform parent, TMP_FontAsset font)
         {
             var panel = ChildRect("RecommendedProducts", parent);
             PlaceBottomCenter(panel, 0, -99, 780, 439);
@@ -624,38 +701,23 @@ namespace Artti.Editor
             viewportImage.color = new Color(1f, 1f, 1f, 0.001f);
             viewport.gameObject.AddComponent<RectMask2D>();
 
-            var content = ChildRect("Content", viewport);
-            content.anchorMin = content.anchorMax = new Vector2(0f, 0.5f);
-            content.pivot = new Vector2(0f, 0.5f);
-            content.anchoredPosition = Vector2.zero;
-            content.sizeDelta = new Vector2(ProductPaths.Length * 134f, 150f);
-            var layout = content.gameObject.AddComponent<HorizontalLayoutGroup>();
-            layout.spacing = 14f;
-            layout.childAlignment = TextAnchor.MiddleLeft;
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
+            var categoryContent = CreateProductContent("CategoryContent", viewport, CategoryPaths.Length);
+            var categoryButtons = new Button[CategoryPaths.Length];
+            for (int i = 0; i < CategoryPaths.Length; i++)
+                categoryButtons[i] = CreateProductButton(
+                    $"Category_{i + 1}_{CategoryIds[i]}", categoryContent, CategoryPaths[i]);
+
+            var productContent = CreateProductContent("ProductContent", viewport, ProductPaths.Length);
+            productContent.gameObject.SetActive(false);
 
             var productButtons = new Button[ProductPaths.Length];
             for (int i = 0; i < ProductPaths.Length; i++)
-            {
-                var slot = ChildRect($"Product_{i + 1}_{ProductIds[i]}", content);
-                slot.sizeDelta = new Vector2(120, 150);
-                var size = slot.gameObject.AddComponent<LayoutElement>();
-                size.preferredWidth = 120f;
-                size.preferredHeight = 150f;
-                var slotImage = slot.gameObject.AddComponent<Image>();
-                slotImage.sprite = LoadSprite(ProductPaths[i]);
-                slotImage.preserveAspect = true;
-                var button = slot.gameObject.AddComponent<Button>();
-                button.targetGraphic = slotImage;
-                productButtons[i] = button;
-            }
+                productButtons[i] = CreateProductButton(
+                    $"Product_{i + 1}_{ProductIds[i]}", productContent, ProductPaths[i]);
 
             var scroll = viewport.gameObject.AddComponent<ScrollRect>();
             scroll.viewport = viewport;
-            scroll.content = content;
+            scroll.content = categoryContent;
             scroll.horizontal = true;
             scroll.vertical = false;
             scroll.inertia = true;
@@ -668,7 +730,39 @@ namespace Artti.Editor
             PlaceBottomCenter(previous.GetComponent<RectTransform>(), -342, 102, 58, 90);
             var next = MakeHitButton("Next", parent, 0, 0, 58, 90);
             PlaceBottomCenter(next.GetComponent<RectTransform>(), 341, 102, 58, 90);
-            return (scroll, productButtons, previous, next);
+            return (scroll, categoryButtons, categoryContent, productButtons, productContent, previous, next);
+        }
+
+        private static RectTransform CreateProductContent(string name, Transform parent, int itemCount)
+        {
+            var content = ChildRect(name, parent);
+            content.anchorMin = content.anchorMax = new Vector2(0f, 0.5f);
+            content.pivot = new Vector2(0f, 0.5f);
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta = new Vector2(itemCount * 134f, 150f);
+            var layout = content.gameObject.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 14f;
+            layout.childAlignment = TextAnchor.MiddleLeft;
+            layout.childControlWidth = false;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+            return content;
+        }
+
+        private static Button CreateProductButton(string name, Transform parent, string spritePath)
+        {
+            var slot = ChildRect(name, parent);
+            slot.sizeDelta = new Vector2(120, 150);
+            var size = slot.gameObject.AddComponent<LayoutElement>();
+            size.preferredWidth = 120f;
+            size.preferredHeight = 150f;
+            var slotImage = slot.gameObject.AddComponent<Image>();
+            slotImage.sprite = LoadSprite(spritePath);
+            slotImage.preserveAspect = true;
+            var button = slot.gameObject.AddComponent<Button>();
+            button.targetGraphic = slotImage;
+            return button;
         }
 
         private static Button BuildVoiceButton(Transform parent)

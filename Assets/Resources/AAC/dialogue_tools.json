@@ -53,13 +53,13 @@
     },
     {
       "name": "transition_to_objective",
-      "description": "Move to the next objective explicitly with an NPC line bridging the transition. Use when natural conversation flow suggests progression.",
+      "description": "Move only to the immediately next objective with an NPC line bridging the transition. Never skip intermediate objectives.",
       "parameters": {
         "type": "object",
         "properties": {
           "objective_id": {
             "type": "string",
-            "description": "The new active objective."
+            "description": "The immediately next active objective. Never name a later objective."
           },
           "npc_speech": {
             "type": "string",
