@@ -13,7 +13,13 @@ namespace Artti.Editor
     // 캐릭터는 레포트 씬 여성 상반신(ReportCH.png)을 임시 사용.
     public static class RecordDetailSceneBuilder
     {
-        static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
+        // 이 화면은 모든 요소가 절대 좌표로 손배치돼 있고, 세로로 약 1090유닛을 쓴다.
+        // 캔버스가 그보다 짧아지면 상단 앵커 요소(BackButton/Title/Subtitle/ShareBtn/AiPanel)가
+        // 중앙 앵커 블록(카드 5장/타임라인) 안으로 내려와 겹친다.
+        //   16:10 태블릿(2560x1600) -> 기존 설정으로는 캔버스 1920x1200 -> 7쌍 겹침
+        // ref 높이를 손배치 기준인 1440으로 올리고 Expand를 쓰면 캔버스 높이가 항상 1440 이상이라
+        // 어떤 종횡비에서도 세로 배치가 그대로 유지된다. (폭만 늘어나고 중앙 콘텐츠는 불변)
+        static readonly Vector2 ReferenceResolution = new Vector2(1920, 1440);
 
         static readonly Color32 Primary    = new Color32(26, 86, 219, 255);
         static readonly Color32 Bg         = new Color32(233, 238, 247, 255); // 페이지 바탕(카드가 떠보이게)
@@ -44,7 +50,8 @@ namespace Artti.Editor
 
             SceneBuilderUtils.CreateEventSystem();
             SceneBuilderUtils.EnsureAudioListener();
-            var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution);
+            var canvasGo = SceneBuilderUtils.CreateCanvas(
+                "[Canvas]", ReferenceResolution, UnityEngine.UI.CanvasScaler.ScreenMatchMode.Expand);
             var font = SceneBuilderUtils.GetKoreanFont();
 
             // 배경

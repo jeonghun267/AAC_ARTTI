@@ -268,6 +268,7 @@ namespace Artti.Training
             _objectivesEntered = 1;
 
             WireHud();
+            UpdateDashboardDialogueContext();
 
             // 풀 모드: 첫 NPC 대사 + TTS (Initialize는 이벤트 안 쏘므로 수동 호출)
             if (IsPoolMode && TryGetObjectivePrompt("greeting", out var greetingLine))
@@ -296,6 +297,14 @@ namespace Artti.Training
 
         private static string StepperLabel(string objectiveId) =>
             !string.IsNullOrEmpty(objectiveId) && StepperLabels.TryGetValue(objectiveId, out var l) ? l : objectiveId;
+
+        private void UpdateDashboardDialogueContext()
+        {
+            if (dashboardView == null || _dialogueManager == null) return;
+            dashboardView.SetDialogueContext(
+                _dialogueManager.CurrentObjectiveId,
+                !string.IsNullOrEmpty(_dialogueManager.LastSlotListItem("items_requested")));
+        }
 
         // NPC 대사 출력 공통 경로 — 말풍선 갱신 + TTS + 재청취용 보관 + TtsPlayed 기록 (레포트 진행 흐름)
         private void SpeakNpc(string line, Artti.AAC.DialogueTool tool = Artti.AAC.DialogueTool.PresentCards, bool isFallback = false)
@@ -536,6 +545,7 @@ namespace Artti.Training
                 }
                 RefreshPool();
             }
+            UpdateDashboardDialogueContext();
         }
 
         private void OnDestroy()
@@ -696,8 +706,59 @@ namespace Artti.Training
 
         private void HandleFreeTalkToggled()
         {
+            // 편의점 대시보드의 큰 음성 버튼은 현재 단계의 말하기 연습용이다.
+            // 한 번 누를 때 한 문장을 듣고, 인식된 실제 발화로 대화/단계를 진행한다.
+            if (scenarioId == ScenarioIds.Convenience && dashboardView != null)
+            {
+                RunGuidedVoiceTurn().Forget();
+                return;
+            }
+
             if (_freeTalkActive) StopFreeTalk();
             else StartFreeTalk();
+        }
+
+        private async UniTaskVoid RunGuidedVoiceTurn()
+        {
+            if (_dashboardTurnBusy || _freeTalkActive || _sessionCompleted) return;
+
+            _dashboardTurnBusy = true;
+            dashboardView?.SetInteractionEnabled(false);
+            string recognized = null;
+            try
+            {
+                uiView.HideExtraModal();
+                _ttsService?.StopAll();
+                uiView.ShowMicIndicator(true);
+                var stt = await _sttService.ListenOnceAsync(_cts.Token);
+                recognized = stt.text;
+                uiView.ShowSttResult(recognized);
+
+                if (string.IsNullOrWhiteSpace(recognized))
+                {
+                    _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
+                    _dialogueManager.RegisterFailure();
+                    SpeakNpc("괜찮아요. 오른쪽 말하기 문장을 보고 다시 말해볼까요?", isFallback: true);
+                    return;
+                }
+            }
+            finally
+            {
+                _dashboardTurnBusy = false;
+                if (!_sessionCompleted) dashboardView?.SetInteractionEnabled(true);
+            }
+
+            bool captureWater = IsConvenienceItemSelectionStep()
+                                && string.Equals(
+                                    recognized?.Trim().TrimEnd('?', '!', '.', '…'),
+                                    "물 주세요",
+                                    System.StringComparison.Ordinal);
+            RunDashboardTurn(
+                "guided_voice",
+                "음성으로 말하기",
+                recognized,
+                false,
+                captureWater ? "물" : null).Forget();
         }
 
         private void StartFreeTalk()
@@ -768,17 +829,41 @@ namespace Artti.Training
         // 추천 상품은 STT를 다시 거치지 않고, 사용자가 해당 상품명을 말한 한 턴으로 Gemini에 전달한다.
         private void HandleDashboardProductSelected(string productId, string productName, string utterance)
         {
-            RunDashboardTurn(productId, productName, utterance, true).Forget();
+            // 상품은 선택 목록에 추가하되, 사용자가 더 고를 수 있도록 select_items를 유지한다.
+            bool captureItem = IsConvenienceItemSelectionStep();
+            RunDashboardTurn(
+                productId,
+                productName,
+                utterance,
+                true,
+                captureItem ? productName : null).Forget();
         }
 
         // 오른쪽 대화 힌트도 AAC 보조 입력이므로 누른 문장을 그대로 Gemini에 전달한다.
         private void HandleDashboardQuickPhraseSelected(string phrase)
         {
-            RunDashboardTurn("quick_phrase", "대화 힌트", phrase, false).Forget();
+            // "물 주세요"는 상품 하나를 고른 것이지 쇼핑을 끝낸 것은 아니다.
+            bool captureItem = IsConvenienceItemSelectionStep()
+                               && string.Equals(phrase?.Trim(), "물 주세요", System.StringComparison.Ordinal);
+            RunDashboardTurn(
+                "quick_phrase",
+                "대화 힌트",
+                phrase,
+                false,
+                captureItem ? "물" : null).Forget();
         }
 
+        private bool IsConvenienceItemSelectionStep() =>
+            scenarioId == ScenarioIds.Convenience
+            && (_dialogueManager.CurrentObjectiveId == "greeting"
+                || _dialogueManager.CurrentObjectiveId == "select_items");
+
         private async UniTaskVoid RunDashboardTurn(
-            string sourceId, string sourceName, string utterance, bool isProduct)
+            string sourceId,
+            string sourceName,
+            string utterance,
+            bool isProduct,
+            string capturedItemName = null)
         {
             if (_dashboardTurnBusy || _freeTalkActive || _sessionCompleted || !_useGemini
                 || string.IsNullOrWhiteSpace(utterance)) return;
@@ -793,12 +878,52 @@ namespace Artti.Training
                 _eventLogger?.LogCardSelected(sourceId, utterance, utterance);
                 _dialogueManager.HandleUserTurn(null, utterance);
 
+                // 다섯 개 고정 대화 힌트는 현재 단계와 장바구니 상태를 함께 보고 판정한다.
+                // 같은 문장도 단계에 따라 유지/전환/마무리 결과가 달라진다.
+                if (!isProduct)
+                {
+                    var lastItem = _dialogueManager.LastSlotListItem("items_requested");
+                    if (ConvenienceQuickPhrasePolicy.TryResolve(
+                            utterance,
+                            _dialogueManager.CurrentObjectiveId,
+                            lastItem,
+                            !string.IsNullOrEmpty(lastItem),
+                            out var decision))
+                    {
+                        if (!string.IsNullOrWhiteSpace(decision.ItemToAppend))
+                            _dialogueManager.AppendSlotListItem("items_requested", decision.ItemToAppend);
+
+                        await RunGeminiTurn(
+                            null,
+                            utterance,
+                            resolvedTurn: new DialogueTurn
+                            {
+                                Tool = decision.Tool,
+                                ObjectiveId = decision.ObjectiveId,
+                                NpcSpeech = decision.NpcSpeech,
+                                CardIds = decision.CardIds
+                            });
+                        return;
+                    }
+                }
+
                 string sourceContext = isProduct
                     ? $"The user tapped the recommended product '{sourceName}' (product_id={sourceId}). " +
                       $"Treat it as the direct customer utterance: \"{utterance}\". Respond about that exact product."
                     : $"The user tapped a dialogue-hint button. Treat it as the direct customer utterance: \"{utterance}\".";
 
-                await RunGeminiTurn(null, utterance, sourceContext);
+                if (!string.IsNullOrWhiteSpace(capturedItemName))
+                {
+                    sourceContext +=
+                        " Add this item to items_requested, but do not finish shopping yet." +
+                        " Ask whether the customer needs any additional items and stay on select_items.";
+                }
+
+                await RunGeminiTurn(
+                    null,
+                    utterance,
+                    sourceContext,
+                    capturedItemName);
             }
             finally
             {
@@ -840,7 +965,12 @@ namespace Artti.Training
         // LLM 주도 한 턴. Gemini가 점원 발화 + 카드 + 진행 여부를 한 번에 결정한다.
         // 변경점: DialogueTurn으로 도구 인자 전체를 받아 objective_id·slots_filled·scaffold_level·
         //         subflow_id를 모두 반영한다. 이전에는 npc_speech와 card_ids만 살아남았다.
-        private async UniTask RunGeminiTurn(AACCard card, string sttText, string sourceContext = null)
+        private async UniTask RunGeminiTurn(
+            AACCard card,
+            string sttText,
+            string sourceContext = null,
+            string capturedItemName = null,
+            DialogueTurn resolvedTurn = null)
         {
             // 턴 상한 / 반복 실패 — 더 끌지 않고 부드럽게 마무리한다.
             // LLM 호출 "전"에 검사한다: 응답을 말한 직후 마무리 멘트를 덧붙이면 TTS가 서로 잘린다.
@@ -853,10 +983,34 @@ namespace Artti.Training
                 return;
             }
 
-            hud?.ShowThinking(true);
-            var turn = await _geminiService.RequestNextTurnAsync(
-                _systemPrompt, BuildUserPrompt(card, sttText, sourceContext), _cts.Token);
-            hud?.ShowThinking(false);
+            DialogueTurn turn;
+            if (resolvedTurn != null)
+            {
+                turn = resolvedTurn;
+            }
+            else if (!string.IsNullOrWhiteSpace(capturedItemName))
+            {
+                // 대시보드의 상품/문장 버튼은 발화 내용이 확정된 입력이다. 이 경우 Gemini가
+                // 쇼핑을 조기 완료하지 않도록 상품을 누적하고 추가 상품 여부를 직접 묻는다.
+                bool enteringItemSelection = _dialogueManager.CurrentObjectiveId == "greeting";
+                _dialogueManager.AppendSlotListItem("items_requested", capturedItemName);
+                turn = new DialogueTurn
+                {
+                    Tool = enteringItemSelection
+                        ? DialogueTool.MarkObjectiveComplete
+                        : DialogueTool.PresentCards,
+                    ObjectiveId = enteringItemSelection ? "greeting" : null,
+                    NpcSpeech = $"네, {capturedItemName.Trim()} 준비해 드릴게요.\n‘계산할게요’라고 직접 말해볼까요?\n어려우면 대화 힌트를 눌러도 돼요.",
+                    CardIds = new[] { "card_cvs_yes", "card_cvs_no" },
+                };
+            }
+            else
+            {
+                hud?.ShowThinking(true);
+                turn = await _geminiService.RequestNextTurnAsync(
+                    _systemPrompt, BuildUserPrompt(card, sttText, sourceContext), _cts.Token);
+                hud?.ShowThinking(false);
+            }
 
             // Gemini 실패/키없음 → fallback 발화 + 룰 기반 풀로 카드 유지(대화 끊기지 않게)
             if (turn == null)

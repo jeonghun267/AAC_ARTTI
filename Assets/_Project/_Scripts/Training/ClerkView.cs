@@ -1,9 +1,13 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Artti.Training
 {
     // 점원(Clerk) 애니메이션 뷰. TrainingSceneRoot가 의미 단위 메서드로 호출한다.
-    // Animator 트리거: Greeting / HandOver / Nod (ClerkController.controller)
+    // Animator 트리거:
+    //   v09 ARTTI_Clerk.controller : Greeting / Wave / Smile (+ IsTalking Bool, 아직 전환에는 미사용)
+    //   구 ClerkController.controller : Greeting / HandOver / Nod
+    // 컨트롤러에 없는 트리거는 Awake에서 확인해 두고 호출 시 대체 트리거로 바꾼다 (Nod, HandOver -> Smile).
     // 비즈니스 로직 없음 — 입력/상태 판단은 호출자(TrainingSceneRoot) 책임.
     [RequireComponent(typeof(Animator))]
     public class ClerkView : MonoBehaviour
@@ -23,26 +27,49 @@ namespace Artti.Training
         static readonly int Greeting = Animator.StringToHash("Greeting");
         static readonly int HandOver = Animator.StringToHash("HandOver");
         static readonly int Nod      = Animator.StringToHash("Nod");
+        static readonly int Wave     = Animator.StringToHash("Wave");
+        static readonly int Smile    = Animator.StringToHash("Smile");
+
+        // 현재 컨트롤러가 가진 트리거 해시 (Awake에서 캐싱)
+        private readonly HashSet<int> _triggers = new HashSet<int>();
 
         private void Awake()
         {
             if (animator == null) animator = GetComponent<Animator>();
             if (handHeldItem != null) handHeldItem.SetActive(false); // 시작 시 숨김
+            CacheTriggers();
         }
 
-        public void PlayGreeting() => Fire(Greeting);
-        public void PlayNod()      => Fire(Nod);
+        private void CacheTriggers()
+        {
+            _triggers.Clear();
+            if (animator == null || animator.runtimeAnimatorController == null) return;
+            foreach (AnimatorControllerParameter p in animator.parameters)
+            {
+                if (p.type == AnimatorControllerParameterType.Trigger) _triggers.Add(p.nameHash);
+            }
+        }
 
-        // 물건 건네기: 애니 트리거 + 손 소품을 잠깐 표시
+        public bool HasTrigger(string name) => _triggers.Contains(Animator.StringToHash(name));
+
+        public void PlayGreeting() => Fire(Greeting);
+        public void PlayWave()     => Fire(Wave);
+        public void PlaySmile()    => Fire(Smile);
+
+        // 끄덕임: 구 컨트롤러는 Nod, v09 컨트롤러는 Smile(미소 반응)로 대체
+        public void PlayNod() => Fire(_triggers.Contains(Nod) ? Nod : Smile);
+
+        // 물건 건네기: 애니 트리거 + 손 소품을 잠깐 표시. v09 컨트롤러에는 HandOver가 없어 Smile로 대체
         public void PlayHandOver()
         {
-            Fire(HandOver);
+            Fire(_triggers.Contains(HandOver) ? HandOver : Smile);
             ShowHandItem();
         }
 
         private void Fire(int trigger)
         {
             if (animator == null) return;
+            if (_triggers.Count > 0 && !_triggers.Contains(trigger)) return; // 컨트롤러에 없는 트리거는 무시 (경고 방지)
             animator.SetTrigger(trigger);
         }
 
@@ -64,8 +91,10 @@ namespace Artti.Training
             if (!showDebugButtons) return;
             const float w = 200f, h = 56f;
             if (GUI.Button(new Rect(20, 20, w, h),  "인사 (Greeting)"))  PlayGreeting();
-            if (GUI.Button(new Rect(20, 86, w, h),  "건네기 (HandOver)")) PlayHandOver();
-            if (GUI.Button(new Rect(20, 152, w, h), "끄덕임 (Nod)"))      PlayNod();
+            if (GUI.Button(new Rect(20, 86, w, h),  "손 흔들기 (Wave)")) PlayWave();
+            if (GUI.Button(new Rect(20, 152, w, h), "미소 (Smile)"))     PlaySmile();
+            if (GUI.Button(new Rect(20, 218, w, h), "건네기 (HandOver)")) PlayHandOver();
+            if (GUI.Button(new Rect(20, 284, w, h), "끄덕임 (Nod)"))      PlayNod();
         }
     }
 }

@@ -103,7 +103,13 @@ namespace Artti.Editor
             }
         }
 
-        public static GameObject CreateCanvas(string name = "[Canvas]", Vector2? referenceResolution = null)
+        // matchMode 기본값은 기존 동작(MatchWidthOrHeight, match=0 = 가로 폭 기준) 그대로 둔다.
+        // Expand를 넘기면 캔버스가 referenceResolution "이상"으로 유지된다 —
+        // 세로 위치를 절대 좌표로 손배치한 화면이 기기 종횡비에 따라 무너지는 것을 막는다.
+        public static GameObject CreateCanvas(
+            string name = "[Canvas]",
+            Vector2? referenceResolution = null,
+            CanvasScaler.ScreenMatchMode matchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight)
         {
             var go = new GameObject(name);
             var canvas = go.AddComponent<Canvas>();
@@ -111,6 +117,7 @@ namespace Artti.Editor
             var scaler = go.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = referenceResolution ?? new Vector2(1080, 1920);
+            scaler.screenMatchMode = matchMode;
             go.AddComponent<GraphicRaycaster>();
             return go;
         }

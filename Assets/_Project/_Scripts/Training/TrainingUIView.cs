@@ -264,6 +264,7 @@ namespace Artti.Training
                 if (sttResultText != null) sttResultText.text = empty ? "" : $"“{text}”";
                 _hideRoutine = StartCoroutine(HideAfter(displaySeconds));
             }
+            if (micIndicator != null) micIndicator.SetActive(false);
         }
 
         public void HideSttOverlay()

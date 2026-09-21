@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Artti.AAC;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace Artti.Training
@@ -117,6 +119,38 @@ namespace Artti.Training
             }
         }
 
+        // 여러 상품처럼 한 단계에서 값이 누적되는 슬롯을 JSON 배열로 보관한다.
+        // 같은 상품을 두 번 눌러도 중복 저장하지 않는다.
+        public void AppendSlotListItem(string slotKey, string value)
+        {
+            if (string.IsNullOrWhiteSpace(slotKey) || string.IsNullOrWhiteSpace(value)) return;
+
+            JArray items = null;
+            if (_slots.TryGetValue(slotKey, out var raw) && !string.IsNullOrWhiteSpace(raw))
+            {
+                try { items = JArray.Parse(raw); }
+                catch (JsonException) { /* 기존 값이 배열이 아니면 새 배열로 정상화 */ }
+            }
+
+            items ??= new JArray();
+            var trimmed = value.Trim();
+            if (!items.Values<string>().Any(item => string.Equals(item, trimmed, StringComparison.Ordinal)))
+                items.Add(trimmed);
+
+            _slots[slotKey] = items.ToString(Formatting.None);
+        }
+
+        public string LastSlotListItem(string slotKey)
+        {
+            if (string.IsNullOrWhiteSpace(slotKey)
+                || !_slots.TryGetValue(slotKey, out var raw)
+                || string.IsNullOrWhiteSpace(raw))
+                return null;
+
+            try { return JArray.Parse(raw).Values<string>().LastOrDefault(); }
+            catch (JsonException) { return null; }
+        }
+
         // 프롬프트에 실어 보낼 슬롯 상태. 시스템 프롬프트가 "슬롯은 별도로 전달되며 authoritative"라고
         // 선언해 놓고 정작 안 넘기던 것을 실제로 넘기기 위한 것.
         public string SlotsSnapshot() =>
@@ -146,8 +180,10 @@ namespace Artti.Training
 
         // ===== 진행 제어 (하이브리드) =====
 
-        // LLM이 제안한 objective_id를 검증해 실제로 이동할 단계를 돌려준다.
-        // 더 갈 곳이 없으면 null (호출부가 세션 완료 처리).
+        // LLM이 제안한 objective_id를 검증해 바로 다음 단계를 돌려준다.
+        // objective_id는 현재 완료 단계(mark_objective_complete) 또는 새 활성 단계
+        // (transition_to_objective)라는 서로 다른 의미로 들어오므로, 어느 경우에도 한 번에
+        // 한 단계만 이동시킨다. 더 갈 곳이 없거나 다음 단계 데이터가 불완전하면 null.
         public string ResolveNextObjective(string requested)
         {
             if (_objectiveOrder.Length == 0)
@@ -157,6 +193,11 @@ namespace Artti.Training
             }
 
             int currentIdx = Array.IndexOf(_objectiveOrder, CurrentObjectiveId);
+            if (currentIdx < 0)
+            {
+                Debug.LogWarning($"[DialogueManager] 현재 objective가 순서에 없음: '{CurrentObjectiveId}' — 진행 중단");
+                return null;
+            }
 
             if (!string.IsNullOrEmpty(requested))
             {
@@ -177,24 +218,31 @@ namespace Artti.Training
                 {
                     // 현재 단계를 "완료"로 지목한 정상 케이스 — 순서상 다음으로 진행
                 }
-                else if (HasCards(requested))
+                else if (requestedIdx == currentIdx + 1)
                 {
-                    return requested;
+                    // transition_to_objective가 바로 다음 단계를 지목한 정상 케이스
                 }
                 else
                 {
-                    Debug.Log($"[DialogueManager] '{requested}' 카드 없음 — 순서상 다음으로 폴백");
+                    // LLM이 더 먼 미래 단계를 지목해도 중간 objective를 건너뛰지 않는다.
+                    Debug.LogWarning($"[DialogueManager] objective 점프 보정: {CurrentObjectiveId} → {requested} — 바로 다음 단계로 제한");
                 }
             }
 
-            // 다음으로: 카드가 있는 가장 가까운 후속 단계
-            for (int i = Math.Max(currentIdx, -1) + 1; i < _objectiveOrder.Length; i++)
+            int nextIdx = currentIdx + 1;
+            if (nextIdx >= _objectiveOrder.Length)
+                return null;
+
+            var next = _objectiveOrder[nextIdx];
+            if (!HasCards(next))
             {
-                var next = _objectiveOrder[i];
-                if (HasCards(next)) return next;
-                Debug.Log($"[DialogueManager] '{next}' objective 카드 없음 — 건너뜀");
+                // 카드 누락은 데이터 오류다. 다음 유효 단계를 찾아 건너뛰면 UI와 로그의
+                // 단계 번호가 점프하므로, 현재 단계에 머물러 오류가 드러나게 한다.
+                Debug.LogWarning($"[DialogueManager] 바로 다음 objective '{next}' 카드 없음 — 순차 진행 중단");
+                return null;
             }
-            return null;
+
+            return next;
         }
 
         private bool HasCards(string objectiveId) => _hasCards == null || _hasCards(objectiveId);

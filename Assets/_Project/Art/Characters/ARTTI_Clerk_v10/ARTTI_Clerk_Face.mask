@@ -1,0 +1,67 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!319 &31900000
+AvatarMask:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: ARTTI_Clerk_Face
+  m_Mask: 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+  m_Elements:
+  - m_Path: 
+    m_Weight: 0
+  - m_Path: Armature
+    m_Weight: 0
+  - m_Path: Armature/Hips
+    m_Weight: 0
+  - m_Path: Armature/Hips/LeftUpLeg
+    m_Weight: 0
+  - m_Path: Armature/Hips/LeftUpLeg/LeftLeg
+    m_Weight: 0
+  - m_Path: Armature/Hips/LeftUpLeg/LeftLeg/LeftFoot
+    m_Weight: 0
+  - m_Path: Armature/Hips/LeftUpLeg/LeftLeg/LeftFoot/LeftToeBase
+    m_Weight: 0
+  - m_Path: Armature/Hips/RightUpLeg
+    m_Weight: 0
+  - m_Path: Armature/Hips/RightUpLeg/RightLeg
+    m_Weight: 0
+  - m_Path: Armature/Hips/RightUpLeg/RightLeg/RightFoot
+    m_Weight: 0
+  - m_Path: Armature/Hips/RightUpLeg/RightLeg/RightFoot/RightToeBase
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest/LeftShoulder
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest/LeftShoulder/LeftArm
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest/LeftShoulder/LeftArm/LeftForeArm
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest/LeftShoulder/LeftArm/LeftForeArm/LeftHand
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest/Neck
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest/Neck/Head
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest/RightShoulder
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest/RightShoulder/RightArm
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest/RightShoulder/RightArm/RightForeArm
+    m_Weight: 0
+  - m_Path: Armature/Hips/Spine/Chest/UpperChest/RightShoulder/RightArm/RightForeArm/RightHand
+    m_Weight: 0
+  - m_Path: char1
+    m_Weight: 1
+  - m_Path: Teeth_Lower
+    m_Weight: 1
+  - m_Path: Teeth_Upper
+    m_Weight: 1
+  - m_Path: Tongue
+    m_Weight: 1
