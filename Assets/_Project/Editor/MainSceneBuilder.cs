@@ -79,11 +79,13 @@ namespace Artti.Editor
         // 헤일로/그림자 투명 여백(L73 T71 R71 B84)이 남아 있다. 구버전(Stickers/menu_button_transparent.png,
         // 가로 알약 112.4x83.9)과 달리 거의 정사각형이라, 본체 너비를 구버전과 같은 112.4에 맞췄다.
         //   s = 112.4 / 1478 = 0.076049
-        //   영역 = (1622, 1616) x s,  위치 = 본체 좌상단(48.3, 66.1)에서 여백(73, 71) x s를 뺀 값
-        //   팝업 = 본체 좌하단에서 12 아래가 되도록 좌측(73)·하단(84) 여백만큼 보정
+        //   영역 = (1622, 1616) x s,  세로 위치 = 본체 상단(66.1)에서 여백(71) x s를 뺀 값
+        //   가로 위치 63.8은 에디터에서 눈으로 맞춘 값(계산값 42.75에서 오른쪽으로 21.05 이동)
+        //   팝업 = 본체 좌하단에서 12 아래가 되도록 좌측(73)·하단(84) 여백만큼 보정.
+        //          ToastBar의 자식이라 버튼 위치를 옮기면 함께 따라온다.
         const string AacMenuPath = HomeDir + "menu_button.png";
         static readonly Vector2 MenuBtnSize  = new Vector2(123.4f, 122.9f);
-        static readonly Vector2 MenuBtnPos   = new Vector2(42.75f, -60.70f);
+        static readonly Vector2 MenuBtnPos   = new Vector2(63.8f, -60.70f);
         static readonly Vector2 MenuPopupPos = new Vector2(5.55f, -5.61f);
 
         const string EmojiDir   = "Assets/_Project/openmoji-master/color/svg/";
