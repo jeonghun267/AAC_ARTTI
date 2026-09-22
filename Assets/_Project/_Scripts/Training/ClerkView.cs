@@ -32,6 +32,8 @@ namespace Artti.Training
 
         // 현재 컨트롤러가 가진 트리거 해시 (Awake에서 캐싱)
         private readonly HashSet<int> _triggers = new HashSet<int>();
+        private RuntimeAnimatorController _cachedController;
+        private bool _triggersCached;
 
         private void Awake()
         {
@@ -43,6 +45,8 @@ namespace Artti.Training
         private void CacheTriggers()
         {
             _triggers.Clear();
+            _cachedController = animator != null ? animator.runtimeAnimatorController : null;
+            _triggersCached = true;
             if (animator == null || animator.runtimeAnimatorController == null) return;
             foreach (AnimatorControllerParameter p in animator.parameters)
             {
@@ -50,26 +54,39 @@ namespace Artti.Training
             }
         }
 
-        public bool HasTrigger(string name) => _triggers.Contains(Animator.StringToHash(name));
+        private void EnsureTriggers()
+        {
+            if (animator == null) animator = GetComponent<Animator>();
+            if (!Application.isPlaying || !_triggersCached ||
+                _cachedController != (animator != null ? animator.runtimeAnimatorController : null))
+                CacheTriggers();
+        }
 
-        public void PlayGreeting() => Fire(Greeting);
+        public bool HasTrigger(string name)
+        {
+            EnsureTriggers();
+            return _triggers.Contains(Animator.StringToHash(name));
+        }
+
+        public void PlayGreeting() => Fire(HasTrigger("Greeting") ? Greeting : Wave);
         public void PlayWave()     => Fire(Wave);
         public void PlaySmile()    => Fire(Smile);
 
         // 끄덕임: 구 컨트롤러는 Nod, v09 컨트롤러는 Smile(미소 반응)로 대체
-        public void PlayNod() => Fire(_triggers.Contains(Nod) ? Nod : Smile);
+        public void PlayNod() => Fire(HasTrigger("Nod") ? Nod : Smile);
 
         // 물건 건네기: 애니 트리거 + 손 소품을 잠깐 표시. v09 컨트롤러에는 HandOver가 없어 Smile로 대체
         public void PlayHandOver()
         {
-            Fire(_triggers.Contains(HandOver) ? HandOver : Smile);
+            Fire(HasTrigger("HandOver") ? HandOver : Smile);
             ShowHandItem();
         }
 
         private void Fire(int trigger)
         {
+            EnsureTriggers();
             if (animator == null) return;
-            if (_triggers.Count > 0 && !_triggers.Contains(trigger)) return; // 컨트롤러에 없는 트리거는 무시 (경고 방지)
+            if (!_triggers.Contains(trigger)) return; // 빈 컨트롤러를 포함해 없는 트리거는 무시
             animator.SetTrigger(trigger);
         }
 

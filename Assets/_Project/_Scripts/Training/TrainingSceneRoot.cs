@@ -29,6 +29,10 @@ namespace Artti.Training
         [Header("Clerk 애니메이션 (옵션 — 미와이어링 시 무동작)")]
         [SerializeField] private ClerkView clerkView;
 
+        [Header("NPC 음성 (옵션 — 미연결 시 기존 TTS 소스 사용)")]
+        [SerializeField] private AudioSource npcSpeechSource;
+        public AudioSource NpcSpeechSource => npcSpeechSource != null ? npcSpeechSource : GetComponent<AudioSource>();
+
         [Header("카운터 물건 표시 (옵션 — 미와이어링 시 무동작)")]
         [SerializeField] private CounterDisplay counter;
 
@@ -38,6 +42,7 @@ namespace Artti.Training
 
         private DialogueManager _dialogueManager;
         private ITtsService _ttsService;
+        private ITtsService _npcTtsService;
         private ISttService _sttService;
         private GeminiDialogueService _geminiService;
         private string _systemPrompt; // system_prompts.json에서 시나리오별로 빌드 (Awake)
@@ -73,6 +78,9 @@ namespace Artti.Training
             var ttsKey    = ApiKeyLoader.GetOrFallback(ApiKeyLoader.GoogleTtsApi, ApiKeyLoader.GeminiApi);
 
             _ttsService = new CloudTtsService(ttsKey, GetComponent<AudioSource>());
+            _npcTtsService = npcSpeechSource != null
+                ? new CloudTtsService(ttsKey, npcSpeechSource)
+                : _ttsService;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
             _sttService = new AndroidNativeSttService();
@@ -313,15 +321,22 @@ namespace Artti.Training
             _lastNpcWasFallback = isFallback;
             _lastNpcLine = line;
             uiView.SetNPCDialogue(line);
-            if (_ttsService != null)
-                _ttsService.SpeakAsync(line, _cts.Token).Forget();
+            if (_npcTtsService != null)
+                _npcTtsService.SpeakAsync(line, _cts.Token).Forget();
             _eventLogger?.LogNpcTurn(line, tool);
         }
 
         private void ReplayNpcLine()
         {
-            if (!string.IsNullOrEmpty(_lastNpcLine) && _ttsService != null)
-                _ttsService.SpeakAsync(_lastNpcLine, _cts.Token).Forget();
+            if (!string.IsNullOrEmpty(_lastNpcLine) && _npcTtsService != null)
+                _npcTtsService.SpeakAsync(_lastNpcLine, _cts.Token).Forget();
+        }
+
+        private void StopSpeech()
+        {
+            _ttsService?.StopAll();
+            if (!object.ReferenceEquals(_npcTtsService, _ttsService))
+                _npcTtsService?.StopAll();
         }
 
         private void ShowInitialCards()
@@ -562,6 +577,7 @@ namespace Artti.Training
             AppBootstrap.Instance?.LogStore?.FlushAsync().Forget();
 
             _cts?.Cancel();
+            StopSpeech();
             _cts?.Dispose();
         }
 
@@ -573,7 +589,7 @@ namespace Artti.Training
             // 변경점: 직전 점원 발화가 fallback("다시 말씀해주세요" 등)이었다면, 카드를 누르는 순간
             //         재생을 중단해 마이크 입력과 겹치지 않게 함. 일반 안내 발화는 끝까지 재생.
             if (_lastNpcWasFallback)
-                _ttsService?.StopAll();
+                StopSpeech();
 
             // 풀 모드: 자유 발화 연습 (PLAN.MD 5.4.2 / 7.3.1)
             // 카드 phrase TTS는 없음. STT로 사용자 발화 수집 후 다음 objective로 진행.
@@ -728,7 +744,7 @@ namespace Artti.Training
             try
             {
                 uiView.HideExtraModal();
-                _ttsService?.StopAll();
+                StopSpeech();
                 uiView.ShowMicIndicator(true);
                 var stt = await _sttService.ListenOnceAsync(_cts.Token);
                 recognized = stt.text;
@@ -769,7 +785,7 @@ namespace Artti.Training
             uiView.HideExtraModal();
             uiView.SetFreeTalkActive(true);
             dashboardView?.SetInteractionEnabled(false);
-            _ttsService?.StopAll();   // 안내 발화가 흐르는 중이면 끊고 바로 듣기 시작
+            StopSpeech();   // 안내 발화가 흐르는 중이면 끊고 바로 듣기 시작
             FreeTalkLoop(_cts.Token).Forget();
         }
 
@@ -872,7 +888,7 @@ namespace Artti.Training
             dashboardView?.SetInteractionEnabled(false);
             try
             {
-                _ttsService?.StopAll();
+                StopSpeech();
                 hud?.SetUserUtterance(utterance);
                 uiView.ShowSttResult(utterance);
                 _eventLogger?.LogCardSelected(sourceId, utterance, utterance);

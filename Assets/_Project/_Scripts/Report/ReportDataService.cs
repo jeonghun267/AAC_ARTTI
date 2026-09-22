@@ -27,14 +27,22 @@ namespace Artti.Report
             totalAttempts > 0 ? Mathf.Clamp01((float)completedCount / totalAttempts) : 0f;
     }
 
-    // 요약 패널 4스탯
+    // 요약 패널 스탯 (연습 리포트 대시보드)
     public class ReportSummaryStats
     {
         public int completedCount;     // 완료 시나리오 수
         public int totalStudyMinutes;  // 총 학습 시간(분)
         public int streakDays;         // 연속 학습일
-        public int level;              // 레벨
+        public int level;              // 레벨 (XP 기반)
         public string levelTitle;      // 레벨 칭호 (예: AAC Explorer)
+        public int xp;                 // 누적 XP (기록 포인트 합)
+        public int xpInLevel;          // 현재 레벨 내 XP
+        public int xpPerLevel;         // 레벨업에 필요한 XP
+        public int todayCompleted;     // 오늘 완료한 시나리오 수 (변화 칩)
+        public int todayMinutes;       // 오늘 연습 시간(분) (변화 칩)
+        public int avgAccuracyPct;     // 평균 정답률 (세션 successRate 평균, 0..100)
+        public int accuracyDeltaPct;   // 최신 세션 정답률 - 이전 세션 평균 (변화 칩)
+        public bool hasAccuracy;       // 정답률 산출 가능한 세션이 있는지
     }
 
     // 최근 학습 기록 한 줄
@@ -44,6 +52,8 @@ namespace Artti.Report
         public string scenarioId;
         public long dateMs;
         public int points;
+        public bool completed;
+        public int accuracyPct;    // 세션 정답률(0..100). 단계 없으면 -1
     }
 
     public enum StepRating { Excellent, Good, Practice, NeedHelp }
@@ -168,6 +178,8 @@ namespace Artti.Report
 
         // ===== 요약 스탯 / 추세 / 최근 기록 (요약 패널용) =====
 
+        const int XpPerLevel = 300; // 레벨업 XP (임시 규칙. 제품 규칙 확정 시 조정)
+
         public ReportSummaryStats GetSummaryStats()
         {
             var sessions = GetSessions(); // 최신순
@@ -176,11 +188,52 @@ namespace Artti.Report
                 completedCount = sessions.Count(s => s.completed),
                 totalStudyMinutes = sessions.Sum(s => s.durationMin),
                 streakDays = ComputeStreak(sessions),
+                xpPerLevel = XpPerLevel,
             };
-            // 레벨 규칙(임시): 완료 3회마다 +1. 칭호는 구간별. (제품 규칙 확정 시 조정)
-            stats.level = 1 + stats.completedCount / 3;
+
+            // 오늘 변화량 (완료 수 / 연습 시간)
+            var today = DateTimeOffset.Now.ToLocalTime().Date;
+            foreach (var s in sessions)
+            {
+                var d = DateTimeOffset.FromUnixTimeMilliseconds(s.dateMs).ToLocalTime().Date;
+                if (d != today) continue;
+                stats.todayMinutes += s.durationMin;
+                if (s.completed) stats.todayCompleted++;
+            }
+
+            // XP = 기록 포인트 합. 레벨은 XP 기반. 칭호는 구간별.
+            var records = GetRecentRecords(int.MaxValue); // 최신순
+            stats.xp = records.Sum(r => r.points);
+            stats.level = 1 + stats.xp / XpPerLevel;
+            stats.xpInLevel = stats.xp % XpPerLevel;
             stats.levelTitle = LevelTitle(stats.level);
+
+            // 평균 정답률: 단계가 1개 이상인 세션의 정답률 평균. 변화 = 최신 세션 - 이전 세션 평균.
+            var rates = records.Where(r => r.accuracyPct >= 0).Select(r => r.accuracyPct / 100f).ToList();
+            stats.hasAccuracy = rates.Count > 0;
+            if (rates.Count > 0)
+            {
+                stats.avgAccuracyPct = Mathf.RoundToInt(rates.Average() * 100f);
+                if (rates.Count > 1)
+                {
+                    float prevAvg = rates.Skip(1).Average();
+                    stats.accuracyDeltaPct = Mathf.RoundToInt((rates[0] - prevAvg) * 100f);
+                }
+            }
             return stats;
+        }
+
+        // 추천 다음 연습: 완료 횟수가 가장 적은 시나리오 (동률이면 약국 > 편의점 > 음식점 순).
+        public string GetRecommendedScenario()
+        {
+            var overview = GetOverview();
+            string best = null; int bestCount = int.MaxValue;
+            foreach (var id in ReportLabels.ScenarioIds)
+            {
+                overview.completedByScenario.TryGetValue(id, out var n);
+                if (n < bestCount) { bestCount = n; best = id; }
+            }
+            return best ?? "pharmacy";
         }
 
         static string LevelTitle(int level)
@@ -251,10 +304,20 @@ namespace Artti.Report
                     sessionId = group.Key,
                     scenarioId = summary.scenarioId,
                     dateMs = summary.dateMs,
-                    points = points
+                    points = points,
+                    completed = summary.completed,
+                    accuracyPct = SessionAccuracyPct(group.Key),
                 });
             }
             return list.OrderByDescending(r => r.dateMs).Take(n).ToList();
+        }
+
+        // 세션 1개의 정답률(0..100). 단계 없으면 -1.
+        int SessionAccuracyPct(string sessionId)
+        {
+            var rep = GetRecordReport(sessionId);
+            if (rep == null || rep.steps.Count == 0) return -1;
+            return Mathf.RoundToInt(rep.successRate * 100f);
         }
 
         // 세션 1개의 상세 리포트(hh.png). 피드백은 규칙 기반(추후 LLM 대체 가능).
@@ -499,10 +562,42 @@ namespace Artti.Report
     // scenarioId / objectiveId → 화면 표시용 한국어 라벨
     public static class ReportLabels
     {
+        public static readonly string[] ScenarioIds = { "pharmacy", "convenience", "restaurant" };
+
         static readonly Dictionary<string, string> Scenario = new Dictionary<string, string>
         {
             { "pharmacy", "약국" }, { "convenience", "편의점" }, { "restaurant", "음식점" }
         };
+
+        // 추천 카드용 시나리오 제목 / 설명
+        public static string ScenarioTaskTitle(string scenarioId)
+        {
+            switch (scenarioId)
+            {
+                case "convenience": return "편의점에서 물건 사기";
+                case "restaurant":  return "음식점 주문하기";
+                default:            return "약국에서 약 사기";
+            }
+        }
+
+        public static string ScenarioTaskDesc(string scenarioId)
+        {
+            switch (scenarioId)
+            {
+                case "convenience": return "계산할 때 쓰는 표현을 연습해보세요!";
+                case "restaurant":  return "실생활에 바로 쓰는 표현을 연습해보세요!";
+                default:            return "증상을 말하는 표현을 연습해보세요!";
+            }
+        }
+
+        // 최근 기록 행의 한 줄 코멘트 (정답률 기반)
+        public static string RecordComment(bool completed, int accuracyPct)
+        {
+            if (!completed) return "다음에 이어서 해봐요!";
+            if (accuracyPct >= 85) return "자연스럽게 말했어요!";
+            if (accuracyPct >= 60) return "좋은 표현을 사용했어요!";
+            return "자신감이 늘었어요!";
+        }
 
         static readonly Dictionary<string, string> Objective = new Dictionary<string, string>
         {
