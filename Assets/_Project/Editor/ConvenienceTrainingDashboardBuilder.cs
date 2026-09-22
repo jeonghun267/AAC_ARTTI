@@ -180,8 +180,8 @@ namespace Artti.Editor
             StretchHorizontalBottom(bottomShade.rectTransform, 264f);
             var clerk = CreateRaster("Clerk", canvasGo.transform, Art + "clerk.png", 548, 182, 440, 660, true);
             PlaceTopCenter(clerk.rectTransform, 0, 182, 440, 660);
-            // v09 3D 점원: 같은 Rect에 RenderTexture RawImage(Clerk3D)를 놓고 래스터 Clerk는 비활성 보존.
-            // ClerkView/LipSync/카메라 무대 생성과 TrainingSceneRoot.clerkView 연결까지 Apply가 처리한다 (v10 컨트롤러 필요).
+            // Stationary v4: 기존 점원 슬롯에 대기/손 인사/자동 립싱크를 연결한다.
+            // Apply가 NPC 전용 음성 채널과 ClerkView/카메라 무대를 함께 연결한다.
             Artti.EditorTools.ArttiClerkSceneIntegration.Apply(canvasGo, clerk, sceneRoot);
             var logo = CreateRaster("ARTTILogo", canvasGo.transform, Art + "artti_logo.png", 443, -38, 650, 325, true);
             PlaceTopCenter(logo.rectTransform, 0, -38, 650, 325);
@@ -220,7 +220,7 @@ namespace Artti.Editor
             hudSo.FindProperty("pauseConfirmBtn").objectReferenceValue = pause.confirm;
             hudSo.FindProperty("pauseCancelBtn").objectReferenceValue = pause.cancel;
             hudSo.FindProperty("speakerBtn").objectReferenceValue = npc.replayButton;
-            hudSo.FindProperty("ttsSource").objectReferenceValue = ttsSource;
+            hudSo.FindProperty("ttsSource").objectReferenceValue = sceneRoot.NpcSpeechSource != null ? sceneRoot.NpcSpeechSource : ttsSource;
             hudSo.FindProperty("completionRoot").objectReferenceValue = completion.root;
             hudSo.FindProperty("completionScenarioText").objectReferenceValue = completion.scenarioText;
             hudSo.FindProperty("completionDurationText").objectReferenceValue = completion.durationText;

@@ -268,6 +268,89 @@ namespace Artti.Report
         private static Missions FallbackMissions() =>
             new Missions { daily = "오늘 한 시나리오 끝내기", weekly = "이번 주 세 번 연습하기" };
 
+        // ===== AI 피드백 (연습 리포트 대시보드 카드) =====
+
+        static string _feedbackCacheKey;
+        static string _feedbackCache;
+
+        // 학습 기록 근거 3~4줄 피드백. 잘한 점 + 다음에 시도할 점. 항상 문자열 반환(실패 시 폴백).
+        public async UniTask<string> GenerateFeedbackAsync(ReportOverview overview, string nickname, CancellationToken ct = default)
+        {
+            string key = $"f|{nickname}|{(overview != null ? overview.totalAttempts : 0)}|{(overview != null ? overview.completedCount : 0)}";
+            if (_feedbackCache != null && _feedbackCacheKey == key) return _feedbackCache;
+
+            string llm = await TryGenerateFeedbackLlmAsync(overview, nickname, ct);
+            string result = !string.IsNullOrWhiteSpace(llm) ? llm.Trim() : FallbackFeedback(overview, nickname);
+
+            _feedbackCacheKey = key; _feedbackCache = result;
+            return result;
+        }
+
+        private async UniTask<string> TryGenerateFeedbackLlmAsync(ReportOverview overview, string nickname, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(_apiKey)) { Debug.LogWarning("[ReportFeedback] API key 없음 - 폴백"); return null; }
+
+            string stats = BuildStatsText(overview);
+            string systemPrompt =
+                "당신은 발달장애인 학습자를 돕는 다정한 코치입니다. " +
+                "약국/편의점/음식점 상황의 '말하기 연습' 앱입니다. " +
+                "아래 학습 기록을 근거로 'AI 피드백' 카드에 들어갈 짧은 한국어 피드백을 쓰세요. " +
+                "구성: 1줄 칭찬, 1줄 잘한 점(가장 많이 완료한 시나리오 언급), 1~2줄 다음에 시도할 점. " +
+                "규칙: 줄바꿈으로 구분한 3~4줄, 각 줄 22자 이내, 이모지 금지, 숫자 나열 금지, 따옴표 없이 문구만 출력. " +
+                (string.IsNullOrEmpty(nickname) ? "" : $"첫 줄은 '{nickname}님,'으로 시작하세요. ");
+
+            var body = new JObject
+            {
+                ["system_instruction"] = new JObject { ["parts"] = new JArray { new JObject { ["text"] = systemPrompt } } },
+                ["contents"] = new JArray
+                {
+                    new JObject { ["role"] = "user", ["parts"] = new JArray { new JObject { ["text"] = $"학습 기록:\n{stats}" } } }
+                },
+                ["generationConfig"] = new JObject
+                {
+                    ["temperature"] = 0.8,
+                    ["maxOutputTokens"] = 160
+                }
+            };
+
+            string jsonBody = body.ToString(Formatting.None);
+            using (var request = new UnityWebRequest($"{ApiUrl}?key={_apiKey}", "POST"))
+            {
+                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+
+                try { await request.SendWebRequest().WithCancellation(ct); }
+                catch (OperationCanceledException) { throw; }
+                catch (UnityWebRequestException e)
+                {
+                    Debug.LogWarning($"[ReportFeedback] HTTP {(int)e.ResponseCode}(폴백): {e.Text}");
+                    return null;
+                }
+                if (request.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogWarning($"[ReportFeedback] API 실패(폴백): {request.error}");
+                    return null;
+                }
+                return ParseText(request.downloadHandler.text);
+            }
+        }
+
+        private static string FallbackFeedback(ReportOverview o, string nickname)
+        {
+            string who = string.IsNullOrEmpty(nickname) ? "" : $"{nickname}님, ";
+            if (o == null || o.totalAttempts == 0)
+                return $"{who}첫 연습을 시작해봐요!\n약국이나 편의점부터\n천천히 해보면 좋아요.";
+
+            string best = null; int bestN = 0;
+            foreach (var kv in o.completedByScenario)
+                if (kv.Value > bestN) { bestN = kv.Value; best = kv.Key; }
+            string bestLine = best != null
+                ? $"특히 {ReportLabels.ScenarioName(best)} 연습이 아주 좋았어요."
+                : "끝까지 도전한 점이 아주 좋았어요.";
+            return $"{who}대화가 점점 자연스러워지고 있어요!\n{bestLine}\n조금 더 다양한 표현을 사용하면\n더 멋진 대화를 할 수 있어요.";
+        }
+
         private static string Fallback(ReportOverview o, string nickname, bool high)
         {
             string who = string.IsNullOrEmpty(nickname) ? "" : $"{nickname}님 ";

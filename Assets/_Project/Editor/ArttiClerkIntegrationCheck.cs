@@ -45,6 +45,11 @@ namespace Artti.EditorTools
                 return;
             }
             Transform instT = stage.transform.Find(ArttiClerkSceneIntegration.InstanceName);
+            if (instT != null && instT.GetComponent<Artti.CharacterKit.ArttiAudioLipSync>() != null)
+            {
+                ArttiStationaryIntegrationCheck.Run();
+                return;
+            }
             var animator = instT.GetComponent<Animator>();
             var clerkView = instT.GetComponent<ClerkView>();
             var lip = instT.GetComponent<ArttiLipSyncController>();
