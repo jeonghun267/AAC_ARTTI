@@ -75,6 +75,18 @@ namespace Artti.Editor
         // 주의: Stickers/settings_button.png(240x128, 구버전)와 파일명이 같다.
         //       이쪽은 Home/ 직하의 865x384 신규 시안이다. 경로를 혼동하지 않도록 상수로 고정한다.
         const string AacSettingsPath = HomeDir + "settings_button.png";
+        // 좌상단 메뉴(햄버거) 버튼 v2 시안. 1622x1616, 불투명 본체 (73,71)-(1551,1532) = 1478x1461.
+        // 헤일로/그림자 투명 여백(L73 T71 R71 B84)이 남아 있다. 구버전(Stickers/menu_button_transparent.png,
+        // 가로 알약 112.4x83.9)과 달리 거의 정사각형이라, 본체 너비를 구버전과 같은 112.4에 맞췄다.
+        //   s = 112.4 / 1478 = 0.076049
+        //   영역 = (1622, 1616) x s,  세로 위치 = 본체 상단(66.1)에서 여백(71) x s를 뺀 값
+        //   가로 위치 63.8은 에디터에서 눈으로 맞춘 값(계산값 42.75에서 오른쪽으로 21.05 이동)
+        //   팝업 = 본체 좌하단에서 12 아래가 되도록 좌측(73)·하단(84) 여백만큼 보정.
+        //          ToastBar의 자식이라 버튼 위치를 옮기면 함께 따라온다.
+        const string AacMenuPath = HomeDir + "menu_button.png";
+        static readonly Vector2 MenuBtnSize  = new Vector2(123.4f, 122.9f);
+        static readonly Vector2 MenuBtnPos   = new Vector2(63.8f, -60.70f);
+        static readonly Vector2 MenuPopupPos = new Vector2(5.55f, -5.61f);
 
         const string EmojiDir   = "Assets/_Project/openmoji-master/color/svg/";
         const string Sparkle    = EmojiDir + "2728.svg";   // ✨
@@ -312,7 +324,7 @@ namespace Artti.Editor
             // (2400x1080 폰 / density 2.75 / 가로 기준 스케일 환산, 1 캔버스 단위 = 0.455dp)
             //   ProfileBtn  124단위 = 56.4dp
             //   SettingsBtn 112단위 = 50.9dp   <- 여기
-            //   ToastBar     88단위 = 40.0dp
+            //   ToastBar    123단위 = 55.9dp
             // PLAN.md:642의 기준 대상은 "카드"이고, PLAN.md:886에 보호자용 UI를 예외로 둔 선례가
             // 있어 당장 위반은 아니다. 다만 설정 버튼만 160단위(72dp)로 키우면 rect가 y 62~222가
             // 되어 AR 카드 상단(187.5)과 x 1660~1730에서 겹치고, 생성 순서상 위에 있어 카드 클릭을
@@ -674,32 +686,39 @@ namespace Artti.Editor
             return new CardRefs { button = btn, card = root, charRT = charRT, idle = idle };
         }
 
-        // ===== 좌상단 토스트바(햄버거) 메뉴 — 클릭 시 레포트 보기/종료하기 팝업 =====
+        // ===== 좌상단 메뉴(햄버거) 버튼 — 클릭 시 레포트 보기/종료하기 팝업 =====
+        // 이미지 한 장을 통째로 버튼으로 쓴다. 헤일로 투명 여백도 영역 안이라 클릭된다
+        // (Image 기본 alphaHitTestMinimumThreshold = 0). 화면에서는 사방 5.4~6.4 정도라 과하지 않다.
         static void MakeToastMenu(Transform parent, TMP_FontAsset font)
         {
             var rect = ChildRect("ToastBar", parent);
             rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
             rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = new Vector2(48, -62);
-            rect.sizeDelta = new Vector2(136, 88); // 100x65 비율
+            rect.anchoredPosition = MenuBtnPos;
+            rect.sizeDelta = MenuBtnSize;
             var img = rect.gameObject.AddComponent<Image>();
-            img.sprite = LoadPngSprite(StickerDir + "menu_button_transparent.png"); // 흰 알약+햄버거 통이미지
+            img.sprite = LoadPngSprite(AacMenuPath);
             img.preserveAspect = true;
             var btn = rect.gameObject.AddComponent<Button>();
             btn.targetGraphic = img;
             var colors = btn.colors;
-            colors.highlightedColor = new Color(0.9f, 0.94f, 1f, 1f);
-            colors.pressedColor = new Color(0.82f, 0.88f, 1f, 1f);
+            // ColorTint는 이미지 색에 곱해진다. 본체가 진한 파랑 RGB(85,75,250)이라 파랑 채널이 1인 틴트
+            // (구버전 0.82,0.88,1)는 거의 티가 나지 않았다. 세 채널을 같이 낮춘 회색 틴트로 바꿔
+            // 파랑 채널까지 어두워지게 한다.
+            //   highlighted 0.86 -> RGB(73,65,215)   pressed 0.72 -> RGB(61,54,180)
+            colors.highlightedColor = new Color(0.86f, 0.86f, 0.86f, 1f);
+            colors.pressedColor = new Color(0.72f, 0.72f, 0.72f, 1f);
             colors.fadeDuration = 0.08f;
             btn.colors = colors;
 
             var menu = rect.gameObject.AddComponent<HomeMenu>();
 
-            // 팝업 패널 (햄버거 아래로 펼쳐짐)
+            // 팝업 패널 (햄버거 아래로 펼쳐짐). ToastBar 영역 좌하단 기준이라 헤일로·그림자 여백만큼
+            // 보정해, 보이는 버튼 본체의 좌하단에서 12 아래에 오게 한다.
             var popup = ChildRect("MenuPopup", rect);
             popup.anchorMin = popup.anchorMax = new Vector2(0f, 0f);
             popup.pivot = new Vector2(0f, 1f);
-            popup.anchoredPosition = new Vector2(0, -12);
+            popup.anchoredPosition = MenuPopupPos;
             popup.sizeDelta = new Vector2(264, 180);
             var pimg = popup.gameObject.AddComponent<Image>();
             pimg.sprite = Rounded(); pimg.type = Image.Type.Sliced; pimg.pixelsPerUnitMultiplier = 1f;
