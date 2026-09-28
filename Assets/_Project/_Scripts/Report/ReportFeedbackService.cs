@@ -174,8 +174,13 @@ namespace Artti.Report
             foreach (var s in r.steps)
             {
                 string utter = string.IsNullOrWhiteSpace(s.userText) ? "(발화 없음)" : s.userText;
-                sb.AppendLine($"  {s.index}. {s.objectiveName} | 사용자: \"{utter}\" | 재시도 {s.retryCount}회 | 평가 {s.ratingLabel}");
+                sb.Append($"  {s.index}. {s.objectiveName} | 사용자: \"{utter}\" | 재시도 {s.retryCount}회 | 평가 {s.ratingLabel}");
+                // 변경점: 서버 발화 정확도와 그 이유를 함께 넘겨 AI 피드백이 발음 연습 포인트를 짚도록 한다.
+                if (s.clarityPct >= 0)
+                    sb.Append($" | 발화 정확도 {s.clarityPct}% (목표 \"{s.clarityTarget}\", 들린 문장 \"{s.clarityHeard}\", 이유: {s.clarityReason})");
+                sb.AppendLine();
             }
+            if (r.avgClarityPct >= 0) sb.AppendLine($"- 발화 정확도 평균: {r.avgClarityPct}%");
             return sb.ToString();
         }
     }

@@ -9,6 +9,7 @@ namespace Artti.Common
         public const string GeminiApi    = "GEMINI_API_KEY";
         public const string GoogleSttApi = "GOOGLE_STT_API_KEY";
         public const string GoogleTtsApi = "GOOGLE_TTS_API_KEY";
+        public const string SttServerUrl = "STT_SERVER_URL";   // 변경점: 서버 STT 주소 (예: http://192.168.0.167:8000)
 
         static Dictionary<string, string> _keys;
 

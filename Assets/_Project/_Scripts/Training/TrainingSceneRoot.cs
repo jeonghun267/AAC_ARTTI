@@ -88,6 +88,13 @@ namespace Artti.Training
             // Editor: STT는 더미 텍스트로 풀 모드 흐름만 검증
             _sttService = new EditorMockSttService();
 #endif
+            // 변경점: 편의점은 서버 STT(발화 정확도 %)를 우선 사용. .env(빌드는 Resources/api_keys.txt)에
+            //   STT_SERVER_URL이 있고 로컬 전용 ServerSttService.cs가 있을 때만 켜지고, 아니면 위 STT 그대로.
+            if (scenarioId == ScenarioIds.Convenience)
+            {
+                var serverStt = TryCreateServerStt(ApiKeyLoader.Get(ApiKeyLoader.SttServerUrl));
+                if (serverStt != null) _sttService = serverStt;
+            }
             // 변경점(Unit 2): 도구 카탈로그 + 시나리오 시스템 프롬프트 로드해 주입.
             //   Resources/AAC/{dialogue_tools,system_prompts}.json (기존 _Data/AAC 원본의 런타임 복사본)
             string declsJson = null;
@@ -151,6 +158,32 @@ namespace Artti.Training
             else
             {
                 Debug.LogWarning("[TrainingSceneRoot] AppBootstrap 없음 — 프로필 선택을 거치지 않아 이 세션은 레포트에 기록되지 않습니다. SplashScene부터 Play 하세요");
+            }
+        }
+
+        // 변경점: ServerSttService는 저장소에 없는 로컬 파일이라 직접 참조하지 않고 타입 이름으로 만든다.
+        //   파일이 없는 팀원 환경에서도 컴파일되고, URL이 없거나 파일이 없으면 null(기존 STT 유지).
+        private const string ServerSttTypeName = "Artti.Common.Speech.ServerSttService";
+
+        private static ISttService TryCreateServerStt(string serverUrl)
+        {
+            if (string.IsNullOrWhiteSpace(serverUrl)) return null;
+            var type = System.Type.GetType(ServerSttTypeName);
+            if (type == null || !typeof(ISttService).IsAssignableFrom(type))
+            {
+                Debug.LogWarning($"[TrainingSceneRoot] STT_SERVER_URL은 있지만 {ServerSttTypeName}가 프로젝트에 없음 — 기존 STT 사용");
+                return null;
+            }
+            try
+            {
+                var stt = (ISttService)System.Activator.CreateInstance(type, serverUrl);
+                Debug.Log($"[TrainingSceneRoot] 서버 STT 사용 — {serverUrl}");
+                return stt;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[TrainingSceneRoot] 서버 STT 생성 실패 — 기존 STT 사용: {e.Message}");
+                return null;
             }
         }
 

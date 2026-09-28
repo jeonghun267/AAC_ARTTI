@@ -69,8 +69,12 @@ namespace Artti.Report
         public int retryCount;
         public StepRating rating;
         public string ratingLabel; // "잘했어요😊" 등
-        public int clarityPct = -1;   // 변경점: userText 발화의 발음 명료도(0..100). 없으면 -1
+        // 변경점: userText 발화의 서버 발화 정확도(명료도). 측정 기록이 없으면 clarityPct = -1
+        public int clarityPct = -1;   // 0..100
         public string clarityLight;   // green/yellow/red (서버 판정), 없으면 null
+        public string clarityTarget;  // 서버가 비교한 목표 문장
+        public string clarityHeard;   // 서버가 알아들은 문장
+        public string clarityReason;  // 왜 그 점수인지 (ClarityExplainer)
     }
 
     // 세션 1개의 상세 리포트 (전체 학습기록 씬)
@@ -87,7 +91,7 @@ namespace Artti.Report
         public int partialSuccess; // 부분 성공
         public int needHelp;       // 도움 필요
         public float successRate;  // 0..1
-        public int avgClarityPct = -1; // 변경점: 세션 전체 음성 발화의 명료도 평균(0..100). 측정 발화 없으면 -1
+        public int avgClarityPct = -1; // 변경점: 세션 전체 음성 발화의 서버 명료도 평균(0..100). 측정 발화 없으면 -1
 
         public string feedbackMain;
         public string feedbackBubble;
@@ -102,8 +106,10 @@ namespace Artti.Report
     {
         public bool isUser;
         public string text;
-        public int clarityPct = -1;   // 변경점: 사용자 음성 발화의 명료도(0..100). 탭/NPC 턴은 -1
+        public int clarityPct = -1;   // 변경점: 사용자 음성 발화의 서버 명료도(0..100). 탭/NPC 턴은 -1
         public string clarityLight;
+        public string clarityTarget;
+        public string clarityHeard;
     }
 
     public class ReportStep
@@ -360,8 +366,12 @@ namespace Artti.Report
                     {
                         sr.userText = step.turns[t].text;
                         // 변경점: 화면에 보이는 발화와 같은 턴의 명료도만 붙인다(탭 입력이면 -1 그대로).
-                        sr.clarityPct = step.turns[t].clarityPct;
-                        sr.clarityLight = step.turns[t].clarityLight;
+                        var turn = step.turns[t];
+                        sr.clarityPct = turn.clarityPct;
+                        sr.clarityLight = turn.clarityLight;
+                        sr.clarityTarget = turn.clarityTarget;
+                        sr.clarityHeard = turn.clarityHeard;
+                        sr.clarityReason = ClarityExplainer.Explain(turn.clarityTarget, turn.clarityHeard, turn.clarityPct, turn.clarityLight);
                     }
                     if (sr.npcText == null && !step.turns[t].isUser) sr.npcText = step.turns[t].text;
                 }
@@ -387,7 +397,7 @@ namespace Artti.Report
             int totalSteps = Mathf.Max(1, rep.steps.Count);
             rep.successRate = Mathf.Clamp01((rep.fullSuccess + 0.5f * rep.partialSuccess) / totalSteps);
 
-            // 변경점: 발음 명료도 평균 — 단계 대표값이 아니라 세션의 모든 음성 발화(재시도 포함) 기준.
+            // 변경점: 발화 정확도(서버 명료도) 평균 — 단계 대표값이 아니라 세션의 모든 음성 발화(재시도 포함) 기준.
             int claritySum = 0, clarityCount = 0;
             foreach (var step in detail.steps)
                 foreach (var turn in step.turns)
@@ -453,8 +463,16 @@ namespace Artti.Report
                 }
                 else if (ev.eventType == EvCardSelected)
                 {
-                    TryParseClarity(ev.payloadJson, out var clarityPct, out var clarityLight);
-                    AddTurn(detail, ref current, isUser: true, ParseUserText(ev.payloadJson), clarityPct, clarityLight);
+                    var turn = AddTurn(detail, ref current, isUser: true, ParseUserText(ev.payloadJson));
+                    // 변경점: 서버 발화 정확도가 있으면 방금 추가한 사용자 턴에 붙인다(이유 설명용 목표/들린 문장 포함).
+                    if (turn != null
+                        && TryParseClarity(ev.payloadJson, out var clarityPct, out var clarityLight, out var clarityTarget))
+                    {
+                        turn.clarityPct = clarityPct;
+                        turn.clarityLight = clarityLight;
+                        turn.clarityTarget = clarityTarget;
+                        turn.clarityHeard = ParseSttText(ev.payloadJson);
+                    }
                 }
                 else if (ev.eventType == EvStepRetry)
                 {
@@ -545,16 +563,18 @@ namespace Artti.Report
             };
         }
 
-        static void AddTurn(ReportSessionDetail detail, ref ReportStep current, bool isUser, string text,
-                            int clarityPct = -1, string clarityLight = null)
+        // 변경점: 추가한 턴을 돌려준다(빈 문장이라 추가하지 않았으면 null).
+        static ReportTurn AddTurn(ReportSessionDetail detail, ref ReportStep current, bool isUser, string text)
         {
-            if (string.IsNullOrEmpty(text)) return;
+            if (string.IsNullOrEmpty(text)) return null;
             if (current == null)
             {
                 current = new ReportStep { objectiveId = "" };
                 detail.steps.Add(current);
             }
-            current.turns.Add(new ReportTurn { isUser = isUser, text = text, clarityPct = clarityPct, clarityLight = clarityLight });
+            var turn = new ReportTurn { isUser = isUser, text = text };
+            current.turns.Add(turn);
+            return turn;
         }
 
         // TtsPlayed payload: "{tool}:{npcText}"
@@ -568,12 +588,11 @@ namespace Artti.Report
         const string ClarityMarker = "|clarity:";
 
         // CardSelected payload: "{cardId}:{text}" 또는 "{cardId}:{text}|stt:{sttText}"
-        //   변경점: 끝에 "|clarity:{0..100}:{light}"가 붙을 수 있다(EventLogger). 문장 파싱 전에 떼어낸다.
+        //   변경점: 끝에 "|clarity:{0..100}:{light}:{목표 문장}"이 붙을 수 있다(EventLogger). 문장 파싱 전에 떼어낸다.
         static string ParseUserText(string payload)
         {
             if (string.IsNullOrEmpty(payload)) return null;
-            int clarityIdx = payload.LastIndexOf(ClarityMarker, StringComparison.Ordinal);
-            if (clarityIdx >= 0) payload = payload.Substring(0, clarityIdx);
+            payload = StripClarity(payload);
             int sttIdx = payload.IndexOf("|stt:", StringComparison.Ordinal);
             var head = sttIdx >= 0 ? payload.Substring(0, sttIdx) : payload;
             int idx = head.IndexOf(':');
@@ -583,11 +602,28 @@ namespace Artti.Report
             return sttIdx >= 0 ? payload.Substring(sttIdx + 5) : null;
         }
 
-        // 변경점: CardSelected payload 끝의 "|clarity:{0..100}:{light}" 파싱. 없거나 깨졌으면 pct=-1.
-        static bool TryParseClarity(string payload, out int pct, out string light)
+        // 변경점: 서버가 알아들은 문장(|stt: 부분). 카드 탭 턴은 카드 문구와 다를 수 있다.
+        static string ParseSttText(string payload)
+        {
+            if (string.IsNullOrEmpty(payload)) return null;
+            payload = StripClarity(payload);
+            int sttIdx = payload.IndexOf("|stt:", StringComparison.Ordinal);
+            return sttIdx >= 0 ? payload.Substring(sttIdx + 5) : null;
+        }
+
+        static string StripClarity(string payload)
+        {
+            int clarityIdx = payload.LastIndexOf(ClarityMarker, StringComparison.Ordinal);
+            return clarityIdx >= 0 ? payload.Substring(0, clarityIdx) : payload;
+        }
+
+        // 변경점: CardSelected payload 끝의 "|clarity:{0..100}:{light}:{목표 문장}" 파싱.
+        //   light/목표 문장은 없을 수 있다(이전 형식 "|clarity:87:green" 포함). 숫자가 깨졌으면 pct=-1.
+        static bool TryParseClarity(string payload, out int pct, out string light, out string target)
         {
             pct = -1;
             light = null;
+            target = null;
             if (string.IsNullOrEmpty(payload)) return false;
             int idx = payload.LastIndexOf(ClarityMarker, StringComparison.Ordinal);
             if (idx < 0) return false;
@@ -597,11 +633,17 @@ namespace Artti.Report
             var num = sep >= 0 ? body.Substring(0, sep) : body;
             if (!int.TryParse(num, System.Globalization.NumberStyles.Integer,
                               System.Globalization.CultureInfo.InvariantCulture, out var value)) return false;
-
             pct = Mathf.Clamp(value, 0, 100);
-            light = sep >= 0 && sep + 1 < body.Length ? body.Substring(sep + 1) : null;
+            if (sep < 0) return true;
+
+            var rest = body.Substring(sep + 1);
+            int sep2 = rest.IndexOf(':');
+            light = NullIfEmpty(sep2 >= 0 ? rest.Substring(0, sep2) : rest);
+            target = sep2 >= 0 ? NullIfEmpty(rest.Substring(sep2 + 1)) : null;
             return true;
         }
+
+        static string NullIfEmpty(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
     }
 
     // scenarioId / objectiveId → 화면 표시용 한국어 라벨

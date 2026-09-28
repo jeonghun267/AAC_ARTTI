@@ -77,7 +77,7 @@ namespace Artti.Editor
             PlaceTL(donutCard, 60, -150, 520, 270);
             var donutTitle = MakeText("Header", donutCard, "전체 성공률", 28, Title, font, bold: true, align: TextAlignmentOptions.Left);
             ChildTL(donutTitle.rectTransform, 36, -24, 300, 40);
-            // 변경점: 헤더 오른쪽 — 발음 정확도 평균 (측정 발화 없으면 View가 비움)
+            // 변경점: 헤더 오른쪽 — 발화 정확도 평균 (문구는 View가 채움, 누르면 이유 팝업)
             var clarityAvg = MakeText("ClarityAvg", donutCard, "", 22, Title, font, bold: true, align: TextAlignmentOptions.Right);
             clarityAvg.enableAutoSizing = true; clarityAvg.fontSizeMin = 14; clarityAvg.fontSizeMax = 22;
             ChildTL(clarityAvg.rectTransform, 270, -28, 226, 34);
@@ -308,7 +308,7 @@ namespace Artti.Editor
             var user = MakeText("UserText", box, "", 18, Title, font, bold: false, align: TextAlignmentOptions.Left);
             user.textWrappingMode = TextWrappingModes.Normal;
             StretchFull(user.rectTransform, 12);
-            // 변경점: 발화 박스 오른쪽 발음 명료도 배지 (87%). 값이 있을 때만 View가 UserText 오른쪽 여백을 확보한다.
+            // 변경점: 발화 박스 오른쪽 발화 정확도 배지 (87%). 값이 있을 때만 View가 UserText 오른쪽 여백을 확보한다.
             var clarity = MakeText("Clarity", box, "", 18, Green, font, bold: true, align: TextAlignmentOptions.Right);
             ChildTL(clarity.rectTransform, 252 - 12 - 56, -10, 56, 32);
 

@@ -25,7 +25,7 @@ namespace Artti.UI
         [SerializeField] private TMP_Text fullSuccessText;
         [SerializeField] private TMP_Text partialSuccessText;
         [SerializeField] private TMP_Text needHelpText;
-        [SerializeField] private TMP_Text clarityAvgText;   // 변경점: 발음 정확도 평균 (서버 STT 명료도)
+        [SerializeField] private TMP_Text clarityAvgText;   // 변경점: 발화 정확도 평균 (서버 STT 명료도). 누르면 이유 팝업
 
         [Header("스탯 카드")]
         [SerializeField] private TMP_Text scenarioNameText;
@@ -72,6 +72,7 @@ namespace Artti.UI
 
             RenameHeader();        // 제목 "레포트" -> "상세 기록"
             SetupDecor();          // 배경 + 메달 반짝임 + 카드 탭 펀치
+            EnsureClarityUi();     // 변경점: 발화 정확도 표시(빌더 재실행 전에도) + 이유 팝업
             PlayIntro().Forget();  // 섹션 순차 진입 애니
             LoadAsync().Forget();
         }
@@ -237,6 +238,193 @@ namespace Artti.UI
             }
         }
 
+        // ===== 발화 정확도 (변경점) =====
+        // 서버 STT가 채점한 발화 정확도 %와 그 이유(목표 문장/들린 문장 비교)를 보여 준다.
+        // 씬을 빌더로 다시 만들기 전에도 보이도록, 연결이 비어 있으면 런타임에 만든다(배치는 RecordDetailSceneBuilder와 동일).
+        // 평균 문구나 단계 카드를 누르면 단계별 %·목표 문장·들린 문장·이유 팝업을 연다.
+        private GameObject _clarityPopup;
+        private TMP_Text _clarityPopupText;
+
+        private void EnsureClarityUi()
+        {
+            var canvas = GetComponentInParent<Canvas>();
+            if (canvas == null) return;
+            var font = donutPercentText != null ? donutPercentText.font : (feedbackMainText != null ? feedbackMainText.font : null);
+
+            if (clarityAvgText == null)
+            {
+                var donut = FindDeep(canvas.transform, "DonutCard");
+                if (donut != null)
+                {
+                    clarityAvgText = CreateRuntimeText("ClarityAvg", donut, font, 22, TextAlignmentOptions.Right);
+                    PlaceTopLeft(clarityAvgText.rectTransform, 270, -28, 226, 34);
+                }
+            }
+            if (clarityAvgText != null)
+            {
+                clarityAvgText.enableAutoSizing = true;
+                clarityAvgText.fontSizeMin = 14;
+                clarityAvgText.fontSizeMax = 22;
+                clarityAvgText.raycastTarget = true;
+                AddClick(clarityAvgText.gameObject, ShowClarityDetail);
+            }
+
+            if (stepCards != null)
+            {
+                foreach (var card in stepCards)
+                {
+                    if (card == null) continue;
+                    if (card.clarityText == null)
+                    {
+                        var box = card.transform.Find("UserBox");
+                        if (box != null)
+                        {
+                            card.clarityText = CreateRuntimeText("Clarity", box, font, 18, TextAlignmentOptions.Right);
+                            PlaceTopLeft(card.clarityText.rectTransform, 252 - 12 - 56, -10, 56, 32);
+                        }
+                    }
+                    // 카드 루트에는 UICardTap이 넣은 투명 Image가 있어 클릭을 받는다(스피커 버튼은 자식이라 따로 동작)
+                    AddClick(card.gameObject, ShowClarityDetail);
+                }
+            }
+
+            BuildClarityPopup(canvas.transform, font);
+        }
+
+        private static void AddClick(GameObject go, UnityEngine.Events.UnityAction action)
+        {
+            var btn = go.GetComponent<Button>();
+            if (btn == null) btn = go.AddComponent<Button>();
+            btn.transition = Selectable.Transition.None;
+            btn.onClick.AddListener(action);
+        }
+
+        private static TMP_Text CreateRuntimeText(string name, Transform parent, TMP_FontAsset font, float size, TextAlignmentOptions align)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var t = go.AddComponent<TextMeshProUGUI>();
+            if (font != null) t.font = font;
+            t.fontSize = size;
+            t.alignment = align;
+            t.color = ClarityNeutral;
+            t.fontStyle = FontStyles.Bold;
+            t.textWrappingMode = TextWrappingModes.NoWrap;
+            t.raycastTarget = false;
+            return t;
+        }
+
+        private static void PlaceTopLeft(RectTransform r, float x, float y, float w, float h)
+        {
+            r.anchorMin = r.anchorMax = new Vector2(0f, 1f);
+            r.pivot = new Vector2(0f, 1f);
+            r.anchoredPosition = new Vector2(x, y);
+            r.sizeDelta = new Vector2(w, h);
+        }
+
+        private void BuildClarityPopup(Transform canvasRoot, TMP_FontAsset font)
+        {
+            if (_clarityPopup != null) return;
+
+            // 반투명 전체 화면 — 어디를 눌러도 닫힘
+            _clarityPopup = new GameObject("ClarityPopup", typeof(RectTransform));
+            var root = (RectTransform)_clarityPopup.transform;
+            root.SetParent(canvasRoot, false);
+            root.anchorMin = Vector2.zero; root.anchorMax = Vector2.one;
+            root.offsetMin = Vector2.zero; root.offsetMax = Vector2.zero;
+            _clarityPopup.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.45f);
+            AddClick(_clarityPopup, () => _clarityPopup.SetActive(false));
+
+            var panel = new GameObject("Panel", typeof(RectTransform));
+            var pr = (RectTransform)panel.transform;
+            pr.SetParent(root, false);
+            pr.anchorMin = pr.anchorMax = pr.pivot = new Vector2(0.5f, 0.5f);
+            pr.sizeDelta = new Vector2(1200f, 820f);
+            panel.AddComponent<Image>().color = Color.white;
+
+            _clarityPopupText = CreateRuntimeText("Text", pr, font, 26, TextAlignmentOptions.TopLeft);
+            _clarityPopupText.fontStyle = FontStyles.Normal;
+            _clarityPopupText.textWrappingMode = TextWrappingModes.Normal;
+            _clarityPopupText.enableAutoSizing = true;
+            _clarityPopupText.fontSizeMin = 16;
+            _clarityPopupText.fontSizeMax = 26;
+            var tr = _clarityPopupText.rectTransform;
+            tr.anchorMin = Vector2.zero; tr.anchorMax = Vector2.one;
+            tr.offsetMin = new Vector2(56f, 48f); tr.offsetMax = new Vector2(-56f, -48f);
+
+            _clarityPopup.SetActive(false);
+        }
+
+        private void ShowClarityDetail()
+        {
+            if (_clarityPopup == null || _clarityPopupText == null) return;
+            _clarityPopupText.text = BuildClarityDetailText(_report);
+            _clarityPopup.transform.SetAsLastSibling();
+            _clarityPopup.SetActive(true);
+        }
+
+        private static string BuildClarityDetailText(ReportRecordDetail r)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (r == null)
+            {
+                sb.Append("아직 학습 기록이 없어요.");
+                return sb.ToString();
+            }
+
+            int measured = 0;
+            foreach (var s in r.steps) if (s.clarityPct >= 0) measured++;
+
+            sb.Append("<size=125%><b>발화 정확도 ");
+            sb.Append(r.avgClarityPct >= 0 ? $"{r.avgClarityPct}%" : "기록 없음");
+            sb.Append("</b></size>\n");
+            sb.Append("<color=#6E7687>서버 STT가 목표 문장과 비교해 채점한 값이에요.");
+            if (r.avgClarityPct >= 0) sb.Append(" 평균은 음성으로 말한 모든 시도 기준이에요.");
+            sb.Append("</color>\n\n");
+
+            if (measured == 0)
+            {
+                sb.Append("이 연습에는 서버가 채점한 음성 발화가 없어요.\n");
+                sb.Append("<color=#6E7687>· 버튼·카드를 눌러서만 진행했거나\n");
+                sb.Append("· 서버 STT가 연결되지 않은 상태(.env의 STT_SERVER_URL 없음, 서버에 접속 불가)였어요.</color>\n");
+            }
+
+            foreach (var s in r.steps)
+            {
+                sb.Append($"<b>{s.index:D2} {Escape(s.objectiveName)}</b>  ");
+                if (s.clarityPct < 0)
+                {
+                    sb.Append("<color=#6E7687>채점 기록 없음</color>\n\n");
+                    continue;
+                }
+                sb.Append($"<b><color=#{ColorUtility.ToHtmlStringRGB(ClarityColor(s.clarityLight))}>{s.clarityPct}%</color></b>");
+                var light = LightLabel(s.clarityLight);
+                if (light != null) sb.Append($"  <color=#6E7687>({light})</color>");
+                sb.Append('\n');
+                if (!string.IsNullOrEmpty(s.clarityTarget)) sb.Append($"   목표 문장: {Escape(s.clarityTarget)}\n");
+                if (!string.IsNullOrEmpty(s.clarityHeard)) sb.Append($"   들린 문장: {Escape(s.clarityHeard)}\n");
+                if (!string.IsNullOrEmpty(s.clarityReason)) sb.Append($"   이유: {Escape(s.clarityReason)}\n");
+                sb.Append('\n');
+            }
+
+            sb.Append("<size=80%><color=#6E7687>화면을 누르면 닫혀요</color></size>");
+            return sb.ToString();
+        }
+
+        private static string LightLabel(string light)
+        {
+            switch (light)
+            {
+                case "green":  return "서버 판정 초록";
+                case "yellow": return "서버 판정 노랑";
+                case "red":    return "서버 판정 빨강";
+                default:       return null;
+            }
+        }
+
+        // 사용자/서버 문장이 TMP 리치 텍스트 태그로 해석되지 않도록
+        private static string Escape(string s) => string.IsNullOrEmpty(s) ? s : "<noparse>" + s + "</noparse>";
+
         private static void HideAll(TMP_Text[] arr)
         {
             if (arr == null) return;
@@ -275,9 +463,9 @@ namespace Artti.UI
             if (fullSuccessText != null) fullSuccessText.text = $"{r.fullSuccess}개";
             if (partialSuccessText != null) partialSuccessText.text = $"{r.partialSuccess}개";
             if (needHelpText != null) needHelpText.text = $"{r.needHelp}개";
-            // 변경점: 명료도를 측정한 음성 발화가 없던 세션(탭만 사용, 서버 STT 미사용, 이전 기록)은 비워 둔다.
+            // 변경점: 서버가 채점한 음성 발화가 없던 세션도 "기록 없음"으로 보여 준다(누르면 이유 팝업).
             if (clarityAvgText != null)
-                clarityAvgText.text = r.avgClarityPct >= 0 ? $"발음 정확도 {r.avgClarityPct}%" : "";
+                clarityAvgText.text = r.avgClarityPct >= 0 ? $"발화 정확도 {r.avgClarityPct}% ›" : "발화 정확도 기록 없음 ›";
 
             // 스탯 카드
             if (scenarioNameText != null) scenarioNameText.text = r.scenarioName;
