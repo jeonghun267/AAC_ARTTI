@@ -16,7 +16,8 @@ namespace Artti.Common.Speech
     //   Online  — 서버가 HTTP로 응답함
     //   Offline — 연결 실패·서버 오류(5xx). RetryOfflineAfterSeconds 뒤 다시 확인한다 (그동안 기기 음성 인식)
     //   disabled — 설정 문제(HTTP 차단, 인증 필요, 맞는 경로 없음, WebSocket 전용). 다시 해도 같으므로 이번 실행 동안 끈다
-    public sealed class ServerSttService : ISttService
+    // 변경점: 목표 문장(SetTarget)을 받아 요청에 함께 보내고, 서버가 명료도를 주면 SttResult에 담는다(상세기록 발화 정확도).
+    public sealed class ServerSttService : ISttService, ITargetedSttService
     {
         public enum ServerState { Unknown, Online, Offline }
 
@@ -63,6 +64,7 @@ namespace Artti.Common.Speech
         private bool _modelListUnavailable; // /v1/models에서 음성 인식 모델을 못 찾음 — 보낼 때마다 다시 묻지 않는다
         private bool _missingModelLogged;
         private CancellationTokenSource _activeCts;
+        private string _target; // 변경점: 이번 발화의 목표 문장 (없으면 null)
 
         public ServerState State => _state;
         public string BaseUrl => _baseUrl;
@@ -323,6 +325,12 @@ namespace Artti.Common.Speech
         public void Cancel()
         {
             try { _activeCts?.Cancel(); } catch (ObjectDisposedException) { }
+        }
+
+        // 변경점: 다음 발화의 목표 문장(탭한 카드 문구, 강조된 추천 문장). 명료도를 계산하는 서버가 비교 기준으로 쓴다.
+        public void SetTarget(string target)
+        {
+            _target = string.IsNullOrWhiteSpace(target) ? null : target.Trim();
         }
 
         private async UniTask<SttResult> TranscribeAsync(byte[] wav, float seconds, CancellationToken ct)
@@ -599,8 +607,11 @@ namespace Artti.Common.Speech
                     sending = endpoint.WithField(endpoint.ModelField, model);
                 }
             }
+            // 변경점: 목표 문장을 함께 보낸다 (문서의 목표 필드, 문서 없이 찾은 경로면 "target" 폼 필드)
+            string target = _target;
+            sending = sending.WithTarget(target);
 
-            string url = _baseUrl + endpoint.Path + (string.IsNullOrEmpty(endpoint.Query) ? "" : "?" + endpoint.Query);
+            string url = _baseUrl + endpoint.Path + (string.IsNullOrEmpty(sending.Query) ? "" : "?" + sending.Query);
             string boundary = SttServerProtocol.NewBoundary();
             byte[] body = SttServerProtocol.BuildMultipart(boundary, sending, wav);
 
@@ -672,12 +683,22 @@ namespace Artti.Common.Speech
                     text = string.Empty;
                 }
 
-                Debug.Log($"[ServerSTT] '{text}' (음성 {seconds:F1}s, 업로드 {wav.Length / 1024}KB, {watch.ElapsedMilliseconds}ms)");
+                // 변경점: 서버가 목표 문장 대비 명료도를 주면 함께 담는다 (일반 STT 서버면 hasClarity=false)
+                //   무음 환각으로 비운 결과(text 빈 문자열)의 명료도는 쓰지 않는다.
+                bool hasClarity = SttServerProtocol.TryParseClarity(responseText, out int clarityPct, out string light, out string echoed)
+                                  && !string.IsNullOrWhiteSpace(text);
+
+                Debug.Log($"[ServerSTT] '{text}' (음성 {seconds:F1}s, 업로드 {wav.Length / 1024}KB, {watch.ElapsedMilliseconds}ms)" +
+                          (hasClarity ? $" 명료도 {clarityPct}% [{light}] 목표 '{echoed ?? target}'" : ""));
                 result.Result = new SttResult
                 {
                     text = text,
                     confidence = confidence,
-                    isEmpty = string.IsNullOrWhiteSpace(text)
+                    isEmpty = string.IsNullOrWhiteSpace(text),
+                    hasClarity = hasClarity,
+                    clarityPercent = hasClarity ? clarityPct : 0,
+                    clarityLight = hasClarity ? light : null,
+                    clarityTarget = hasClarity ? (echoed ?? target) : null
                 };
                 return result;
             }

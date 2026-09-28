@@ -18,6 +18,9 @@ namespace Artti.Common.Speech
         public string ModelField;
         public string ModelFallback; // 서버 목록에서 못 고르면 쓸 문서의 기본값·예시·enum
         public string Source; // "manual" | "openapi" | "candidate" — 로그와 실패 처리용
+        // 변경점: 목표 문장(명료도 비교 기준)을 받는 필드. 문서에 있으면 그 이름, 값은 발화마다 ServerSttService가 채운다.
+        public string TargetField;
+        public bool TargetInQuery;   // 문서상 폼 필드가 아니라 쿼리 파라미터인 경우
 
         // 같은 엔드포인트 판별용 ("경로|파일 필드")
         public string Key => Path.TrimEnd('/') + "|" + FileField;
@@ -34,6 +37,21 @@ namespace Artti.Common.Speech
         {
             var copy = (SttEndpoint)MemberwiseClone();
             copy.FormFields = new List<KeyValuePair<string, string>>(FormFields) { new KeyValuePair<string, string>(name, value) };
+            return copy;
+        }
+
+        // 변경점: 이번 발화의 목표 문장을 담은 사본.
+        //   문서에 목표 필드가 있으면 그 이름(폼 또는 쿼리)으로, 문서 없이 찾은 경로면 "target" 폼 필드로 보낸다
+        //   (선언되지 않은 폼 필드는 대부분의 서버가 무시한다). 문서가 있는데 목표 필드가 없으면 보내지 않는다.
+        public SttEndpoint WithTarget(string target)
+        {
+            if (string.IsNullOrWhiteSpace(target)) return this;
+            string field = TargetField ?? (Source == "openapi" ? null : SttServerProtocol.DefaultTargetField);
+            if (field == null || HasField(field)) return this;
+            if (!TargetInQuery) return WithField(field, target);
+
+            var copy = (SttEndpoint)MemberwiseClone();
+            copy.Query = SttServerProtocol.MergeQuery(Query, Uri.EscapeDataString(field) + "=" + Uri.EscapeDataString(target));
             return copy;
         }
 
@@ -186,12 +204,28 @@ namespace Artti.Common.Speech
         // 응답 형식 필드. 단순 "format"은 업로드 음성 형식(wav 등)을 뜻하는 경우가 있어 넣지 않는다.
         private static readonly string[] FormatNames = { "response_format", "output", "output_format" };
 
+        // 변경점: 목표 문장(사용자가 말하려던 문장) 필드. 명료도·발음 평가 서버가 인식 결과와 비교하는 기준.
+        //   값은 발화마다 달라 탐색 때 고정하지 않는다(필수여도 '채울 수 없음'으로 보지 않음).
+        public const string DefaultTargetField = "target";
+        private static readonly string[] TargetNames =
+        {
+            "target", "target_text", "target_sentence", "reference", "reference_text", "expected", "expected_text", "answer"
+        };
+
+        public static bool IsTargetField(string name) =>
+            !string.IsNullOrEmpty(name) && Array.IndexOf(TargetNames, name.ToLowerInvariant()) >= 0;
+
         // 경로·operationId·summary에 이 단어가 있으면 음성 인식 엔드포인트일 가능성이 높다 (점수, 소문자 비교).
         private static readonly (string word, int score)[] PositiveWords =
         {
             ("transcri", 6), ("stt", 6), ("speech_to_text", 6), ("speech-to-text", 6), ("asr", 5),
-            ("recogni", 4), ("whisper", 4), ("speech", 3), ("inference", 2), ("audio", 2), ("voice", 1)
+            ("recogni", 4), ("whisper", 4), ("speech", 3), ("inference", 2), ("audio", 2), ("voice", 1),
+            ("pronunci", 5), ("clarity", 5) // 변경점: 발음·명료도 평가 엔드포인트 (인식 문장 + 명료도)
         };
+
+        // 변경점: 목표 문장 필드를 받는 엔드포인트는 인식 + 명료도 평가용일 가능성이 높아 우선한다
+        //   (앱이 명료도로 상세기록 발화 정확도를 표시하므로). 이름이 중립적이어도(/analyze) 고를 수 있게 한다.
+        private const int TargetFieldBonus = 3;
 
         // 음성 파일을 받더라도 인식이 아닌 기능(TTS 목소리 등록, 번역, 대화 에이전트 등)은 피한다.
         private static readonly (string word, int score)[] NegativeWords =
@@ -276,7 +310,8 @@ namespace Artti.Common.Speech
                 if (preferredPath != null && TrimSlash(fullPath) == TrimSlash(preferredPath)) preferred = candidate;
 
                 int score = ScoreText(pathProp.Name) + ScoreText(post.Value<string>("operationId")) +
-                            ScoreText(post.Value<string>("summary")) - penalty;
+                            ScoreText(post.Value<string>("summary")) - penalty +
+                            (candidate.TargetField != null ? TargetFieldBonus : 0);
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -380,6 +415,11 @@ namespace Artti.Common.Speech
             foreach (var p in props.Properties())
             {
                 if (p.Name == fileField) continue;
+                if (IsTargetField(p.Name))
+                {
+                    endpoint.TargetField = p.Name;   // 변경점: 목표 문장 필드 — 발화마다 채움
+                    continue;
+                }
                 var ps = Resolve(root, p.Value) as JObject;
                 if (NeedsServerModel(root, path, p.Name, ps, required.Contains(p.Name)))
                 {
@@ -398,6 +438,16 @@ namespace Artti.Common.Speech
                 {
                     var prm = Resolve(root, raw) as JObject;
                     if (prm == null || prm.Value<string>("in") != "query") continue;
+                    if (IsTargetField(prm.Value<string>("name")))
+                    {
+                        // 변경점: FastAPI에서 Form 없이 선언한 target: str 등은 쿼리 파라미터가 된다
+                        if (endpoint.TargetField == null)
+                        {
+                            endpoint.TargetField = prm.Value<string>("name");
+                            endpoint.TargetInQuery = true;
+                        }
+                        continue;
+                    }
                     AppendQuery(root, query, prm, Resolve(root, prm["schema"]) as JObject, language, ref penalty);
                 }
             }
@@ -432,6 +482,12 @@ namespace Artti.Common.Speech
                 string name = prm.Value<string>("name");
                 if (string.IsNullOrEmpty(name) || name == fileField) continue;
                 string where = prm.Value<string>("in");
+                if (IsTargetField(name) && (where == "formData" || where == "query") && endpoint.TargetField == null)
+                {
+                    endpoint.TargetField = name;   // 변경점: 목표 문장 필드 — 발화마다 채움
+                    endpoint.TargetInQuery = where == "query";
+                    continue;
+                }
                 if (where == "formData")
                 {
                     bool isRequired = prm.Value<bool?>("required") ?? false;
@@ -766,7 +822,8 @@ namespace Artti.Common.Speech
         // 인식 문장을 담는 흔한 키. 앞쪽 우선. 값이 객체/배열이면 한 단계 더 들어간다.
         private static readonly string[] TextKeys =
         {
-            "text", "DisplayText", "transcript", "transcription", "recognized_text", "recognizedText", "sentence",
+            // 변경점: "recognized" — 명료도 서버(/analyze)의 인식 문장 키 ({"recognized":..., "clarity_percent":...})
+            "text", "DisplayText", "transcript", "transcription", "recognized_text", "recognizedText", "recognized", "sentence",
             "utterance", "result", "results", "alternatives", "utterances", "data", "output", "prediction", "stt"
         };
 
@@ -924,6 +981,77 @@ namespace Artti.Common.Speech
                 if (string.Equals(k, key, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
+
+        // 변경점: 서버가 목표 문장 대비 명료도(발화 정확도)를 주면 읽는다. 일반 STT 서버 응답이면 false.
+        //   percent: clarity_percent(0..100) 우선, 없으면 clarity(0..1이면 ×100, 그보다 크면 이미 %)
+        //   light: 신호등 판정(green/yellow/red), target: 서버가 비교에 쓴 목표 문장(에코)
+        //   최상위에 없으면 result/data 객체 한 단계 안에서 찾는다({"result": {...}}).
+        public static bool TryParseClarity(string body, out int percent, out string light, out string target)
+        {
+            percent = -1;
+            light = null;
+            target = null;
+            if (string.IsNullOrWhiteSpace(body)) return false;
+            string trimmed = body.Trim().TrimStart('﻿').Trim();
+            if (trimmed.Length == 0 || trimmed[0] != '{') return false;
+
+            JObject obj;
+            try
+            {
+                obj = JObject.Parse(trimmed);
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+
+            if (!TryReadClarity(obj, out percent, out light, out target))
+            {
+                foreach (var key in new[] { "result", "data" })
+                    if (obj.GetValue(key, StringComparison.OrdinalIgnoreCase) is JObject inner &&
+                        TryReadClarity(inner, out percent, out light, out target))
+                        return true;
+                return false;
+            }
+            return true;
+        }
+
+        private static bool TryReadClarity(JObject obj, out int percent, out string light, out string target)
+        {
+            percent = -1;
+            light = null;
+            target = null;
+
+            var pct = obj.GetValue("clarity_percent", StringComparison.OrdinalIgnoreCase) ??
+                      obj.GetValue("clarityPercent", StringComparison.OrdinalIgnoreCase);
+            var clarity = obj.GetValue("clarity", StringComparison.OrdinalIgnoreCase);
+            if (IsNumber(pct))
+            {
+                percent = (int)Math.Round((double)pct);
+            }
+            else if (IsNumber(clarity))
+            {
+                double c = (double)clarity;
+                percent = (int)Math.Round(c <= 1.0 ? c * 100.0 : c);
+            }
+            else
+            {
+                return false;
+            }
+            percent = Math.Max(0, Math.Min(100, percent));
+
+            var l = obj.GetValue("light", StringComparison.OrdinalIgnoreCase);
+            if (l != null && l.Type == JTokenType.String)
+            {
+                var s = ((string)l).Trim().ToLowerInvariant();
+                if (s.Length > 0) light = s;
+            }
+            var t = obj.GetValue("target", StringComparison.OrdinalIgnoreCase);
+            if (t != null && t.Type == JTokenType.String && !string.IsNullOrWhiteSpace((string)t)) target = ((string)t).Trim();
+            return true;
+        }
+
+        private static bool IsNumber(JToken v) => v != null && (v.Type == JTokenType.Float || v.Type == JTokenType.Integer);
 
         private static float ReadConfidence(JToken token)
         {

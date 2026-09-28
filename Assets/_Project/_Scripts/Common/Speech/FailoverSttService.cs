@@ -9,7 +9,7 @@ namespace Artti.Common.Speech
     //   - 이 기기에서 Unity 마이크 녹음이 안 되면(마이크 없는 PC 등) 기기 인식을 쓴다.
     //   - 서버가 녹음 뒤 요청 단계에서 실패하면 그 한 번은 빈 결과가 된다(사용자는 "다시 말해 주세요" 안내를 받는다).
     //     이미 녹음한 발화를 기기 인식으로 다시 들을 방법이 없기 때문이다.
-    public sealed class FailoverSttService : ISttService
+    public sealed class FailoverSttService : ISttService, ITargetedSttService
     {
         private readonly ServerSttService _server;
         private readonly ISttService _fallback;
@@ -21,6 +21,9 @@ namespace Artti.Common.Speech
         }
 
         public bool IsAvailable => _server.IsAvailable || _fallback.IsAvailable;
+
+        // 변경점: 목표 문장은 서버로 넘긴다 (기기 음성 인식은 명료도를 계산하지 않으므로 받지 않음)
+        public void SetTarget(string target) => _server.SetTarget(target);
 
         // 씬 시작 때 서버 연결 확인·엔드포인트 탐색을 미리 해 둔다 (첫 발화 지연 방지)
         public UniTask<bool> WarmUpAsync(CancellationToken ct) => _server.EnsureReadyAsync(ct);
