@@ -14,6 +14,9 @@ namespace Artti.Common.Speech
         private readonly string _apiKey;
         private readonly AudioSource _audioSource;
         private const int SampleRate = 24000;
+        // 변경점: 응답 없는 요청이 무한정 걸려 있지 않게 한다 (기본값 0 = 제한 없음).
+        //   훈련 씬은 점원 음성이 끝나길 기다렸다가 마이크를 여므로 걸린 요청이 듣기를 막는다.
+        private const int RequestTimeoutSeconds = 10;
 
         public CloudTtsService(string apiKey, AudioSource audioSource)
         {
@@ -40,6 +43,7 @@ namespace Artti.Common.Speech
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
+            request.timeout = RequestTimeoutSeconds;
 
             try
             {
@@ -74,7 +78,12 @@ namespace Artti.Common.Speech
             }
         }
 
-        public void StopAll() => _audioSource?.Stop();
+        // 변경점: ?. 는 파괴된 Unity 오브젝트를 걸러내지 못한다(씬 종료 시 OnDestroy 순서에 따라 AudioSource가 먼저 파괴됨).
+        //   Unity의 == 연산자로 확인해야 MissingReferenceException이 나지 않는다.
+        public void StopAll()
+        {
+            if (_audioSource != null) _audioSource.Stop();
+        }
         public void SetVoice(string voiceName) { }
 
         static AudioClip PcmToAudioClip(byte[] pcm16le, int sampleRate)
