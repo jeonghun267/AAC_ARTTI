@@ -78,7 +78,12 @@ namespace Artti.Common.Speech
             }
         }
 
-        public void StopAll() => _audioSource?.Stop();
+        // 변경점: ?. 는 파괴된 Unity 오브젝트를 걸러내지 못한다(씬 종료 시 OnDestroy 순서에 따라 AudioSource가 먼저 파괴됨).
+        //   Unity의 == 연산자로 확인해야 MissingReferenceException이 나지 않는다.
+        public void StopAll()
+        {
+            if (_audioSource != null) _audioSource.Stop();
+        }
         public void SetVoice(string voiceName) { }
 
         static AudioClip PcmToAudioClip(byte[] pcm16le, int sampleRate)
