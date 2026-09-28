@@ -372,8 +372,12 @@ namespace Artti.UI
                 return sb.ToString();
             }
 
-            int measured = 0;
-            foreach (var s in r.steps) if (s.clarityPct >= 0) measured++;
+            int measured = 0, spokenUnscored = 0;
+            foreach (var s in r.steps)
+            {
+                if (s.clarityPct >= 0) measured++;
+                else if (s.userSpoken) spokenUnscored++;
+            }
 
             sb.Append("<size=125%><b>발화 정확도 ");
             sb.Append(r.avgClarityPct >= 0 ? $"{r.avgClarityPct}%" : "기록 없음");
@@ -385,8 +389,12 @@ namespace Artti.UI
             if (measured == 0)
             {
                 sb.Append("이 연습에는 서버가 채점한 음성 발화가 없어요.\n");
-                sb.Append("<color=#6E7687>· 버튼·카드를 눌러서만 진행했거나\n");
-                sb.Append("· 서버 STT가 연결되지 않은 상태(.env의 STT_SERVER_URL 없음, 서버에 접속 불가)였어요.</color>\n");
+                if (spokenUnscored > 0)
+                    sb.Append("<color=#6E7687>음성으로 말한 단계는 있지만 서버 채점 결과가 오지 않았어요. " +
+                              "서버 STT 연결(.env의 STT_SERVER_URL, 서버와 같은 네트워크)을 확인해 주세요.</color>\n\n");
+                else
+                    sb.Append("<color=#6E7687>대화 힌트·상품 버튼으로만 진행해서 채점할 음성이 없어요. " +
+                              "음성 버튼을 눌러 직접 말하면 채점돼요.</color>\n\n");
             }
 
             foreach (var s in r.steps)
@@ -394,7 +402,9 @@ namespace Artti.UI
                 sb.Append($"<b>{s.index:D2} {Escape(s.objectiveName)}</b>  ");
                 if (s.clarityPct < 0)
                 {
-                    sb.Append("<color=#6E7687>채점 기록 없음</color>\n\n");
+                    sb.Append(s.userSpoken
+                        ? "<color=#6E7687>채점 없음 — 음성으로 말했지만 서버 채점 결과가 없어요(서버 STT 미연결·접속 실패)</color>\n\n"
+                        : "<color=#6E7687>채점 없음 — 버튼으로 고른 문장이라 채점 대상이 아니에요</color>\n\n");
                     continue;
                 }
                 sb.Append($"<b><color=#{ColorUtility.ToHtmlStringRGB(ClarityColor(s.clarityLight))}>{s.clarityPct}%</color></b>");

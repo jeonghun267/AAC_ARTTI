@@ -167,7 +167,11 @@ namespace Artti.Training
 
         private static ISttService TryCreateServerStt(string serverUrl)
         {
-            if (string.IsNullOrWhiteSpace(serverUrl)) return null;
+            if (string.IsNullOrWhiteSpace(serverUrl))
+            {
+                Debug.LogWarning("[TrainingSceneRoot] STT_SERVER_URL 없음 — 서버 STT 미사용 (상세기록 발화 정확도가 기록되지 않음)");
+                return null;
+            }
             var type = System.Type.GetType(ServerSttTypeName);
             if (type == null || !typeof(ISttService).IsAssignableFrom(type))
             {

@@ -75,6 +75,7 @@ namespace Artti.Report
         public string clarityTarget;  // 서버가 비교한 목표 문장
         public string clarityHeard;   // 서버가 알아들은 문장
         public string clarityReason;  // 왜 그 점수인지 (ClarityExplainer)
+        public bool userSpoken;       // userText가 음성 입력이었는지(false면 버튼/상품 탭) — 채점 기록이 없는 이유 안내용
     }
 
     // 세션 1개의 상세 리포트 (전체 학습기록 씬)
@@ -110,6 +111,7 @@ namespace Artti.Report
         public string clarityLight;
         public string clarityTarget;
         public string clarityHeard;
+        public bool spoken;           // 변경점: 음성 입력 턴(음성 버튼, 카드 탭+STT). 버튼/상품 탭은 false
     }
 
     public class ReportStep
@@ -372,6 +374,7 @@ namespace Artti.Report
                         sr.clarityTarget = turn.clarityTarget;
                         sr.clarityHeard = turn.clarityHeard;
                         sr.clarityReason = ClarityExplainer.Explain(turn.clarityTarget, turn.clarityHeard, turn.clarityPct, turn.clarityLight);
+                        sr.userSpoken = turn.spoken;
                     }
                     if (sr.npcText == null && !step.turns[t].isUser) sr.npcText = step.turns[t].text;
                 }
@@ -464,6 +467,7 @@ namespace Artti.Report
                 else if (ev.eventType == EvCardSelected)
                 {
                     var turn = AddTurn(detail, ref current, isUser: true, ParseUserText(ev.payloadJson));
+                    if (turn != null) turn.spoken = IsSpokenSource(ev.payloadJson);
                     // 변경점: 서버 발화 정확도가 있으면 방금 추가한 사용자 턴에 붙인다(이유 설명용 목표/들린 문장 포함).
                     if (turn != null
                         && TryParseClarity(ev.payloadJson, out var clarityPct, out var clarityLight, out var clarityTarget))
@@ -609,6 +613,16 @@ namespace Artti.Report
             payload = StripClarity(payload);
             int sttIdx = payload.IndexOf("|stt:", StringComparison.Ordinal);
             return sttIdx >= 0 ? payload.Substring(sttIdx + 5) : null;
+        }
+
+        // 변경점: 음성 입력 턴 판별 — payload 앞의 출처 id가 "guided_voice"(음성 버튼) 또는 "card_*"(카드 탭 후 말하기).
+        //   "quick_phrase"(대화 힌트 탭)와 상품 id(상품 탭)는 음성이 아니라 채점 대상이 아니다.
+        static bool IsSpokenSource(string payload)
+        {
+            if (string.IsNullOrEmpty(payload)) return false;
+            int idx = payload.IndexOf(':');
+            var source = idx >= 0 ? payload.Substring(0, idx) : payload;
+            return source == "guided_voice" || source.StartsWith("card_", StringComparison.Ordinal);
         }
 
         static string StripClarity(string payload)

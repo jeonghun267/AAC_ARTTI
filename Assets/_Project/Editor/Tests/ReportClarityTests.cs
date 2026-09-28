@@ -133,6 +133,22 @@ namespace Artti.EditorTests.Report
             Assert.That(report.avgClarityPct, Is.EqualTo(-1));
         }
 
+        [TestCase("guided_voice", true)]     // 음성 버튼
+        [TestCase("card_cvs_water", true)]   // 카드 탭 후 말하기
+        [TestCase("quick_phrase", false)]    // 대화 힌트 탭
+        [TestCase("water", false)]           // 상품 탭
+        public void StepSource_MarksSpokenOrTapped(string sourceId, bool spoken)
+        {
+            _logger.LogScenarioEntered();
+            _logger.LogObjectiveEntered("select_items");
+            _logger.LogCardSelected(sourceId, "물 주세요", "물 주세요");
+
+            var step = BuildReport().steps[0];
+
+            Assert.That(step.userSpoken, Is.EqualTo(spoken));
+            Assert.That(step.clarityPct, Is.EqualTo(-1));
+        }
+
         [Test]
         public void LegacyPayloadWithoutClarity_ReportsNoClarity()
         {
