@@ -20,6 +20,8 @@ namespace Artti.Editor
         private const string CompletionArt = "Assets/_Project/Art/UI/Training/Completion/";
         private const string RoundedPath = "Assets/_Project/Art/UI/RoundedRect.png";
         private const string AacDbPath = "Assets/_Project/_Data/AAC/AACDatabase.asset";
+        // 변경점: 서버PC 음성 인식 서버. IP가 바뀌면 여기와 씬의 TrainingSceneRoot > Stt Server Url을 함께 고친다.
+        private const string SttServerUrl = "http://192.168.0.167:8000";
 
         private static readonly string[] ProductPaths =
         {
@@ -265,6 +267,7 @@ namespace Artti.Editor
             rootSo.FindProperty("hud").objectReferenceValue = hud;
             rootSo.FindProperty("dashboardView").objectReferenceValue = dashboard;
             rootSo.FindProperty("aacDatabase").objectReferenceValue = AssetDatabase.LoadAssetAtPath<AACDatabase>(AacDbPath);
+            rootSo.FindProperty("sttServerUrl").stringValue = SttServerUrl;
             rootSo.ApplyModifiedPropertiesWithoutUndo();
 
             help.root.SetActive(false);

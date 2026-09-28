@@ -232,5 +232,54 @@ namespace Artti.Training
                 CardIds = cards,
                 ItemToAppend = item
             };
+
+        // 변경점: 음성 버튼 발화의 명료도(서버 STT, 목표 문장 대비)를 기록해도 되는지 판정.
+        //   인식 문장이 목표보다 다른 후보(다른 대화 힌트, 다른 상품 요청)에 더 가까우면 사용자가 다른 답을 고른 것이다.
+        //   그때 목표 대비 명료도는 발음이 아니라 문장 차이를 재므로 상세기록에 남기지 않는다.
+        public static bool IsAttemptAtTarget(string recognized, string target, IEnumerable<string> candidates)
+        {
+            var r = NormalizeSpeech(recognized);
+            var t = NormalizeSpeech(target);
+            if (r.Length == 0 || t.Length == 0) return false;
+            if (candidates == null) return true;
+
+            int toTarget = EditDistance(r, t);
+            foreach (var candidate in candidates)
+            {
+                var c = NormalizeSpeech(candidate);
+                if (c.Length == 0 || c == t) continue;
+                if (EditDistance(r, c) < toTarget) return false;
+            }
+            return true;
+        }
+
+        // 공백·문장부호·따옴표를 뺀 비교용 문자열
+        private static string NormalizeSpeech(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (var ch in s)
+                if (!char.IsWhiteSpace(ch) && !char.IsPunctuation(ch) && !char.IsSymbol(ch)) sb.Append(ch);
+            return sb.ToString();
+        }
+
+        // 글자(음절) 단위 편집 거리
+        private static int EditDistance(string a, string b)
+        {
+            var prev = new int[b.Length + 1];
+            var cur = new int[b.Length + 1];
+            for (int j = 0; j <= b.Length; j++) prev[j] = j;
+            for (int i = 1; i <= a.Length; i++)
+            {
+                cur[0] = i;
+                for (int j = 1; j <= b.Length; j++)
+                {
+                    int cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                    cur[j] = Math.Min(Math.Min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+                }
+                var swap = prev; prev = cur; cur = swap;
+            }
+            return prev[b.Length];
+        }
     }
 }
