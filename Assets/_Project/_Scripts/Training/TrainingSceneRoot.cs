@@ -40,10 +40,23 @@ namespace Artti.Training
         [Tooltip("풀 모드에서 카드를 누를 때 카드 문구를 음성으로 읽어줌. 자유발화 연습 의도와 충돌하므로 기본 끔")]
         [SerializeField] private bool speakCardOnTap = false;
 
+        // 변경점: 서버PC에서 돌리는 음성 인식 서버. 지정하면 사용자 발화를 이 서버로 인식하고,
+        //         서버에 닿지 않으면 기존 기기 음성 인식(Android 네이티브 / 에디터 더미)으로 넘어간다.
+        [Header("STT 서버 (옵션 — 비우면 기기 음성 인식)")]
+        [Tooltip("서버PC의 음성 인식 서버 주소. 예: http://192.168.0.167:8000 — 비우면 .env의 STT_SERVER_URL을 쓴다")]
+        [SerializeField] private string sttServerUrl;
+        [Tooltip("인식 요청 경로. 비우면 서버의 API 문서(/openapi.json 등)나 흔한 경로에서 자동으로 찾는다 (예: /stt, /transcribe)")]
+        [SerializeField] private string sttServerPath;
+
         private DialogueManager _dialogueManager;
         private ITtsService _ttsService;
         private ITtsService _npcTtsService;
         private ISttService _sttService;
+        private FailoverSttService _sttFailover; // 서버 STT 미사용이면 null
+        private AudioSource _cardSpeechSource;
+        private int _speechRequestsInFlight; // TTS 요청을 보냈지만 아직 재생이 시작되지 않은 발화 수
+        private CancellationTokenSource _speechCts; // 요청 중인 TTS까지 StopSpeech에서 끊기 위한 토큰
+        private int _listeningCount; // 마이크로 사용자 발화를 듣는 중인 호출 수 (겹친 호출이 서로의 표시를 지우지 않게 센다)
         private GeminiDialogueService _geminiService;
         private string _systemPrompt; // system_prompts.json에서 시나리오별로 빌드 (Awake)
         // Unit 3: 풀 모드에서 룰베이스 대신 Gemini가 대화를 주도. 우선 편의점만 적용, 검증 후 약국·음식점 확대.
@@ -77,23 +90,37 @@ namespace Artti.Training
             var geminiKey = ApiKeyLoader.Get(ApiKeyLoader.GeminiApi);
             var ttsKey    = ApiKeyLoader.GetOrFallback(ApiKeyLoader.GoogleTtsApi, ApiKeyLoader.GeminiApi);
 
-            _ttsService = new CloudTtsService(ttsKey, GetComponent<AudioSource>());
+            _cardSpeechSource = GetComponent<AudioSource>();
+            _ttsService = new CloudTtsService(ttsKey, _cardSpeechSource);
             _npcTtsService = npcSpeechSource != null
                 ? new CloudTtsService(ttsKey, npcSpeechSource)
                 : _ttsService;
 
+            ISttService deviceStt;
 #if UNITY_ANDROID && !UNITY_EDITOR
-            _sttService = new AndroidNativeSttService();
+            deviceStt = new AndroidNativeSttService();
 #else
             // Editor: STT는 더미 텍스트로 풀 모드 흐름만 검증
-            _sttService = new EditorMockSttService();
+            deviceStt = new EditorMockSttService();
 #endif
-            // 변경점: 편의점은 서버 STT(발화 정확도 %)를 우선 사용. .env(빌드는 Resources/api_keys.txt)에
-            //   STT_SERVER_URL이 있고 로컬 전용 ServerSttService.cs가 있을 때만 켜지고, 아니면 위 STT 그대로.
-            if (scenarioId == ScenarioIds.Convenience)
+            // 변경점: STT 서버 주소가 있으면 서버 인식을 먼저 쓰고, 쓸 수 없으면 기기 인식으로 넘긴다.
+            //   Inspector 값이 우선, 비어 있으면 .env(STT_SERVER_URL). 둘 다 없으면 기존과 동일.
+            bool fromInspector = !string.IsNullOrWhiteSpace(sttServerUrl);
+            var serverUrl = fromInspector ? sttServerUrl : ApiKeyLoader.Get(ApiKeyLoader.SttServerUrl);
+            if (!string.IsNullOrWhiteSpace(serverUrl))
             {
-                var serverStt = TryCreateServerStt(ApiKeyLoader.Get(ApiKeyLoader.SttServerUrl));
-                if (serverStt != null) _sttService = serverStt;
+                Debug.Log($"[TrainingSceneRoot] STT 서버 {serverUrl} ({(fromInspector ? "Inspector" : ".env STT_SERVER_URL")})");
+                var serverStt = new ServerSttService(
+                    serverUrl,
+                    sttServerPath,
+                    ApiKeyLoader.Get(ApiKeyLoader.SttServerApiKey),
+                    ApiKeyLoader.Get(ApiKeyLoader.SttServerModel));
+                _sttFailover = new FailoverSttService(serverStt, deviceStt);
+                _sttService = _sttFailover;
+            }
+            else
+            {
+                _sttService = deviceStt;
             }
             // 변경점(Unit 2): 도구 카탈로그 + 시나리오 시스템 프롬프트 로드해 주입.
             //   Resources/AAC/{dialogue_tools,system_prompts}.json (기존 _Data/AAC 원본의 런타임 복사본)
@@ -158,36 +185,6 @@ namespace Artti.Training
             else
             {
                 Debug.LogWarning("[TrainingSceneRoot] AppBootstrap 없음 — 프로필 선택을 거치지 않아 이 세션은 레포트에 기록되지 않습니다. SplashScene부터 Play 하세요");
-            }
-        }
-
-        // 변경점: ServerSttService는 저장소에 없는 로컬 파일이라 직접 참조하지 않고 타입 이름으로 만든다.
-        //   파일이 없는 팀원 환경에서도 컴파일되고, URL이 없거나 파일이 없으면 null(기존 STT 유지).
-        private const string ServerSttTypeName = "Artti.Common.Speech.ServerSttService";
-
-        private static ISttService TryCreateServerStt(string serverUrl)
-        {
-            if (string.IsNullOrWhiteSpace(serverUrl))
-            {
-                Debug.LogWarning("[TrainingSceneRoot] STT_SERVER_URL 없음 — 서버 STT 미사용 (상세기록 발화 정확도가 기록되지 않음)");
-                return null;
-            }
-            var type = System.Type.GetType(ServerSttTypeName);
-            if (type == null || !typeof(ISttService).IsAssignableFrom(type))
-            {
-                Debug.LogWarning($"[TrainingSceneRoot] STT_SERVER_URL은 있지만 {ServerSttTypeName}가 프로젝트에 없음 — 기존 STT 사용");
-                return null;
-            }
-            try
-            {
-                var stt = (ISttService)System.Activator.CreateInstance(type, serverUrl);
-                Debug.Log($"[TrainingSceneRoot] 서버 STT 사용 — {serverUrl}");
-                return stt;
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogWarning($"[TrainingSceneRoot] 서버 STT 생성 실패 — 기존 STT 사용: {e.Message}");
-                return null;
             }
         }
 
@@ -289,6 +286,8 @@ namespace Artti.Training
             // 씬 진입 즉시 마이크 권한 다이얼로그 (STT 첫 호출 지연 방지 + 권한 거부 조기 노출)
             // Native/Cloud 둘 다 동일한 RECORD_AUDIO 권한 사용 — CloudSttService의 정적 헬퍼 재사용
             CloudSttService.RequestMicPermissionAsync(_cts.Token).Forget();
+            // 변경점: STT 서버 연결 확인·엔드포인트 탐색을 미리 해 둔다 (첫 발화 지연 방지)
+            _sttFailover?.WarmUpAsync(_cts.Token).Forget();
 
             // scenarios.json의 첫 objective가 모든 시나리오에서 "greeting"
             // 변경점: objective 순서와 "그 단계에 카드가 있는가" 판정을 DialogueManager에 주입.
@@ -359,18 +358,101 @@ namespace Artti.Training
             _lastNpcLine = line;
             uiView.SetNPCDialogue(line);
             if (_npcTtsService != null)
-                _npcTtsService.SpeakAsync(line, _cts.Token).Forget();
+                TrackSpeech(_npcTtsService.SpeakAsync(line, SpeechToken)).Forget();
             _eventLogger?.LogNpcTurn(line, tool);
         }
 
         private void ReplayNpcLine()
         {
+            // 변경점: 듣는 중에는 다시 듣기를 막는다. 스피커로 나온 점원 목소리가 사용자 발화로 녹음되기 때문이다.
+            if (_listeningCount > 0) return;
             if (!string.IsNullOrEmpty(_lastNpcLine) && _npcTtsService != null)
-                _npcTtsService.SpeakAsync(_lastNpcLine, _cts.Token).Forget();
+                TrackSpeech(_npcTtsService.SpeakAsync(_lastNpcLine, SpeechToken)).Forget();
+        }
+
+        // 변경점: TTS 요청용 토큰. StopSpeech가 취소하면 아직 도착하지 않은 음성도 재생되지 않는다.
+        private CancellationToken SpeechToken
+        {
+            get
+            {
+                if (_cts == null || _cts.IsCancellationRequested) return new CancellationToken(true); // 씬 종료 뒤 늦게 온 호출
+                return (_speechCts ??= CancellationTokenSource.CreateLinkedTokenSource(_cts.Token)).Token;
+            }
+        }
+
+        // 변경점: TTS는 요청(네트워크)이 끝나야 재생이 시작돼 그 사이 AudioSource.isPlaying이 false다.
+        //   "아직 말할 게 남았는가"를 알기 위해 요청 중인 발화 수를 센다 (WaitSpeechIdleAsync에서 사용).
+        private async UniTaskVoid TrackSpeech(UniTask speak)
+        {
+            _speechRequestsInFlight++;
+            try { await speak; }
+            finally { _speechRequestsInFlight--; }
+        }
+
+        // 사용자 발화 한 번 듣기 — 마이크 표시 + STT.
+        // 변경점: 서버 STT는 Unity 마이크로 직접 녹음하므로 점원(또는 카드) 음성이 스피커로 나오는 동안 녹음을
+        //   시작하면 점원 목소리까지 인식된다. 서버로 들을 때는 음성이 끝난 뒤 마이크를 연다.
+        //   stillWanted가 false가 되면(대화하기 종료 등) 기다린 뒤 녹음하지 않는다.
+        private async UniTask<SttResult> ListenUserAsync(CancellationToken ct, System.Func<bool> stillWanted = null)
+        {
+            // 준비(서버 확인·점원 음성 대기)부터 듣기가 끝날 때까지 다시 듣기를 막는다
+            _listeningCount++;
+            try
+            {
+                var stt = _sttService;
+                if (_sttFailover != null)
+                {
+                    try
+                    {
+                        stt = await _sttFailover.PrepareTurnAsync(WaitSpeechIdleAsync, ct);
+                    }
+                    catch (System.OperationCanceledException)
+                    {
+                        return new SttResult { text = "", isEmpty = true };
+                    }
+                    if (stillWanted != null && !stillWanted())
+                        return new SttResult { text = "", isEmpty = true };
+                }
+
+                uiView.ShowMicIndicator(true);
+                return await stt.ListenOnceAsync(ct);
+            }
+            finally
+            {
+                _listeningCount--;
+            }
+        }
+
+        private const float SpeechIdleWaitMaxSeconds = 15f;
+        // AudioSource가 멈춘 뒤에도 기기 출력 버퍼에 남은 소리가 스피커로 나오는 시간 (Android 약 150~250ms)
+        private const int SpeechOutputDrainMs = 250;
+
+        private async UniTask WaitSpeechIdleAsync(CancellationToken ct)
+        {
+            var npcSource = NpcSpeechSource;
+            float deadline = Time.unscaledTime + SpeechIdleWaitMaxSeconds;
+            bool waited = false;
+            while (Time.unscaledTime < deadline &&
+                   (_speechRequestsInFlight > 0
+                    || (npcSource != null && npcSource.isPlaying)
+                    || (_cardSpeechSource != null && _cardSpeechSource.isPlaying)))
+            {
+                waited = true;
+                await UniTask.Yield(PlayerLoopTiming.Update, ct);
+            }
+            if (waited) await UniTask.Delay(SpeechOutputDrainMs, DelayType.Realtime, PlayerLoopTiming.Update, ct);
         }
 
         private void StopSpeech()
         {
+            // 변경점: 재생 중인 음성뿐 아니라 요청 중인 TTS도 취소한다.
+            //   AudioSource.Stop만 하면 요청이 도착한 뒤 재생이 시작돼, 멈춘 줄 알았던 점원이 말을 이어 간다.
+            if (_speechCts != null)
+            {
+                _speechCts.Cancel();
+                _speechCts.Dispose();
+                _speechCts = null;
+            }
             _ttsService?.StopAll();
             if (!object.ReferenceEquals(_npcTtsService, _ttsService))
                 _npcTtsService?.StopAll();
@@ -638,17 +720,16 @@ namespace Artti.Training
                 if (speakCardOnTap && _ttsService != null && card.phrase != null)
                 {
                     var cue = !string.IsNullOrEmpty(card.phrase.ttsText) ? card.phrase.ttsText : card.phrase.text;
-                    _ttsService.SpeakAsync(cue, _cts.Token).Forget();
+                    TrackSpeech(_ttsService.SpeakAsync(cue, SpeechToken)).Forget();
                 }
 
                 // 시안 3.png: 선택 카드 강조 + 나머지 터치 비활성·흐림, 사용자 발화 버블 표시
                 hud?.SetUserUtterance(card.phrase?.text);
                 uiView.SetPoolLocked(card);
 
-                uiView.ShowMicIndicator(true);
                 // 변경점: 명료도를 계산하는 STT(서버 STT)에는 탭한 카드 문구를 목표 문장으로 넘긴다.
                 (_sttService as ITargetedSttService)?.SetTarget(card.phrase?.text);
-                var sttResultP = await _sttService.ListenOnceAsync(_cts.Token);
+                var sttResultP = await ListenUserAsync(_cts.Token);
                 uiView.ShowSttResult(sttResultP.text);
                 uiView.UnlockPool();
                 _eventLogger?.LogCardSelected(card.id, card.phrase?.text, sttResultP);
@@ -711,11 +792,10 @@ namespace Artti.Training
             if (_ttsService != null && card.phrase != null)
             {
                 var spokenText = !string.IsNullOrEmpty(card.phrase.ttsText) ? card.phrase.ttsText : card.phrase.text;
-                _ttsService.SpeakAsync(spokenText, _cts.Token).Forget();
+                TrackSpeech(_ttsService.SpeakAsync(spokenText, SpeechToken)).Forget();
             }
 
-            uiView.ShowMicIndicator(true);
-            var sttResult = await _sttService.ListenOnceAsync(_cts.Token);
+            var sttResult = await ListenUserAsync(_cts.Token);
             uiView.ShowSttResult(sttResult.text);
 
             _dialogueManager.HandleUserTurn(card, sttResult.text);
@@ -785,11 +865,10 @@ namespace Artti.Training
             {
                 uiView.HideExtraModal();
                 StopSpeech();
-                uiView.ShowMicIndicator(true);
                 // 변경점: 명료도 기준 문장 = 대시보드에서 강조된 추천 문장.
                 string clarityTarget = dashboardView != null ? dashboardView.RecommendedPhrase : null;
                 (_sttService as ITargetedSttService)?.SetTarget(clarityTarget);
-                var stt = await _sttService.ListenOnceAsync(_cts.Token);
+                var stt = await ListenUserAsync(_cts.Token);
                 recognized = stt.text;
                 uiView.ShowSttResult(recognized);
 
@@ -844,6 +923,7 @@ namespace Artti.Training
             if (!_freeTalkActive) return;
 
             _freeTalkActive = false;
+            _sttService?.Cancel(); // 변경점: 듣는 중이던 녹음도 멈춘다 (서버 STT는 끄지 않으면 발화 끝까지 녹음해 올린다)
             uiView.SetFreeTalkActive(false);
             dashboardView?.SetInteractionEnabled(true);
             uiView.ShowMicIndicator(false);
@@ -858,8 +938,7 @@ namespace Artti.Training
             {
                 while (_freeTalkActive && !ct.IsCancellationRequested)
                 {
-                    uiView.ShowMicIndicator(true);
-                    var stt = await _sttService.ListenOnceAsync(ct);
+                    var stt = await ListenUserAsync(ct, () => _freeTalkActive);
                     uiView.ShowMicIndicator(false);
                     if (!_freeTalkActive) break;
 

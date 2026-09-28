@@ -391,7 +391,7 @@ namespace Artti.UI
                 sb.Append("이 연습에는 서버가 채점한 음성 발화가 없어요.\n");
                 if (spokenUnscored > 0)
                     sb.Append("<color=#6E7687>음성으로 말한 단계는 있지만 서버 채점 결과가 오지 않았어요. " +
-                              "서버 STT 연결(.env의 STT_SERVER_URL, 서버와 같은 네트워크)을 확인해 주세요.</color>\n\n");
+                              "서버 STT 연결(서버 주소 설정, 서버와 같은 네트워크인지)을 확인해 주세요.</color>\n\n");
                 else
                     sb.Append("<color=#6E7687>대화 힌트·상품 버튼으로만 진행해서 채점할 음성이 없어요. " +
                               "음성 버튼을 눌러 직접 말하면 채점돼요.</color>\n\n");

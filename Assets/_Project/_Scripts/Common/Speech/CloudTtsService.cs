@@ -14,6 +14,9 @@ namespace Artti.Common.Speech
         private readonly string _apiKey;
         private readonly AudioSource _audioSource;
         private const int SampleRate = 24000;
+        // 변경점: 응답 없는 요청이 무한정 걸려 있지 않게 한다 (기본값 0 = 제한 없음).
+        //   훈련 씬은 점원 음성이 끝나길 기다렸다가 마이크를 여므로 걸린 요청이 듣기를 막는다.
+        private const int RequestTimeoutSeconds = 10;
 
         public CloudTtsService(string apiKey, AudioSource audioSource)
         {
@@ -40,6 +43,7 @@ namespace Artti.Common.Speech
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
+            request.timeout = RequestTimeoutSeconds;
 
             try
             {
