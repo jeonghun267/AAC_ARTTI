@@ -353,6 +353,9 @@ public class OcrTestController : MonoBehaviour
     {
         if (capturedImage == null) return;
 
+        capturedImage.texture = null;
+        capturedImage.color = Color.clear;
+
         try
         {
             if (!File.Exists(imagePath))
