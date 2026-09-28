@@ -4,8 +4,11 @@
 #
 # API keys — never commit
 # Secret Keys
-/Assets/GCP_Secret_Key.asset
-/Assets/GCP_Secret_Key.asset.meta
+**/GCP_Secret_Key.asset
+**/GCP_Secret_Key.asset.meta
+# Unity 크래시 복구용 임시 씬 (직렬화된 키가 그대로 들어감)
+/Assets/_Recovery/
+/Assets/_Recovery.meta
 .env
 .env.local
 Assets/StreamingAssets/api_keys.env
