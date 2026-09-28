@@ -609,10 +609,12 @@ namespace Artti.Training
                 uiView.SetPoolLocked(card);
 
                 uiView.ShowMicIndicator(true);
+                // 변경점: 명료도를 계산하는 STT(서버 STT)에는 탭한 카드 문구를 목표 문장으로 넘긴다.
+                (_sttService as ITargetedSttService)?.SetTarget(card.phrase?.text);
                 var sttResultP = await _sttService.ListenOnceAsync(_cts.Token);
                 uiView.ShowSttResult(sttResultP.text);
                 uiView.UnlockPool();
-                _eventLogger?.LogCardSelected(card.id, card.phrase?.text, sttResultP.text);
+                _eventLogger?.LogCardSelected(card.id, card.phrase?.text, sttResultP);
 
                 // 빈 결과 시 fallback 전용 대사 후 같은 objective 유지 — 2차 시도(scaffold_level=1)는 같은 카드 유지 (PLAN.MD 7.3.1)
                 if (string.IsNullOrWhiteSpace(sttResultP.text))
@@ -741,14 +743,24 @@ namespace Artti.Training
             _dashboardTurnBusy = true;
             dashboardView?.SetInteractionEnabled(false);
             string recognized = null;
+            SttResult spoken = default;
             try
             {
                 uiView.HideExtraModal();
                 StopSpeech();
                 uiView.ShowMicIndicator(true);
+                // 변경점: 명료도 기준 문장 = 대시보드에서 강조된 추천 문장.
+                string clarityTarget = dashboardView != null ? dashboardView.RecommendedPhrase : null;
+                (_sttService as ITargetedSttService)?.SetTarget(clarityTarget);
                 var stt = await _sttService.ListenOnceAsync(_cts.Token);
                 recognized = stt.text;
                 uiView.ShowSttResult(recognized);
+
+                // 변경점: 추천 문장이 아닌 다른 정답(다른 힌트·다른 상품)을 말했으면 목표 대비 명료도는 의미가 없으므로 버린다.
+                spoken = stt;
+                if (spoken.hasClarity && dashboardView != null
+                    && !ConvenienceQuickPhrasePolicy.IsAttemptAtTarget(recognized, clarityTarget, dashboardView.GetSpeechCandidates()))
+                    spoken.hasClarity = false;
 
                 if (string.IsNullOrWhiteSpace(recognized))
                 {
@@ -774,7 +786,8 @@ namespace Artti.Training
                 "음성으로 말하기",
                 recognized,
                 false,
-                captureWater ? "물" : null).Forget();
+                captureWater ? "물" : null,
+                spoken).Forget();
         }
 
         private void StartFreeTalk()
@@ -879,7 +892,8 @@ namespace Artti.Training
             string sourceName,
             string utterance,
             bool isProduct,
-            string capturedItemName = null)
+            string capturedItemName = null,
+            SttResult? spoken = null)
         {
             if (_dashboardTurnBusy || _freeTalkActive || _sessionCompleted || !_useGemini
                 || string.IsNullOrWhiteSpace(utterance)) return;
@@ -891,7 +905,8 @@ namespace Artti.Training
                 StopSpeech();
                 hud?.SetUserUtterance(utterance);
                 uiView.ShowSttResult(utterance);
-                _eventLogger?.LogCardSelected(sourceId, utterance, utterance);
+                // 변경점: 음성 턴이면 STT 결과(명료도 포함)를, 탭 턴이면 문장만 기록한다.
+                _eventLogger?.LogCardSelected(sourceId, utterance, spoken ?? new SttResult { text = utterance });
                 _dialogueManager.HandleUserTurn(null, utterance);
 
                 // 다섯 개 고정 대화 힌트는 현재 단계와 장바구니 상태를 함께 보고 판정한다.

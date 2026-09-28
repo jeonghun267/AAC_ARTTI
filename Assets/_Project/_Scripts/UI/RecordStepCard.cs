@@ -12,6 +12,7 @@ namespace Artti.UI
         public TMP_Text userText;       // 사용자 발화
         public TMP_Text timeText;       // 12:01
         public TMP_Text ratingText;     // 잘했어요😊
+        public TMP_Text clarityText;    // 변경점: 발음 명료도 87% (측정 없으면 비움)
         public Button speakerButton;    // TTS 재생
     }
 }

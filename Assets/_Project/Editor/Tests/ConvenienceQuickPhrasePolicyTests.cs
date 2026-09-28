@@ -86,6 +86,34 @@ namespace Artti.EditorTests.Training
             Assert.That(decision.ObjectiveId, Is.EqualTo("checkout"));
             Assert.That(decision.NpcSpeech, Does.Contain(method));
         }
+
+        private static readonly string[] BagCandidates =
+            { "봉투 주세요", "봉투 필요 없어요", "얼마예요?", "계산할게요", "감사합니다" };
+
+        [TestCase("봉투 주세요", ExpectedResult = true)]      // 목표 그대로
+        [TestCase("봉두 주세요.", ExpectedResult = true)]     // 발음이 흐려도 목표에 가장 가까움
+        [TestCase("봉투 필요 없어요", ExpectedResult = false)] // 다른 정답을 고름
+        [TestCase("감사합니다", ExpectedResult = false)]
+        [TestCase("", ExpectedResult = false)]
+        public bool IsAttemptAtTarget_BagStep(string recognized)
+        {
+            return ConvenienceQuickPhrasePolicy.IsAttemptAtTarget(recognized, "봉투 주세요", BagCandidates);
+        }
+
+        [Test]
+        public void IsAttemptAtTarget_OtherProductRequest_IsNotScoredAgainstWater()
+        {
+            var candidates = new[] { "물 주세요", "어디에 있어요?", "얼마예요?", "계산할게요", "감사합니다", "우유 주세요", "껌 주세요" };
+
+            Assert.That(ConvenienceQuickPhrasePolicy.IsAttemptAtTarget("우유 주세요", "물 주세요", candidates), Is.False);
+            Assert.That(ConvenienceQuickPhrasePolicy.IsAttemptAtTarget("물 주세요", "물 주세요", candidates), Is.True);
+        }
+
+        [Test]
+        public void IsAttemptAtTarget_NoTarget_IsFalse()
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.IsAttemptAtTarget("물 주세요", null, BagCandidates), Is.False);
+        }
     }
 }
 #endif

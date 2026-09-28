@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -55,6 +56,21 @@ namespace Artti.UI
         public event Action<string> OnQuickPhraseSelected;
 
         public bool HasProducts => productButtons != null && productButtons.Length > 0;
+
+        // 변경점: 음성 버튼 명료도의 기준 문장 — 현재 단계에서 강조(추천)된 대화 힌트.
+        public string RecommendedPhrase { get; private set; } = string.Empty;
+
+        // 변경점: 음성 버튼에서 사용자가 말할 수 있는 후보 문장(대화 힌트 + 상품 요청 문장).
+        //   인식 문장이 기준 문장이 아닌 다른 후보에 더 가까우면 명료도를 기록하지 않는 데 쓴다.
+        public IEnumerable<string> GetSpeechCandidates()
+        {
+            var phrases = _activeQuickPhrases ?? quickPhrases;
+            for (int i = 0; phrases != null && i < phrases.Length; i++)
+                if (!string.IsNullOrWhiteSpace(phrases[i])) yield return phrases[i];
+            for (int i = 0; productNames != null && i < productNames.Length; i++)
+                if (!string.IsNullOrWhiteSpace(productNames[i]))
+                    yield return ValueAt(productUtterances, i, productNames[i] + " 주세요");
+        }
 
         private void Awake()
         {
@@ -147,6 +163,8 @@ namespace Artti.UI
                     SetSpeechPractice("원하는 상품명을 말해보세요.\n예: ‘물 주세요’");
                     break;
             }
+
+            RecommendedPhrase = ValueAt(_activeQuickPhrases, recommendedIndex, ValueAt(quickPhrases, recommendedIndex, string.Empty));
 
             for (int i = 0; quickPhraseLabels != null && i < quickPhraseLabels.Length; i++)
             {

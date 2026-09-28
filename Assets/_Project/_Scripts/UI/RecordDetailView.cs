@@ -25,6 +25,7 @@ namespace Artti.UI
         [SerializeField] private TMP_Text fullSuccessText;
         [SerializeField] private TMP_Text partialSuccessText;
         [SerializeField] private TMP_Text needHelpText;
+        [SerializeField] private TMP_Text clarityAvgText;   // 변경점: 발음 정확도 평균 (서버 STT 명료도)
 
         [Header("스탯 카드")]
         [SerializeField] private TMP_Text scenarioNameText;
@@ -203,6 +204,7 @@ namespace Artti.UI
             if (fullSuccessText != null) fullSuccessText.text = "0개";
             if (partialSuccessText != null) partialSuccessText.text = "0개";
             if (needHelpText != null) needHelpText.text = "0개";
+            if (clarityAvgText != null) clarityAvgText.text = "";
             if (scenarioNameText != null) scenarioNameText.text = "-";
             if (statusText != null) statusText.text = "-";
             if (dateText != null) dateText.text = "-";
@@ -214,6 +216,25 @@ namespace Artti.UI
             HideAll(nextGoalTexts);
             if (stepCards != null)
                 foreach (var c in stepCards) if (c != null) c.gameObject.SetActive(false);
+        }
+
+        // 변경점: 명료도 색 — 서버 신호등(green/yellow/red)을 그대로 쓴다.
+        //   신호등이 없으면 중립색. 앱에서 임의 구간(예: 80/50)을 만들면 서버 판정과 어긋날 수 있다.
+        private static readonly Color32 ClarityGreen   = new Color32(30, 158, 85, 255);
+        private static readonly Color32 ClarityYellow  = new Color32(235, 140, 52, 255);
+        private static readonly Color32 ClarityRed     = new Color32(224, 64, 64, 255);
+        private static readonly Color32 ClarityNeutral = new Color32(33, 41, 60, 255);
+        private const float ClarityBadgeMargin = 58f;   // 빌더의 Clarity 배지 폭(56) + 간격
+
+        private static Color ClarityColor(string light)
+        {
+            switch (light)
+            {
+                case "green":  return ClarityGreen;
+                case "yellow": return ClarityYellow;
+                case "red":    return ClarityRed;
+                default:       return ClarityNeutral;
+            }
         }
 
         private static void HideAll(TMP_Text[] arr)
@@ -254,6 +275,9 @@ namespace Artti.UI
             if (fullSuccessText != null) fullSuccessText.text = $"{r.fullSuccess}개";
             if (partialSuccessText != null) partialSuccessText.text = $"{r.partialSuccess}개";
             if (needHelpText != null) needHelpText.text = $"{r.needHelp}개";
+            // 변경점: 명료도를 측정한 음성 발화가 없던 세션(탭만 사용, 서버 STT 미사용, 이전 기록)은 비워 둔다.
+            if (clarityAvgText != null)
+                clarityAvgText.text = r.avgClarityPct >= 0 ? $"발음 정확도 {r.avgClarityPct}%" : "";
 
             // 스탯 카드
             if (scenarioNameText != null) scenarioNameText.text = r.scenarioName;
@@ -288,6 +312,15 @@ namespace Artti.UI
                     if (card.userText != null) card.userText.text = s.userText ?? "";
                     if (card.timeText != null) card.timeText.text = s.time;
                     if (card.ratingText != null) card.ratingText.text = s.ratingLabel;
+                    if (card.clarityText != null)
+                    {
+                        bool hasClarity = s.clarityPct >= 0;
+                        card.clarityText.text = hasClarity ? $"{s.clarityPct}%" : "";
+                        card.clarityText.color = ClarityColor(s.clarityLight);
+                        // 배지가 있을 때만 발화 문장이 배지와 겹치지 않도록 오른쪽 여백 확보
+                        if (card.userText != null)
+                            card.userText.margin = hasClarity ? new Vector4(0f, 0f, ClarityBadgeMargin, 0f) : Vector4.zero;
+                    }
                     if (card.speakerButton != null)
                     {
                         var line = !string.IsNullOrEmpty(s.npcText) ? s.npcText : s.userText;
