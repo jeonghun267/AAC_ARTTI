@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Artti.AAC.Logging;
+using Artti.Common;
 using UnityEngine;
 
 namespace Artti.Report
@@ -15,16 +16,23 @@ namespace Artti.Report
         public long dateMs;       // SessionEnded ts, 없으면 마지막 이벤트 ts
         public long startMs;      // ScenarioEntered ts, 없으면 첫 이벤트 ts
         public int durationMin;   // startMs ~ dateMs
+        public TrainingMode mode; // ScenarioEntered payload 기준. 모드 기록이 없는 예전 세션은 정확도 모드
     }
 
     public class ReportOverview
     {
-        public int totalAttempts;       // ScenarioEntered 수 (시나리오 구분 없이 합산)
-        public int completedCount;      // SessionEnded(completed) 세션 수
+        public int totalAttempts;       // ScenarioEntered 수 (시나리오·모드 구분 없이 합산, 연습량)
+        public int completedCount;      // SessionEnded(completed) 세션 수 (모드 구분 없이 합산, 연습량)
         public Dictionary<string, int> completedByScenario = new Dictionary<string, int>();
 
+        // 모드별 도전/완료 수. 대화 모드는 어눌해도 진행되므로 완료율은 정확도 모드만으로 계산한다.
+        public int accuracyAttempts;
+        public int accuracyCompleted;
+        public int conversationAttempts;
+        public int conversationCompleted;
+
         public float CompletionRate =>
-            totalAttempts > 0 ? Mathf.Clamp01((float)completedCount / totalAttempts) : 0f;
+            accuracyAttempts > 0 ? Mathf.Clamp01((float)accuracyCompleted / accuracyAttempts) : 0f;
     }
 
     // 요약 패널 스탯 (연습 리포트 대시보드)
@@ -40,9 +48,12 @@ namespace Artti.Report
         public int xpPerLevel;         // 레벨업에 필요한 XP
         public int todayCompleted;     // 오늘 완료한 시나리오 수 (변화 칩)
         public int todayMinutes;       // 오늘 연습 시간(분) (변화 칩)
-        public int avgAccuracyPct;     // 평균 정답률 (세션 successRate 평균, 0..100)
-        public int accuracyDeltaPct;   // 최신 세션 정답률 - 이전 세션 평균 (변화 칩)
-        public bool hasAccuracy;       // 정답률 산출 가능한 세션이 있는지
+        public int avgAccuracyPct;     // 평균 정답률 (정확도 모드 세션 successRate 평균, 0..100)
+        public int accuracyDeltaPct;   // 최신 세션 정답률 - 이전 세션 평균 (변화 칩, 정확도 모드만)
+        public bool hasAccuracy;       // 정답률 산출 가능한 정확도 모드 세션이 있는지
+        // 모드별 발화 정확도(서버 명료도) 평균. 측정 도구는 같지만 말하는 상황이 달라 섞지 않는다. 기록 없으면 -1
+        public int accuracyModeClarityPct = -1;
+        public int conversationModeClarityPct = -1;
     }
 
     // 최근 학습 기록 한 줄
@@ -53,7 +64,8 @@ namespace Artti.Report
         public long dateMs;
         public int points;
         public bool completed;
-        public int accuracyPct;    // 세션 정답률(0..100). 단계 없으면 -1
+        public int accuracyPct;    // 세션 정답률(0..100). 단계 없거나 대화 모드 세션이면 -1
+        public TrainingMode mode;
     }
 
     public enum StepRating { Excellent, Good, Practice, NeedHelp }
@@ -76,6 +88,7 @@ namespace Artti.Report
         public string clarityHeard;   // 서버가 알아들은 문장
         public string clarityReason;  // 왜 그 점수인지 (ClarityExplainer)
         public bool userSpoken;       // userText가 음성 입력이었는지(false면 버튼/상품 탭) — 채점 기록이 없는 이유 안내용
+        public string heardText;      // 음성 입력 턴의 STT 인식 원문. 대화 모드에서는 userText(해석된 문장)와 다를 수 있다
     }
 
     // 세션 1개의 상세 리포트 (전체 학습기록 씬)
@@ -87,6 +100,7 @@ namespace Artti.Report
         public bool completed;
         public long dateMs;
         public int durationMin;
+        public TrainingMode mode;  // 대화 모드면 successRate는 참고용 (어눌해도 진행되므로 정답률 비교에 쓰지 않음)
 
         public int fullSuccess;    // 완전 성공
         public int partialSuccess; // 부분 성공
@@ -112,6 +126,7 @@ namespace Artti.Report
         public string clarityTarget;
         public string clarityHeard;
         public bool spoken;           // 변경점: 음성 입력 턴(음성 버튼, 카드 탭+STT). 버튼/상품 탭은 false
+        public string heardText;      // 음성 입력 턴의 STT 인식 원문 (명료도 기록 여부와 무관)
     }
 
     public class ReportStep
@@ -176,13 +191,21 @@ namespace Artti.Report
         public ReportOverview GetOverview()
         {
             var overview = new ReportOverview();
-            overview.totalAttempts = _events.Count(e => e.eventType == EvScenarioEntered);
+            foreach (var ev in _events)
+            {
+                if (ev.eventType != EvScenarioEntered) continue;
+                overview.totalAttempts++;
+                if (ParseMode(ev.payloadJson) == TrainingMode.Conversation) overview.conversationAttempts++;
+                else overview.accuracyAttempts++;
+            }
 
             foreach (var group in EventsBySession())
             {
                 var ended = group.Value.LastOrDefault(e => e.eventType == EvSessionEnded);
                 if (ended == null || ended.payloadJson != "completed") continue;
                 overview.completedCount++;
+                if (SessionMode(group.Value) == TrainingMode.Conversation) overview.conversationCompleted++;
+                else overview.accuracyCompleted++;
                 var sid = group.Value[0].scenarioId ?? "";
                 overview.completedByScenario.TryGetValue(sid, out var n);
                 overview.completedByScenario[sid] = n + 1;
@@ -234,7 +257,25 @@ namespace Artti.Report
                     stats.accuracyDeltaPct = Mathf.RoundToInt((rates[0] - prevAvg) * 100f);
                 }
             }
+
+            // 모드별 발화 정확도: 해당 모드 세션의 모든 음성 발화(재시도 포함) 평균
+            stats.accuracyModeClarityPct = AverageClarity(sessions.Where(s => s.mode == TrainingMode.Accuracy));
+            stats.conversationModeClarityPct = AverageClarity(sessions.Where(s => s.mode == TrainingMode.Conversation));
             return stats;
+        }
+
+        int AverageClarity(IEnumerable<ReportSessionSummary> sessions)
+        {
+            int sum = 0, count = 0;
+            foreach (var s in sessions)
+            {
+                var detail = GetDetail(s.sessionId);
+                if (detail == null) continue;
+                foreach (var step in detail.steps)
+                    foreach (var turn in step.turns)
+                        if (turn.isUser && turn.clarityPct >= 0) { sum += turn.clarityPct; count++; }
+            }
+            return count > 0 ? Mathf.RoundToInt((float)sum / count) : -1;
         }
 
         // 추천 다음 연습: 완료 횟수가 가장 적은 시나리오 (현재는 편의점 하나).
@@ -303,12 +344,14 @@ namespace Artti.Report
             return outv;
         }
 
-        public List<ReportRecord> GetRecentRecords(int n)
+        // mode: null이면 전체, 값이 있으면 해당 모드 기록만 (레포트 탭 필터용)
+        public List<ReportRecord> GetRecentRecords(int n, TrainingMode? mode = null)
         {
             var list = new List<ReportRecord>();
             foreach (var group in EventsBySession())
             {
                 var summary = BuildSummary(group.Key, group.Value);
+                if (mode.HasValue && summary.mode != mode.Value) continue;
                 int objectives = group.Value.Count(e => e.eventType == EvObjectiveEntered);
                 int retries = group.Value.Count(e => e.eventType == EvStepRetry);
                 // 점수 규칙(임시): 완료 +30, 목표당 +10, 재시도당 -5, 0 이상. (제품 규칙 확정 시 조정)
@@ -320,7 +363,9 @@ namespace Artti.Report
                     dateMs = summary.dateMs,
                     points = points,
                     completed = summary.completed,
-                    accuracyPct = SessionAccuracyPct(group.Key),
+                    // 대화 모드는 어눌해도 진행되어 정답률이 의미 없으므로 -1 (요약 평균에서도 빠진다)
+                    accuracyPct = summary.mode == TrainingMode.Conversation ? -1 : SessionAccuracyPct(group.Key),
+                    mode = summary.mode,
                 });
             }
             return list.OrderByDescending(r => r.dateMs).Take(n).ToList();
@@ -348,6 +393,7 @@ namespace Artti.Report
                 completed = detail.summary.completed,
                 dateMs = detail.summary.dateMs,
                 durationMin = detail.summary.durationMin,
+                mode = detail.summary.mode,
             };
 
             var events = SessionEvents(sessionId);
@@ -376,6 +422,7 @@ namespace Artti.Report
                         sr.clarityHeard = turn.clarityHeard;
                         sr.clarityReason = ClarityExplainer.Explain(turn.clarityTarget, turn.clarityHeard, turn.clarityPct, turn.clarityLight);
                         sr.userSpoken = turn.spoken;
+                        sr.heardText = turn.heardText;
                     }
                     if (sr.npcText == null && !step.turns[t].isUser) sr.npcText = step.turns[t].text;
                 }
@@ -436,11 +483,15 @@ namespace Artti.Report
             DateTimeOffset.FromUnixTimeMilliseconds(ms).ToLocalTime().ToString("HH:mm");
 
         // 최신 세션이 앞에 오도록 정렬
-        public List<ReportSessionSummary> GetSessions()
+        // mode: null이면 전체, 값이 있으면 해당 모드 세션만 (레포트 탭 필터용)
+        public List<ReportSessionSummary> GetSessions(TrainingMode? mode = null)
         {
             var list = new List<ReportSessionSummary>();
             foreach (var group in EventsBySession())
-                list.Add(BuildSummary(group.Key, group.Value));
+            {
+                var summary = BuildSummary(group.Key, group.Value);
+                if (!mode.HasValue || summary.mode == mode.Value) list.Add(summary);
+            }
             return list.OrderByDescending(s => s.dateMs).ToList();
         }
 
@@ -468,7 +519,11 @@ namespace Artti.Report
                 else if (ev.eventType == EvCardSelected)
                 {
                     var turn = AddTurn(detail, ref current, isUser: true, ParseUserText(ev.payloadJson));
-                    if (turn != null) turn.spoken = IsSpokenSource(ev.payloadJson);
+                    if (turn != null)
+                    {
+                        turn.spoken = IsSpokenSource(ev.payloadJson);
+                        if (turn.spoken) turn.heardText = ParseSttText(ev.payloadJson);
+                    }
                     // 변경점: 서버 발화 정확도가 있으면 방금 추가한 사용자 턴에 붙인다(이유 설명용 목표/들린 문장 포함).
                     if (turn != null
                         && TryParseClarity(ev.payloadJson, out var clarityPct, out var clarityLight, out var clarityTarget))
@@ -564,9 +619,17 @@ namespace Artti.Report
                 completed = ended != null && ended.payloadJson == "completed",
                 startMs = startMs,
                 dateMs = endMs,
-                durationMin = Mathf.Max(0, Mathf.RoundToInt((endMs - startMs) / 60000f))
+                durationMin = Mathf.Max(0, Mathf.RoundToInt((endMs - startMs) / 60000f)),
+                mode = ParseMode(entered?.payloadJson)
             };
         }
+
+        TrainingMode SessionMode(List<AACEvent> events) =>
+            ParseMode(events.FirstOrDefault(e => e.eventType == EvScenarioEntered)?.payloadJson);
+
+        // ScenarioEntered payload: "mode:accuracy" / "mode:conversation" (EventLogger). 없으면 정확도 모드.
+        static TrainingMode ParseMode(string payload) =>
+            payload == "mode:conversation" ? TrainingMode.Conversation : TrainingMode.Accuracy;
 
         // 변경점: 추가한 턴을 돌려준다(빈 문장이라 추가하지 않았으면 null).
         static ReportTurn AddTurn(ReportSessionDetail detail, ref ReportStep current, bool isUser, string text)
