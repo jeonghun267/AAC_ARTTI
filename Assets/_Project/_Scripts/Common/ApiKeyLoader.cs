@@ -13,6 +13,10 @@ namespace Artti.Common
         public const string SttServerUrl    = "STT_SERVER_URL";
         public const string SttServerApiKey = "STT_SERVER_API_KEY"; // 서버가 Bearer 인증을 요구할 때만
         public const string SttServerModel  = "STT_SERVER_MODEL";   // OpenAI 호환 서버의 모델 id (비우면 서버 목록에서 고름)
+        // 변경점: 코드에 박혀 있던 장소 검색 키를 .env로 옮김 (KakaoLocalSearcher, NaverLocalSearcher)
+        public const string KakaoRestApi      = "KAKAO_REST_API_KEY";
+        public const string NaverClientId     = "NAVER_CLIENT_ID";
+        public const string NaverClientSecret = "NAVER_CLIENT_SECRET";
 
         static Dictionary<string, string> _keys;
 

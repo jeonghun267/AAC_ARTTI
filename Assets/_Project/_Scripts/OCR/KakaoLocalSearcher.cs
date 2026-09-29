@@ -2,6 +2,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Networking;
+using Artti.Common;
 
 /// <summary>
 /// 카카오 로컬 API - 좌표 기반 주변 장소 카테고리 검색
@@ -9,8 +10,8 @@ using UnityEngine.Networking;
 /// </summary>
 public class KakaoLocalSearcher : MonoBehaviour
 {
-    // [중요] 발급받은 카카오 REST API 키를 여기에 입력하세요!
-    private const string REST_API_KEY = "4a2ad3aed9288ad6c4708871889d477b";
+    // 변경점: 키를 코드에서 제거. .env의 KAKAO_REST_API_KEY를 읽는다 (빌드 시 Resources/api_keys.txt로 복사됨)
+    private static string RestApiKey => ApiKeyLoader.Get(ApiKeyLoader.KakaoRestApi);
     private const string BASE_URL = "https://dapi.kakao.com/v2/local/search/category.json";
 
     // 검색할 카테고리 코드 목록 (앱의 4개 분류에 맞춤)
@@ -28,6 +29,15 @@ public class KakaoLocalSearcher : MonoBehaviour
                                       Action<KeywordMatch> onSuccess,
                                       Action onFail)
     {
+        // 변경점: 키가 없으면 요청하지 않고 실패 처리 (401 반복 방지)
+        string apiKey = RestApiKey;
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            Debug.LogWarning("[KakaoAPI] .env에 KAKAO_REST_API_KEY가 없어 좌표 검색을 건너뜁니다.");
+            onFail?.Invoke();
+            yield break;
+        }
+
         KeywordMatch bestMatch = null;
         float bestDistance = float.MaxValue;
 
@@ -38,7 +48,7 @@ public class KakaoLocalSearcher : MonoBehaviour
                          $"&x={lon}&y={lat}&radius=50&sort=distance";
 
             using var request = UnityWebRequest.Get(url);
-            request.SetRequestHeader("Authorization", $"KakaoAK {REST_API_KEY}");
+            request.SetRequestHeader("Authorization", $"KakaoAK {apiKey}");
 
             yield return request.SendWebRequest();
 
