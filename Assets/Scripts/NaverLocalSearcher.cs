@@ -2,15 +2,16 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Networking;
+using Artti.Common;
 
 /// <summary>
 /// 네이버 지역 검색 API 통신 및 데이터 파싱을 담당하는 클래스
 /// </summary>
 public class NaverLocalSearcher : MonoBehaviour
 {
-    // [중요] 발급받으신 Client ID와 Secret을 여기에 다시 붙여넣어 주세요!
-    private const string CLIENT_ID = "G4fleNtA6Zpq0RWRa2jQ";
-    private const string CLIENT_SECRET = "0vLoh6wed3";
+    // 변경점: 키를 코드에서 제거. .env의 NAVER_CLIENT_ID / NAVER_CLIENT_SECRET을 읽는다 (빌드 시 Resources/api_keys.txt로 복사됨)
+    private static string ClientId => ApiKeyLoader.Get(ApiKeyLoader.NaverClientId);
+    private static string ClientSecret => ApiKeyLoader.Get(ApiKeyLoader.NaverClientSecret);
 
     private const string SEARCH_URL = "https://openapi.naver.com/v1/search/local.json?display=1&query=";
 
@@ -19,13 +20,21 @@ public class NaverLocalSearcher : MonoBehaviour
     /// </summary>
     public IEnumerator SearchPlaceCoroutine(string keyword, Action<string> onComplete, Action<string> onError)
     {
+        // 변경점: 키가 없으면 요청하지 않는다 (SetRequestHeader는 null 값에서 예외)
+        if (string.IsNullOrEmpty(ClientId) || string.IsNullOrEmpty(ClientSecret))
+        {
+            Debug.LogWarning("[NaverAPI] .env에 NAVER_CLIENT_ID / NAVER_CLIENT_SECRET이 없어 검색을 건너뜁니다.");
+            onError?.Invoke("missing api key");
+            yield break;
+        }
+
         string encodedKeyword = UnityWebRequest.EscapeURL(keyword);
         string requestUrl = SEARCH_URL + encodedKeyword;
 
         using (UnityWebRequest request = UnityWebRequest.Get(requestUrl))
         {
-            request.SetRequestHeader("X-Naver-Client-Id", CLIENT_ID);
-            request.SetRequestHeader("X-Naver-Client-Secret", CLIENT_SECRET);
+            request.SetRequestHeader("X-Naver-Client-Id", ClientId);
+            request.SetRequestHeader("X-Naver-Client-Secret", ClientSecret);
 
             yield return request.SendWebRequest();
 
