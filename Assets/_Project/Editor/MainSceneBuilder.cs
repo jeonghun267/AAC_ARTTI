@@ -17,7 +17,7 @@ namespace Artti.Editor
     //
     // 배치 원칙
     //  - 1번 합본이 레이아웃의 기준이다. 패널/캐릭터가 한 장이라 개별로 옮길 수 없으므로
-    //    글자와 버튼을 합본 픽셀 좌표(1672x941)에 맞춰 얹는다. 좌표는 전부 합본 px로 적고 C()로 변환한다.
+    //    글자와 버튼을 합본 위에 얹는다. 위치 값은 에디터 손배치 결과(Stage px)를 그대로 옮겼다.
     //  - 1920x1080 "Stage"를 화면 중앙에 두고 그 안에 배치한다. 캔버스는 Expand라 20:9 기기에서는
     //    Stage 좌우로 배경만 더 보이고 배치는 무너지지 않는다. 배경(2번)만 캔버스 전체를 덮는다.
     //  - 버튼 이미지는 글로우 투명 여백이 커서, 클릭 영역은 알약 본체 크기로 두고
@@ -52,7 +52,6 @@ namespace Artti.Editor
 
         // 합본 px -> Stage 단위. 1920 / 1672 = 1.14833
         const float S = 1920f / 1672f;
-        static Vector2 C(float x, float y) => new Vector2(x * S, -y * S);   // Stage 좌상단 기준 위치
 
         static readonly Color TextWhite = new Color(0.96f, 0.97f, 1f, 1f);
         static readonly Color TextSub   = new Color(0.84f, 0.88f, 1f, 0.92f);
@@ -109,17 +108,19 @@ namespace Artti.Editor
             panelsImg.preserveAspect = true;
             panelsImg.raycastTarget = false;
 
+            // 아래 위치/회전/크기 값은 손배치 결과(MainScene.unity, 2026-09-29)를 옮긴 것이다. 단위는 Stage px,
+            // Stage 좌상단 기준(y 아래가 -). 크기는 이미지 본체 비율로 계산되므로 폭만 적는다.
+
             // ===== 좌측 패널: 타이틀 + 프로필 보기 =====
-            // 좌측 패널 안쪽은 합본 x 45~370. 가운데 x 208에 맞춘다.
             var left = ChildRect("LeftGroup", stage);
             StretchFull(left);
             var title = ChildRect("Title", left);
-            PlaceImageByBody(title, TitlePath, BodyTitle, TitleAspect,
-                bodyCenter: C(208f, 105f + 300f / 2f * (1076f / 908f)), bodyWidth: 300f * S);
+            PlaceImageByBody(title, TitlePath, BodyTitle, TitleAspect, bodyCenter: Vector2.zero, bodyWidth: 300f * S);
+            title.anchoredPosition = new Vector2(238.9f, -438.0f);
             title.GetComponent<Image>().raycastTarget = false;
 
             var profileBtn = MakeImageButton("ProfileBtn", left, ProfilePath, BodyProfile, PillAspect,
-                bodyCenter: C(208f, 578f), bodyWidth: 320f * S);
+                bodyCenter: new Vector2(238.9f, -744.0f), bodyWidth: 367.5f);
             var pback = profileBtn.gameObject.AddComponent<Artti.Common.SceneBackButton>();
             pback.SetTarget("ProfileSelectScene");
             var pmethod = typeof(Artti.Common.SceneBackButton).GetMethod(nameof(Artti.Common.SceneBackButton.GoBack));
@@ -127,44 +128,47 @@ namespace Artti.Editor
             UnityEditor.Events.UnityEventTools.AddPersistentListener(profileBtn.onClick, paction);
 
             // ===== 훈련 카드 글자 + 버튼 =====
-            // 카드 윗변이 오른쪽으로 내려가는 기울기(약 7도)라 글자 묶음을 -4도 돌려 흐름을 맞춘다.
-            var train = Group("TrainGroup", stage, C(500f, 80f), -4f);
-            AddText(train, "Title", "훈련모드", font, 84, TextWhite, true, 0f, 0f, 380f, 100f);
-            AddText(train, "Desc", "다양한 상황에서 말을 연습해보세요.", font, 28, TextSub, false, 0f, 105f, 420f, 44f);
-            AddText(train, "Note", "함께\n연습하면\n더 잘할 수 있어요!", font, 22, TextNote, false, 10f, 165f, 240f, 110f);
-            // 버튼 오른쪽 끝(합본 x 800)이 캐릭터 손(x 820~)에 닿지 않게 폭 300.
+            // 카드 윗변 기울기에 맞춰 묶음을 -4도 돌린다. 자식 좌표는 묶음 좌상단 기준.
+            var train = Group("TrainGroup", stage, new Vector2(574.2f, -91.9f), -4f);
+            AddText(train, "Title", "훈련모드", font, 84, TextWhite, true, new Vector2(0f, 0f), new Vector2(436.4f, 114.8f));
+            AddText(train, "Desc", "다양한 상황에서 말을 연습해보세요.", font, 28, TextSub, false, new Vector2(0f, -120.6f), new Vector2(482.3f, 50.5f));
+            AddText(train, "Note", "함께\n연습하면\n더 잘할 수 있어요!", font, 22, TextNote, false, new Vector2(11.5f, -189.5f), new Vector2(275.6f, 126.3f));
             var trainBtn = MakeImageButton("TrainingModeBtn", train, TrainPath, BodyTrain, PillAspect,
-                bodyCenter: Local(-20f + 150f, 300f + 30f), bodyWidth: 300f * S);
-            // 카드 오른쪽 유리 창(합본 1300~1625, 210~385) 속 메모
-            var trainNote = Group("TrainSideNote", stage, C(1462f, 297f), -7f, centerPivot: true);
-            AddText(trainNote, "Note", "같이\n연습해요 :)", font, 30, TextNote, false, -130f, -60f, 260f, 120f, TextAlignmentOptions.Center);
+                bodyCenter: new Vector2(149.3f, -378.9f), bodyWidth: 344.5f);
+            // 카드 오른쪽 유리 창 속 메모
+            var trainNote = Group("TrainSideNote", stage, new Vector2(1678.9f, -341.1f), -7f, centerPivot: true);
+            AddText(trainNote, "Note", "같이\n연습해요 :)", font, 30, TextNote, false, new Vector2(-161.7f, 29.9f), new Vector2(298.6f, 137.8f),
+                TextAlignmentOptions.Center, rotZ: 14.3f);
 
             // ===== 현장 카드 글자 + 버튼 =====
-            // 안쪽 유리 창(합본 520~1060, 628~815) 안에 제목/설명/버튼을 넣는다. 카드 윗변이 오른쪽으로 올라가 +2.5도.
-            var ar = Group("ARGroup", stage, C(560f, 640f), 2.5f);
-            AddText(ar, "Title", "현장모드", font, 64, TextWhite, true, 0f, -8f, 320f, 72f);
-            AddText(ar, "Desc", "실생활에서 도움을 받아보세요.", font, 26, TextSub, false, 0f, 62f, 360f, 38f);
-            AddText(ar, "Note", "필요한 순간,\n언제나\n함께할게요.", font, 22, TextNote, false, 350f, 10f, 150f, 110f);
+            var ar = Group("ARGroup", stage, new Vector2(643.1f, -734.9f), 2.5f);
+            AddText(ar, "Title", "현장모드", font, 64, TextWhite, true, new Vector2(7.0f, 113.0f), new Vector2(367.5f, 82.7f), rotZ: -2.45f);
+            AddText(ar, "Desc", "실생활에서 도움을 받아보세요.", font, 26, TextSub, false, new Vector2(12.2f, -2.9f), new Vector2(413.4f, 43.6f), rotZ: -5.34f);
+            AddText(ar, "Note", "필요한 순간,\n언제나\n함께할게요.", font, 22, TextNote, false, new Vector2(425.0f, -56.0f), new Vector2(172.2f, 126.3f));
             var arBtn = MakeImageButton("ARFieldModeBtn", ar, HelpPath, BodyHelp, PillAspect,
-                bodyCenter: Local(150f, 142f), bodyWidth: 300f * S);
-            var arNote = Group("ARSideNote", stage, C(1490f, 590f), 3f, centerPivot: true);
-            AddText(arNote, "Note", "언제든\n도와드릴게요 :)", font, 26, TextNote, false, -120f, -45f, 240f, 90f, TextAlignmentOptions.Center);
+                bodyCenter: new Vector2(141.0f, -141.0f), bodyWidth: 344.5f);
+            arBtn.transform.localRotation = Quaternion.Euler(0f, 0f, -4.78f);
+            var arNote = Group("ARSideNote", stage, new Vector2(1711.0f, -677.5f), 3f, centerPivot: true);
+            AddText(arNote, "Note", "언제든\n도와드릴게요 :)", font, 26, TextNote, false, new Vector2(-137.8f, 51.7f), new Vector2(275.6f, 103.3f),
+                TextAlignmentOptions.Center);
 
             // ===== 우상단 버튼: 종료하기 / 리포트보기 / 설정 =====
-            // 본체 높이 64, 폭은 각 이미지 본체 비율. 오른쪽 끝 36 여백, 간격 18, 윗변 26.
-            var top = ChildRect("TopRightMenu", stage);
+            // Stage가 아니라 캔버스(화면) 우상단에 붙인다. 20:9 기기에서도 화면 모서리에 붙고, 16:9 밖으로 나가지 않는다.
+            // 손배치 값: 본체 높이 64에 배율 1.168, 버튼 사이 약 21. 가로 위치는 손배치 그대로(Stage 오른쪽 끝 기준으로 환산).
+            // 세로는 손배치 때 화면이 16:9보다 길어 Stage 위(+87)에 놓였는데, 16:9 폰에서는 화면 밖이 되므로
+            // 화면 윗변에서 TopMargin만큼 내린 자리로 고정한다.
+            var top = ChildRect("TopRightMenu", canvasGo.transform);
             StretchFull(top);
-            const float topH = 64f, topY = 26f + topH / 2f, gap = 18f;
+            const float topH = 64f, topScale = 1.168f, TopMargin = 24f;
+            float topY = -(TopMargin + topH * topScale / 2f);
             float wSet = topH * BodySetting.width * TopAspect / BodySetting.height;
             float wRep = topH * BodyReport.width * TopAspect / BodyReport.height;
             float wQuit = topH * BodyQuit.width * TopAspect / BodyQuit.height;
-            float xSet = 1920f - 36f - wSet / 2f;
-            float xRep = xSet - wSet / 2f - gap - wRep / 2f;
-            float xQuit = xRep - wRep / 2f - gap - wQuit / 2f;
-            var quitBtn = MakeImageButton("QuitBtn", top, QuitPath, BodyQuit, TopAspect, new Vector2(xQuit, -topY), wQuit);
-            var reportBtn = MakeImageButton("ReportBtn", top, ReportPath, BodyReport, TopAspect, new Vector2(xRep, -topY), wRep);
+            var quitBtn = MakeImageButton("QuitBtn", top, QuitPath, BodyQuit, TopAspect, new Vector2(1231.0f - 1920f, topY), wQuit, anchorRight: true);
+            var reportBtn = MakeImageButton("ReportBtn", top, ReportPath, BodyReport, TopAspect, new Vector2(1504.3f - 1920f, topY), wRep, anchorRight: true);
             // 설정씬 미구현. 모양만 있고 클릭 동작은 없다.
-            MakeImageButton("SettingsBtn", top, SettingPath, BodySetting, TopAspect, new Vector2(xSet, -topY), wSet);
+            var setBtn = MakeImageButton("SettingsBtn", top, SettingPath, BodySetting, TopAspect, new Vector2(1770.1f - 1920f, topY), wSet, anchorRight: true);
+            foreach (var b in new[] { quitBtn, reportBtn, setBtn }) b.transform.localScale = Vector3.one * topScale;
 
             var menu = canvasGo.AddComponent<HomeMenu>();
             WireClick(quitBtn, menu, nameof(HomeMenu.Quit));
@@ -190,7 +194,7 @@ namespace Artti.Editor
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[MainSceneBuilder] 완료 v3 (다크 네온 최종 시안)");
+            Debug.Log("[MainSceneBuilder] 완료 v4 (손배치 반영)");
         }
 
         // ===== 배치 헬퍼 =====
@@ -198,9 +202,6 @@ namespace Artti.Editor
         // 픽셀 좌표를 이미지 크기 대비 비율로
         static Rect Frac(float x0, float y0, float x1, float y1, float w, float h) =>
             Rect.MinMaxRect(x0 / w, y0 / h, x1 / w, y1 / h);
-
-        // Group 로컬 좌표(합본 px, 좌상단 기준, 아래가 +)를 Stage 단위로
-        static Vector2 Local(float x, float y) => new Vector2(x * S, -y * S);
 
         // 글자/버튼 묶음. pivot 좌상단(centerPivot이면 중앙)에서 rotZ만큼 돌린다.
         static RectTransform Group(string name, Transform parent, Vector2 pos, float rotZ, bool centerPivot = false)
@@ -235,12 +236,13 @@ namespace Artti.Editor
 
         // 루트 = 클릭 영역(본체 크기, 투명), 자식 Visual = 여백 포함 이미지.
         // 눌림/오버는 Visual 스케일로만 표현한다(HomeButtonGlow, glow 없음). 클릭 영역은 그대로.
+        // anchorRight면 부모 우상단 기준(bodyCenter.x가 음수)
         static Button MakeImageButton(string name, Transform parent, string path, Rect body, float aspect,
-            Vector2 bodyCenter, float bodyWidth)
+            Vector2 bodyCenter, float bodyWidth, bool anchorRight = false)
         {
             float bodyH = bodyWidth * (body.height / body.width) / aspect;
             var root = ChildRect(name, parent);
-            root.anchorMin = root.anchorMax = new Vector2(0f, 1f);
+            root.anchorMin = root.anchorMax = anchorRight ? new Vector2(1f, 1f) : new Vector2(0f, 1f);
             root.pivot = new Vector2(0.5f, 0.5f);
             root.anchoredPosition = bodyCenter;
             root.sizeDelta = new Vector2(bodyWidth, bodyH);
@@ -265,14 +267,15 @@ namespace Artti.Editor
             return btn;
         }
 
-        // x, y, w, h는 합본 px(부모 좌상단 기준, 아래가 +)
+        // pos/size는 Stage px(부모 좌상단 기준, 아래가 -)
         static TMP_Text AddText(Transform parent, string name, string text, TMP_FontAsset font, float size, Color color,
-            bool bold, float x, float y, float w, float h, TextAlignmentOptions align = TextAlignmentOptions.TopLeft)
+            bool bold, Vector2 pos, Vector2 boxSize, TextAlignmentOptions align = TextAlignmentOptions.TopLeft, float rotZ = 0f)
         {
             var rt = ChildRect(name, parent);
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 1f);
-            rt.anchoredPosition = Local(x, y);
-            rt.sizeDelta = new Vector2(w * S, h * S);
+            rt.anchoredPosition = pos;
+            rt.sizeDelta = boxSize;
+            rt.localRotation = Quaternion.Euler(0f, 0f, rotZ);
             var t = rt.gameObject.AddComponent<TextMeshProUGUI>();
             if (font != null) t.font = font;
             t.text = text;
