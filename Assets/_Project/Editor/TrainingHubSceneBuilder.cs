@@ -7,7 +7,7 @@ using Artti.UI;
 namespace Artti.Editor
 {
     // 말하기 훈련 시나리오 선택 화면. 가로 1920x1080. (완성본: kk.png)
-    // 편의점 카드 1개 = 글래스 카드(드롭섀도우 + 반투명 흰 바디 + 밝은 림).
+    // 편의점 카드 2개(정확도 모드 / 대화 모드) = 글래스 카드(드롭섀도우 + 반투명 흰 바디 + 밝은 림).
     //   각 카드: 컬러 원형 아이콘 + 제목 + 설명 + 둥근 매장 씬 이미지 + "연습하기" 버튼.
     // 하단: 글래스 팁바(파란 챗 마스코트 + 안내문).
     public static class TrainingHubSceneBuilder
@@ -35,6 +35,7 @@ namespace Artti.Editor
         const string HelperChat = ScenarioDir + "helper_chat.png";
 
         static readonly Vector2 CardSize = new Vector2(430, 720);
+        const float CardOffsetX = 390f; // 모드 카드 2장의 중심 x (±). 손배치 시안 기준 추정값
 
         [MenuItem("Artti/Build TrainingHubScene Hierarchy")]
         public static void BuildMenu() => Build();
@@ -59,20 +60,26 @@ namespace Artti.Editor
             var subtitle = MakeText("Subtitle", canvasGo.transform, "오늘은 어떤 연습을 해볼까요?", 40, SubColor, font, bold: false);
             PlaceTop(subtitle.rectTransform, new Vector2(0, -168), new Vector2(900, 64));
 
-            var convBtn = MakeScenarioCard(canvasGo.transform, "ConvenienceBtn", new Vector2(0, -30),
+            // 편의점 카드 2장: 좌 = 정확도 모드, 우 = 대화 모드
+            var accuracyBtn = MakeScenarioCard(canvasGo.transform, "AccuracyModeCard", new Vector2(-CardOffsetX, -30),
                 IconConvenience, CardConvenience, BtnBlue,
-                "편의점", "편의점에 방문하여\n물건을 구매해볼까요?", font);
+                "정확도 모드", "또렷하게 말하면\n다음으로 넘어가요", font);
+
+            var conversationBtn = MakeScenarioCard(canvasGo.transform, "ConversationModeCard", new Vector2(CardOffsetX, -30),
+                IconConvenience, CardConvenience, BtnBlue,
+                "대화 모드", "편하게 말해도\n대화가 이어져요", font);
 
             MakeTipBar(canvasGo.transform, font);
 
             var view = canvasGo.AddComponent<TrainingHubView>();
             var so = new SerializedObject(view);
-            so.FindProperty("convenienceBtn").objectReferenceValue = convBtn;
+            so.FindProperty("accuracyBtn").objectReferenceValue = accuracyBtn;
+            so.FindProperty("conversationBtn").objectReferenceValue = conversationBtn;
             so.ApplyModifiedProperties();
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[TrainingHubSceneBuilder] 완료 (글래스 카드 1개 + 팁바)");
+            Debug.Log("[TrainingHubSceneBuilder] 완료 (글래스 카드 2개 + 팁바)");
         }
 
         // ===== 시나리오 글래스 카드 → "연습하기" 버튼 반환 =====
@@ -223,7 +230,7 @@ namespace Artti.Editor
             var mImg = mascot.gameObject.AddComponent<Image>();
             mImg.sprite = LoadSprite(HelperChat); mImg.preserveAspect = true; mImg.raycastTarget = false;
 
-            var tip = MakeText("Tip", root, "원하는 시나리오를 선택하면, 연습이 시작돼요.", 34, TitleColor, font, bold: true);
+            var tip = MakeText("Tip", root, "원하는 모드를 선택하면, 연습이 시작돼요.", 34, TitleColor, font, bold: true);
             tip.alignment = TextAlignmentOptions.Center;
             tip.rectTransform.anchorMin = tip.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
             tip.rectTransform.pivot = new Vector2(0.5f, 0.5f);
