@@ -48,7 +48,8 @@ namespace Artti.Editor
 
             SceneBuilderUtils.CreateEventSystem();
             SceneBuilderUtils.EnsureAudioListener();
-            var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution);
+            // Expand: 16:9보다 긴 기기(20:9)에서 세로가 잘리지 않게. 16:9에서는 기존과 같다.
+            var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution, CanvasScaler.ScreenMatchMode.Expand);
             var canvas = canvasGo.transform;
 
             var font = LoadFont();
@@ -166,9 +167,18 @@ namespace Artti.Editor
             so.FindProperty("validationCloseButton").objectReferenceValue = valX;
             so.ApplyModifiedProperties();
 
+            // 1단계: 아바타 선택(다크 네온 시안). 폼 위를 덮고 있다가 '다음'을 누르면 닫혀 아래 폼(2단계)이 보인다.
+            // 폼의 기존 동물 아바타 그리드는 1단계가 대신하므로 숨긴다(수정 모드 호환을 위해 오브젝트는 남긴다).
+            foreach (var n in new[] { "Icon_Avatar", "Label_Avatar", "AvatarGrid" })
+            {
+                var t = canvas.Find(n);
+                if (t != null) t.gameObject.SetActive(false);
+            }
+            ProfileAvatarStepBuilder.Build(canvas, view, font);
+
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[ProfileCreateSceneBuilder] 완료 (글래스 카드 + 구름/나뭇잎 효과)");
+            Debug.Log("[ProfileCreateSceneBuilder] 완료 (1단계 아바타 선택 + 2단계 폼)");
         }
 
         // 전체화면 stretch 컨테이너 (구름/나뭇잎 레이어용)

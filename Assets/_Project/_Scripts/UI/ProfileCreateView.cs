@@ -44,6 +44,10 @@ namespace Artti.UI
         private AvatarItem[] _avatars;
         private AvatarItem _selected;
 
+        // 1단계(아바타 선택, ProfileAvatarStepView)에서 넘겨받은 아바타. 비어 있으면 아래 그리드 선택을 쓴다.
+        private string _avatarFromStep;
+        public void SetAvatar(string avatarId) => _avatarFromStep = avatarId;
+
         private void Start()
         {
             EnsureBootstrap();
@@ -90,7 +94,8 @@ namespace Artti.UI
         {
             int year = yearEnd - (yearDropdown.value - 1); // index 1 = yearEnd
             int month = monthDropdown.value;               // index 1 = 1월
-            string avatarId = _selected != null ? _selected.avatarId
+            string avatarId = !string.IsNullOrEmpty(_avatarFromStep) ? _avatarFromStep
+                : _selected != null ? _selected.avatarId
                 : (_avatars.Length > 0 ? _avatars[0].avatarId : "default");
             string nick = nameInput.text.Trim();
             var boot = AppBootstrap.Instance;
