@@ -296,7 +296,8 @@ namespace Artti.UI
                     row.iconImage.sprite = icon;
                     row.iconImage.enabled = icon != null;
                 }
-                if (row.nameText != null) row.nameText.text = $"{ReportLabels.ScenarioName(rec.scenarioId)} 상황 대화";
+                // 모드 표시: 정확도 모드 / 대화 모드 기록을 구분 (대화 모드 정답률은 "--")
+                if (row.nameText != null) row.nameText.text = $"{ReportLabels.ScenarioName(rec.scenarioId)} {TrainingModeContext.DisplayName(rec.mode)}";
                 if (row.subText != null) row.subText.text = ReportLabels.RecordComment(rec.completed, rec.accuracyPct);
                 if (row.statusText != null)
                 {

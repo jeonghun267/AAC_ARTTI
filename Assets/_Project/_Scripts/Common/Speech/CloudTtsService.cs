@@ -17,6 +17,7 @@ namespace Artti.Common.Speech
         // 변경점: 응답 없는 요청이 무한정 걸려 있지 않게 한다 (기본값 0 = 제한 없음).
         //   훈련 씬은 점원 음성이 끝나길 기다렸다가 마이크를 여므로 걸린 요청이 듣기를 막는다.
         private const int RequestTimeoutSeconds = 10;
+        private string _voiceName = "ko-KR-Standard-A"; // SetVoice로 교체 (훈련 모드별 점원 목소리)
 
         public CloudTtsService(string apiKey, AudioSource audioSource)
         {
@@ -33,7 +34,7 @@ namespace Artti.Common.Speech
             var req = new TtsRequest
             {
                 input = new TtsInput { text = text },
-                voice = new TtsVoice { languageCode = "ko-KR", name = "ko-KR-Standard-A" },
+                voice = new TtsVoice { languageCode = "ko-KR", name = _voiceName },
                 audioConfig = new TtsAudioConfig { audioEncoding = "LINEAR16", sampleRateHertz = SampleRate }
             };
             var jsonBody = JsonUtility.ToJson(req);
@@ -84,7 +85,10 @@ namespace Artti.Common.Speech
         {
             if (_audioSource != null) _audioSource.Stop();
         }
-        public void SetVoice(string voiceName) { }
+        public void SetVoice(string voiceName)
+        {
+            if (!string.IsNullOrWhiteSpace(voiceName)) _voiceName = voiceName;
+        }
 
         static AudioClip PcmToAudioClip(byte[] pcm16le, int sampleRate)
         {

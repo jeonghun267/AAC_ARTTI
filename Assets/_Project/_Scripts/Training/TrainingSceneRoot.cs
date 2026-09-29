@@ -81,9 +81,14 @@ namespace Artti.Training
         private string _freeTalkSystemPrompt;
         private bool _dashboardTurnBusy;
 
+        // 허브에서 고른 훈련 모드. 대화 모드는 어눌한 발화도 화면 문장으로 해석해 대화를 이어간다.
+        private TrainingMode _mode;
+        private bool IsConversationMode => _mode == TrainingMode.Conversation;
+
         private void Awake()
         {
             _dialogueManager = new DialogueManager();
+            _mode = TrainingModeContext.Mode;
 
             // .env: GEMINI_API_KEY + GOOGLE_TTS_API_KEY 사용. STT는 OS 네이티브(키 불필요).
             // Android 단말이 ko-KR TTS 언어 데이터를 지원 안 해서 TTS만 Cloud로 유지.
@@ -95,6 +100,7 @@ namespace Artti.Training
             _npcTtsService = npcSpeechSource != null
                 ? new CloudTtsService(ttsKey, npcSpeechSource)
                 : _ttsService;
+            _npcTtsService.SetVoice(TrainingModeContext.VoiceFor(_mode)); // 모드별 점원 목소리
 
             ISttService deviceStt;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -281,7 +287,7 @@ namespace Artti.Training
                 dashboardView.OnQuickPhraseSelected += HandleDashboardQuickPhraseSelected;
             }
 
-            _eventLogger?.LogScenarioEntered();
+            _eventLogger?.LogScenarioEntered(_mode);
             _eventLogger?.LogObjectiveEntered("greeting");
             _sessionStartUtc = System.DateTimeOffset.UtcNow;
             _objectivesEntered = 1;
@@ -719,13 +725,19 @@ namespace Artti.Training
                     return;
                 }
 
-                _dialogueManager.HandleUserTurn(card, sttResultP.text);
+                // 대화 모드: 어눌하게 말해도 탭한 카드 문장을 말한 것으로 보고 진행한다.
+                //   인식 원문·명료도는 위 LogCardSelected에서 이미 기록됐다.
+                var turnText = IsConversationMode && !string.IsNullOrWhiteSpace(card.phrase?.text)
+                    ? card.phrase.text
+                    : sttResultP.text;
+
+                _dialogueManager.HandleUserTurn(card, turnText);
 
                 // 변경점(Unit 3): LLM 주도 시나리오는 매 턴 Gemini가 응답·카드·진행을 결정.
                 //   카드 탭 = 발화 보조일 뿐, 단계 진행은 Gemini 도구 호출로만 (자동 진행 제거).
                 if (_useGemini)
                 {
-                    await RunGeminiTurn(card, sttResultP.text);
+                    await RunGeminiTurn(card, turnText);
                     return;
                 }
 
@@ -835,6 +847,7 @@ namespace Artti.Training
             _dashboardTurnBusy = true;
             dashboardView?.SetInteractionEnabled(false);
             string recognized = null;
+            string utterance = null; // 대화에 넘길 문장. 정확도 모드 = 인식 원문, 대화 모드 = 후보 문장으로 해석한 결과
             SttResult spoken = default;
             try
             {
@@ -860,6 +873,12 @@ namespace Artti.Training
                     SpeakNpc("괜찮아요. 오른쪽 말하기 문장을 보고 다시 말해볼까요?", isFallback: true);
                     return;
                 }
+
+                // 대화 모드: 어눌하게 말해도 화면 후보 문장으로 해석해 진행한다 (규칙 -> 애매하면 AI -> 추천 문장).
+                //   인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다. 정확도 모드는 기존 흐름 그대로.
+                utterance = IsConversationMode && dashboardView != null
+                    ? await ResolveConversationUtteranceAsync(recognized, clarityTarget, _cts.Token)
+                    : recognized;
             }
             finally
             {
@@ -869,16 +888,61 @@ namespace Artti.Training
 
             bool captureWater = IsConvenienceItemSelectionStep()
                                 && string.Equals(
-                                    recognized?.Trim().TrimEnd('?', '!', '.', '…'),
+                                    utterance?.Trim().TrimEnd('?', '!', '.', '…'),
                                     "물 주세요",
                                     System.StringComparison.Ordinal);
             RunDashboardTurn(
                 "guided_voice",
                 "음성으로 말하기",
-                recognized,
+                utterance,
                 false,
                 captureWater ? "물" : null,
                 spoken).Forget();
+        }
+
+        // 대화 모드 문장 해석: 1) 규칙(틀린 글자 수)으로 확실하면 바로 결정
+        //   2) 애매하면 Gemini가 뜻으로 판단 (최대 ConversationJudgeTimeoutSeconds초)
+        //   3) Gemini도 못 고르거나 늦으면 추천 문장
+        private const float ConversationJudgeTimeoutSeconds = 3f;
+
+        private async UniTask<string> ResolveConversationUtteranceAsync(string recognized, string target, CancellationToken ct)
+        {
+            var candidates = dashboardView.GetSpeechCandidates().ToList();
+            if (ConvenienceQuickPhrasePolicy.TryMatchCandidate(recognized, target, candidates, out var match))
+            {
+                Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(규칙): '{recognized}' -> '{match}'");
+                return match;
+            }
+
+            if (_geminiService != null && candidates.Count > 0)
+            {
+                using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    timeout.CancelAfterSlim(System.TimeSpan.FromSeconds(ConversationJudgeTimeoutSeconds), DelayType.Realtime);
+                    hud?.ShowThinking(true);
+                    try
+                    {
+                        int index = await _geminiService.RequestPhraseMatchAsync(recognized, candidates, timeout.Token);
+                        if (index >= 0)
+                        {
+                            Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(AI): '{recognized}' -> '{candidates[index]}'");
+                            return candidates[index];
+                        }
+                    }
+                    catch (System.OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        Debug.LogWarning("[TrainingSceneRoot] 대화 모드 AI 판단 시간 초과 — 추천 문장으로 진행");
+                    }
+                    finally
+                    {
+                        hud?.ShowThinking(false);
+                    }
+                }
+            }
+
+            var fallback = ConvenienceQuickPhrasePolicy.ConversationFallback(recognized, target);
+            Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(폴백): '{recognized}' -> '{fallback}'");
+            return fallback;
         }
 
         private void StartFreeTalk()

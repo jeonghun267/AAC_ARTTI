@@ -26,6 +26,7 @@ namespace Artti.Editor
 
         // 편의점 테마색 (파랑) — 카드 테두리 글로우용
         static readonly Color ThemeBlue   = new Color(0.23f, 0.51f, 0.96f, 1f);
+        static readonly Color ThemeOrange = new Color(0.98f, 0.60f, 0.20f, 1f); // 대화 모드 카드 후광 (정확도 모드는 파랑)
 
         const string RoundedPath  = "Assets/_Project/Art/UI/RoundedRect.png";
         const string ScenarioDir  = "Assets/_Project/Art/UI/Scenario/";
@@ -62,11 +63,11 @@ namespace Artti.Editor
 
             // 편의점 카드 2장: 좌 = 정확도 모드, 우 = 대화 모드
             var accuracyBtn = MakeScenarioCard(canvasGo.transform, "AccuracyModeCard", new Vector2(-CardOffsetX, -30),
-                IconConvenience, CardConvenience, BtnBlue,
+                IconConvenience, CardConvenience, BtnBlue, ThemeBlue,
                 "정확도 모드", "또렷하게 말하면\n다음으로 넘어가요", font);
 
             var conversationBtn = MakeScenarioCard(canvasGo.transform, "ConversationModeCard", new Vector2(CardOffsetX, -30),
-                IconConvenience, CardConvenience, BtnBlue,
+                IconConvenience, CardConvenience, BtnBlue, ThemeOrange,
                 "대화 모드", "편하게 말해도\n대화가 이어져요", font);
 
             MakeTipBar(canvasGo.transform, font);
@@ -84,9 +85,9 @@ namespace Artti.Editor
 
         // ===== 시나리오 글래스 카드 → "연습하기" 버튼 반환 =====
         static Button MakeScenarioCard(Transform parent, string goName, Vector2 pos,
-            string iconPath, string cardImagePath, string buttonPath, string title, string desc, TMP_FontAsset font)
+            string iconPath, string cardImagePath, string buttonPath, Color theme, string title, string desc, TMP_FontAsset font)
         {
-            var root = MakeGlassCard(parent, goName, pos, CardSize, 0.6f, ThemeBlue);
+            var root = MakeGlassCard(parent, goName, pos, CardSize, 0.6f, theme);
 
             // 마우스 hover 시 살짝 커지고 떠오르며 그림자 강화
             AddHover(root);

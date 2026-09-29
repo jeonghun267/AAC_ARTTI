@@ -89,6 +89,43 @@ namespace Artti.Training
             }
         }
 
+        // 대화 모드 AI 판단: 인식된 말이 후보 문장 중 어느 것과 같은 뜻인지 고른다.
+        //   반환: 후보 인덱스(0부터). 같은 뜻이 없거나 실패·키없음이면 -1. 취소(OperationCanceledException)는 호출 측으로 전파.
+        public async UniTask<int> RequestPhraseMatchAsync(
+            string heard,
+            IReadOnlyList<string> candidates,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(heard) || candidates == null || candidates.Count == 0) return -1;
+
+            const string systemPrompt =
+                "You match what a Korean customer said to one of the given Korean phrases by meaning. " +
+                "The text comes from speech recognition of a person with a developmental disability, so it may be misspelled or garbled. " +
+                "Reply with only the number of the phrase that has the same meaning, or 0 if none match. No other text.";
+
+            var sb = new StringBuilder();
+            sb.Append("Customer said: \"").Append(heard).Append("\"\nPhrases:\n");
+            for (int i = 0; i < candidates.Count; i++)
+                sb.Append(i + 1).Append(". ").Append(candidates[i]).Append('\n');
+
+            var raw = await SendAsync(BuildBody(systemPrompt, sb.ToString()), ct);
+            if (raw == null) return -1;
+
+            try
+            {
+                var parts = JObject.Parse(raw)["candidates"]?[0]?["content"]?["parts"] as JArray;
+                var text = parts?.Select(p => p["text"]?.ToString()).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+                var digits = new string((text ?? string.Empty).Where(char.IsDigit).ToArray());
+                if (!int.TryParse(digits, out var number)) return -1;
+                return number >= 1 && number <= candidates.Count ? number - 1 : -1;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Gemini] 문장 판단 파싱 실패: {e.Message}\n{raw}");
+                return -1;
+            }
+        }
+
         // system_instruction + contents 공통 골격.
         private static JObject BuildBody(string systemPrompt, string userPrompt) => new JObject
         {

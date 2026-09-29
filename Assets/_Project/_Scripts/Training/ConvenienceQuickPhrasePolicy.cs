@@ -253,6 +253,49 @@ namespace Artti.Training
             return true;
         }
 
+        // 대화 모드: 어눌한 인식 문장을 화면 후보 문장 중 가장 가까운 것으로 해석한다.
+        //   어느 후보와도 충분히 가깝지 않으면(편집 거리 > 후보 글자 수의 절반) 추천 문장(target)을 말한 것으로 본다.
+        //   동점이면 추천 문장을 우선한다. 인식 원문과 명료도 기록은 호출 측 책임.
+        public static string ResolveConversationUtterance(string recognized, string target, IEnumerable<string> candidates)
+        {
+            if (TryMatchCandidate(recognized, target, candidates, out var match)) return match;
+            return ConversationFallback(recognized, target);
+        }
+
+        // 규칙 판정만: 기준 이내로 가까운 후보가 있으면 true. 없으면(애매함) 호출 측이 AI 판단 또는 폴백을 쓴다.
+        public static bool TryMatchCandidate(string recognized, string target, IEnumerable<string> candidates, out string match)
+        {
+            match = null;
+            var r = NormalizeSpeech(recognized);
+            string best = null;
+            int bestDistance = int.MaxValue;
+            int bestLength = 0;
+
+            if (r.Length > 0 && candidates != null)
+            {
+                foreach (var candidate in candidates)
+                {
+                    var c = NormalizeSpeech(candidate);
+                    if (c.Length == 0) continue;
+                    int d = EditDistance(r, c);
+                    if (d < bestDistance || (d == bestDistance && candidate == target))
+                    {
+                        best = candidate;
+                        bestDistance = d;
+                        bestLength = c.Length;
+                    }
+                }
+            }
+
+            if (best == null || bestDistance > Math.Max(1, bestLength / 2)) return false;
+            match = best;
+            return true;
+        }
+
+        // 규칙도 AI도 고르지 못했을 때: 추천 문장, 추천 문장이 없으면 인식 원문 그대로
+        public static string ConversationFallback(string recognized, string target) =>
+            string.IsNullOrWhiteSpace(target) ? recognized : target;
+
         // 공백·문장부호·따옴표를 뺀 비교용 문자열
         private static string NormalizeSpeech(string s)
         {
