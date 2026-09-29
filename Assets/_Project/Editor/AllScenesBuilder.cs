@@ -12,7 +12,7 @@ namespace Artti.Editor
 
             if (!EditorUtility.DisplayDialog(
                 "Build All Scenes",
-                "7개 씬을 모두 자동 빌드합니다. 기존 GameObject가 삭제될 수 있습니다. 계속하시겠습니까?",
+                "6개 씬을 모두 자동 빌드합니다. 기존 GameObject가 삭제될 수 있습니다. 계속하시겠습니까?",
                 "빌드", "취소"))
             {
                 return;
@@ -25,13 +25,11 @@ namespace Artti.Editor
                 ProfileSelectSceneBuilder.Build();
                 MainSceneBuilder.Build();
                 TrainingHubSceneBuilder.Build();
-                TrainingSceneBuilder.Build(ScenePaths.TrainingPharmacy,   "pharmacy");
                 ConvenienceTrainingSceneBuilder.Build();
-                TrainingSceneBuilder.Build(ScenePaths.TrainingRestaurant,  "restaurant");
                 // ARFieldScene은 손배치 씬(커밋이 원본) — 일괄 빌드에서 제외. 필요 시 개별 메뉴(확인 다이얼로그)로만
 
-                Debug.Log("[AllScenesBuilder] 9개 씬 빌드 + Build Settings 등록 완료");
-                EditorUtility.DisplayDialog("완료", "9개 씬 빌드 완료\nBuild Settings 등록됨 (0=Splash)", "확인");
+                Debug.Log("[AllScenesBuilder] 6개 씬 빌드 + Build Settings 등록 완료");
+                EditorUtility.DisplayDialog("완료", "6개 씬 빌드 완료\nBuild Settings 등록됨 (0=Splash)", "확인");
             }
             catch (System.Exception e)
             {
@@ -52,9 +50,7 @@ namespace Artti.Editor
                 ScenePaths.ProfileSelect,
                 ScenePaths.Main,
                 ScenePaths.TrainingHub,
-                ScenePaths.TrainingPharmacy,
                 ScenePaths.TrainingConvenience,
-                ScenePaths.TrainingRestaurant,
                 ScenePaths.ARField,
                 ScenePaths.Report,
             };

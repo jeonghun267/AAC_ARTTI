@@ -151,15 +151,15 @@ namespace Artti.Editor
             var rmTitle = MakeText("RecommendTitle", rm, "추천 다음 연습", 22, Ink, font, bold: true);
             rmTitle.alignment = TextAlignmentOptions.Left;
             Slot(rmTitle.rectTransform, rm, 0.455f, 0.215f, 0.47f, 0.16f);
-            var rmName = MakeText("RecommendName", rm, "음식점 주문하기", 22, Ink, font, bold: true);
+            var rmName = MakeText("RecommendName", rm, "편의점에서 물건 사기", 22, Ink, font, bold: true);
             rmName.alignment = TextAlignmentOptions.Left;
             AutoSize(rmName, 12, 22);
             Slot(rmName.rectTransform, rm, 0.595f, 0.52f, 0.51f, 0.19f);
-            var rmDesc = MakeText("RecommendDesc", rm, "실생활에 바로 쓰는 표현을 연습해보세요!", 15, SubColor, font, bold: false);
+            var rmDesc = MakeText("RecommendDesc", rm, "계산할 때 쓰는 표현을 연습해보세요!", 15, SubColor, font, bold: false);
             rmDesc.alignment = TextAlignmentOptions.Left;
             AutoSize(rmDesc, 9, 15);
             Slot(rmDesc.rectTransform, rm, 0.595f, 0.74f, 0.51f, 0.18f);
-            // 음식점 외 추천 시 베이크된 음식 이미지를 덮는 타일 + 시나리오 아이콘 (ReportView가 토글)
+            // 베이크된 음식 이미지를 덮는 타일 + 편의점 아이콘 (ReportView가 켬)
             var rmTile = ChildRect("RecommendIconTile", rm);
             Slot(rmTile, rm, 0.185f, 0.615f, 0.21f, 0.43f);
             var rmTileImg = rmTile.gameObject.AddComponent<Image>();
@@ -249,8 +249,6 @@ namespace Artti.Editor
             WireArray(so, "recordRows", recordRows);
             so.FindProperty("moreBtn").objectReferenceValue = moreBtn;
             so.FindProperty("convenienceIcon").objectReferenceValue = LoadPhotoSprite(OODir + "ic_convenience.png");
-            so.FindProperty("pharmacyIcon").objectReferenceValue = LoadPhotoSprite(OODir + "ic_pharmacy.png");
-            so.FindProperty("restaurantIcon").objectReferenceValue = LoadPhotoSprite(OODir + "ic_restaurant.png");
 
             so.FindProperty("allSessionsPanel").objectReferenceValue = allSessionsPanel;
             so.FindProperty("allSessionsContainer").objectReferenceValue = allSessionsContent;
@@ -432,7 +430,7 @@ namespace Artti.Editor
             var iconImg = icon.gameObject.AddComponent<Image>();
             iconImg.preserveAspect = true; iconImg.raycastTarget = false;
 
-            var nameText = MakeText("Name", root.transform, "약국", 40, TitleColor, font, bold: true);
+            var nameText = MakeText("Name", root.transform, "편의점", 40, TitleColor, font, bold: true);
             nameText.alignment = TextAlignmentOptions.Left;
             AnchorLeft(nameText.rectTransform, new Vector2(268, 22), new Vector2(440, 54));
             var dateText = MakeText("Date", root.transform, "", 26, SubColor, font, bold: false);

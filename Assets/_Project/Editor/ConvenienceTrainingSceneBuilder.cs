@@ -10,7 +10,6 @@ namespace Artti.Editor
     // 편의점 훈련 씬 전용 빌더. 가로 1920x1080 태블릿. (시안: 바탕화면 1~10.png)
     // 배경 사진 + 캐릭터 RenderTexture 자리 + 상단 스테퍼/일시정지 + NPC 말풍선(스피커) +
     // 하단 AAC 카드 가로 풀 + 사용자 발화 버블 + 생각중/칭찬 + 완료 화면.
-    // 공유 TrainingSceneBuilder(약국 동결)는 건드리지 않는다.
     public static class ConvenienceTrainingSceneBuilder
     {
         static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
@@ -300,7 +299,7 @@ namespace Artti.Editor
             var uiView = canvasGo.AddComponent<TrainingUIView>();
             var soView = new SerializedObject(uiView);
             soView.FindProperty("npcDialoguePanel").objectReferenceValue = npcText;
-            var slotsProp = soView.FindProperty("pharmacyCardSlots");
+            var slotsProp = soView.FindProperty("cardPoolSlots");
             slotsProp.arraySize = poolSlots.Length;
             for (int i = 0; i < poolSlots.Length; i++)
                 slotsProp.GetArrayElementAtIndex(i).objectReferenceValue = poolSlots[i];

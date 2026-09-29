@@ -46,8 +46,6 @@ namespace Artti.UI
         [SerializeField] private ReportRecordRow[] recordRows;   // 클릭 -> 해당 세션 상세
         [SerializeField] private Button moreBtn;                 // "전체 보기"
         [SerializeField] private Sprite convenienceIcon;
-        [SerializeField] private Sprite pharmacyIcon;
-        [SerializeField] private Sprite restaurantIcon;
 
         [Header("전체 학습 기록 (전체 보기)")]
         [SerializeField] private GameObject allSessionsPanel;
@@ -65,7 +63,7 @@ namespace Artti.UI
         [SerializeField] private TMP_Text recommendTitleText;
         [SerializeField] private TMP_Text recommendDescText;
         [SerializeField] private Button recommendBtn;            // 카드 전체 -> 해당 훈련 씬
-        [SerializeField] private GameObject recommendIconTile;   // 음식점 외 추천 시 baked 음식 이미지를 덮는 타일
+        [SerializeField] private GameObject recommendIconTile;   // baked 음식 이미지를 덮는 타일 (편의점 아이콘 표시)
         [SerializeField] private Image recommendIcon;
 
         private static readonly Color CompletedBg   = new Color32(220, 243, 229, 255);
@@ -180,7 +178,7 @@ namespace Artti.UI
                     if (card.nameText != null) card.nameText.text = ReportLabels.ScenarioName(session.scenarioId);
                     if (card.iconImage != null)
                     {
-                        var icon = IconFor(session.scenarioId);
+                        var icon = convenienceIcon;
                         card.iconImage.sprite = icon;
                         card.iconImage.enabled = icon != null;
                     }
@@ -215,16 +213,6 @@ namespace Artti.UI
 
             if (listPanel != null) listPanel.SetActive(false);
             if (allSessionsPanel != null) allSessionsPanel.SetActive(true);
-        }
-
-        private Sprite IconFor(string scenarioId)
-        {
-            switch (scenarioId)
-            {
-                case "pharmacy":   return pharmacyIcon;
-                case "restaurant": return restaurantIcon;
-                default:           return convenienceIcon;
-            }
         }
 
         // ===== 대시보드 =====
@@ -269,9 +257,9 @@ namespace Artti.UI
             _recommendedScenario = _service.GetRecommendedScenario();
             if (recommendTitleText != null) recommendTitleText.text = ReportLabels.ScenarioTaskTitle(_recommendedScenario);
             if (recommendDescText != null) recommendDescText.text = ReportLabels.ScenarioTaskDesc(_recommendedScenario);
-            bool coverFood = _recommendedScenario != "restaurant"; // 카드 이미지에 음식이 박혀 있어 다른 시나리오면 타일로 덮음
-            if (recommendIconTile != null) recommendIconTile.SetActive(coverFood);
-            if (recommendIcon != null) { recommendIcon.sprite = IconFor(_recommendedScenario); recommendIcon.enabled = coverFood && recommendIcon.sprite != null; }
+            // 카드 이미지에 음식이 박혀 있어 항상 타일 + 편의점 아이콘으로 덮는다
+            if (recommendIconTile != null) recommendIconTile.SetActive(true);
+            if (recommendIcon != null) { recommendIcon.sprite = convenienceIcon; recommendIcon.enabled = recommendIcon.sprite != null; }
 
             RefreshRecords();
             if (moreBtn != null) moreBtn.interactable = HasActiveProfile();
@@ -304,7 +292,7 @@ namespace Artti.UI
                 row.gameObject.SetActive(true);
                 if (row.iconImage != null)
                 {
-                    var icon = IconFor(rec.scenarioId);
+                    var icon = convenienceIcon;
                     row.iconImage.sprite = icon;
                     row.iconImage.enabled = icon != null;
                 }
@@ -349,17 +337,7 @@ namespace Artti.UI
 
         private void HandleRecommend()
         {
-            SceneManager.LoadScene(TrainingScene(_recommendedScenario));
-        }
-
-        private static string TrainingScene(string scenarioId)
-        {
-            switch (scenarioId)
-            {
-                case "convenience": return "TrainingConvenienceScene";
-                case "restaurant":  return "TrainingRestaurantScene";
-                default:            return "TrainingPharmacyScene";
-            }
+            SceneManager.LoadScene("TrainingConvenienceScene");
         }
 
         private void HandleShare()

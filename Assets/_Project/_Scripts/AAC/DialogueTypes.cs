@@ -33,7 +33,7 @@ namespace Artti.AAC
         ForceCompleteScenario // turn 상한 또는 반복 실패 시 강제 마무리
     }
 
-    // Common scenario IDs (mirror scenarios.json scenarioId field)
+    // Common scenario IDs. 훈련모드는 Convenience만 사용. Pharmacy/Restaurant는 AR현장모드 카드 조회용으로 유지.
     public static class ScenarioIds
     {
         public const string Pharmacy    = "pharmacy";

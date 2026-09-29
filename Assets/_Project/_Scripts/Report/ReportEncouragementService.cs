@@ -201,7 +201,7 @@ namespace Artti.Report
             string stats = BuildStatsText(overview);
             string systemPrompt =
                 "당신은 발달장애인 학습자를 돕는 다정한 코치입니다. " +
-                "약국/편의점/음식점 상황의 '말하기 연습' 앱입니다. " +
+                "편의점 상황의 '말하기 연습' 앱입니다. " +
                 "아래 학습 기록을 근거로 오늘 도전할 '일일 미션' 1개와 이번 주 도전할 '주간 미션' 1개를 제안하세요. " +
                 "각 미션은 구체적이고 실천 가능하며 부담 없게. 각 20자 이내, 이모지 금지. " +
                 (string.IsNullOrEmpty(nickname) ? "" : $"대상은 '{nickname}님'입니다. ") +
@@ -293,7 +293,7 @@ namespace Artti.Report
             string stats = BuildStatsText(overview);
             string systemPrompt =
                 "당신은 발달장애인 학습자를 돕는 다정한 코치입니다. " +
-                "약국/편의점/음식점 상황의 '말하기 연습' 앱입니다. " +
+                "편의점 상황의 '말하기 연습' 앱입니다. " +
                 "아래 학습 기록을 근거로 'AI 피드백' 카드에 들어갈 짧은 한국어 피드백을 쓰세요. " +
                 "구성: 1줄 칭찬, 1줄 잘한 점(가장 많이 완료한 시나리오 언급), 1~2줄 다음에 시도할 점. " +
                 "규칙: 줄바꿈으로 구분한 3~4줄, 각 줄 22자 이내, 이모지 금지, 숫자 나열 금지, 따옴표 없이 문구만 출력. " +
@@ -340,7 +340,7 @@ namespace Artti.Report
         {
             string who = string.IsNullOrEmpty(nickname) ? "" : $"{nickname}님, ";
             if (o == null || o.totalAttempts == 0)
-                return $"{who}첫 연습을 시작해봐요!\n약국이나 편의점부터\n천천히 해보면 좋아요.";
+                return $"{who}첫 연습을 시작해봐요!\n편의점에서\n천천히 해보면 좋아요.";
 
             string best = null; int bestN = 0;
             foreach (var kv in o.completedByScenario)

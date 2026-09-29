@@ -7,14 +7,11 @@ using Artti.UI;
 namespace Artti.Editor
 {
     // 말하기 훈련 시나리오 선택 화면. 가로 1920x1080. (완성본: kk.png)
-    // 카드 3개(편의점/약국/음식점) = 글래스 카드(드롭섀도우 + 반투명 흰 바디 + 밝은 림).
+    // 편의점 카드 1개 = 글래스 카드(드롭섀도우 + 반투명 흰 바디 + 밝은 림).
     //   각 카드: 컬러 원형 아이콘 + 제목 + 설명 + 둥근 매장 씬 이미지 + "연습하기" 버튼.
     // 하단: 글래스 팁바(파란 챗 마스코트 + 안내문).
     public static class TrainingHubSceneBuilder
     {
-        // 카드별 업종 환경 효과 구분
-        enum CardKind { Convenience, Pharmacy, Restaurant }
-
         static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
 
         static readonly Color32 BgColor    = new Color32(233, 239, 250, 255);
@@ -27,30 +24,14 @@ namespace Artti.Editor
         static readonly Color GlassFill   = new Color(1f, 1f, 1f, 0.62f);   // 반투명 프로스트 내부
         static readonly Color GlassShadow = new Color(0.15f, 0.20f, 0.42f, 0.16f);
 
-        // 업종 테마색 (편의점 파랑 / 약국 초록 / 음식점 주황) — 카드 테두리 글로우용
+        // 편의점 테마색 (파랑) — 카드 테두리 글로우용
         static readonly Color ThemeBlue   = new Color(0.23f, 0.51f, 0.96f, 1f);
-        static readonly Color ThemeGreen  = new Color(0.18f, 0.72f, 0.42f, 1f);
-        static readonly Color ThemeOrange = new Color(0.96f, 0.60f, 0.18f, 1f);
-
-        static Color ThemeColor(CardKind kind) => kind switch
-        {
-            CardKind.Convenience => ThemeBlue,
-            CardKind.Pharmacy    => ThemeGreen,
-            CardKind.Restaurant  => ThemeOrange,
-            _                    => ThemeBlue,
-        };
 
         const string RoundedPath  = "Assets/_Project/Art/UI/RoundedRect.png";
         const string ScenarioDir  = "Assets/_Project/Art/UI/Scenario/";
         const string CardConvenience = ScenarioDir + "card_convenience.png";
-        const string CardPharmacy    = ScenarioDir + "card_pharmacy.png";
-        const string CardRestaurant  = ScenarioDir + "card_restaurant.png";
         const string IconConvenience = ScenarioDir + "icon_convenience.png";
-        const string IconPharmacy    = ScenarioDir + "icon_pharmacy.png";
-        const string IconRestaurant  = ScenarioDir + "icon_restaurant.png";
         const string BtnBlue   = ScenarioDir + "btn_practice_blue.png";
-        const string BtnGreen  = ScenarioDir + "btn_practice_green.png";
-        const string BtnOrange = ScenarioDir + "btn_practice_orange.png";
         const string HelperChat = ScenarioDir + "helper_chat.png";
 
         static readonly Vector2 CardSize = new Vector2(430, 720);
@@ -78,37 +59,27 @@ namespace Artti.Editor
             var subtitle = MakeText("Subtitle", canvasGo.transform, "오늘은 어떤 연습을 해볼까요?", 40, SubColor, font, bold: false);
             PlaceTop(subtitle.rectTransform, new Vector2(0, -168), new Vector2(900, 64));
 
-            var convBtn = MakeScenarioCard(canvasGo.transform, "ConvenienceBtn", new Vector2(-480, -30),
+            var convBtn = MakeScenarioCard(canvasGo.transform, "ConvenienceBtn", new Vector2(0, -30),
                 IconConvenience, CardConvenience, BtnBlue,
-                "편의점", "편의점에 방문하여\n물건을 구매해볼까요?", font, CardKind.Convenience);
-            var pharmBtn = MakeScenarioCard(canvasGo.transform, "PharmacyBtn", new Vector2(0, -30),
-                IconPharmacy, CardPharmacy, BtnGreen,
-                "약국", "약국에 방문하여\n필요한 약품을 구매해보아요.", font, CardKind.Pharmacy);
-            var restBtn = MakeScenarioCard(canvasGo.transform, "RestaurantBtn", new Vector2(480, -30),
-                IconRestaurant, CardRestaurant, BtnOrange,
-                "음식점", "음식점에 방문하여\n음식을 주문하고 픽업해볼까요?", font, CardKind.Restaurant);
+                "편의점", "편의점에 방문하여\n물건을 구매해볼까요?", font);
 
             MakeTipBar(canvasGo.transform, font);
 
             var view = canvasGo.AddComponent<TrainingHubView>();
             var so = new SerializedObject(view);
             so.FindProperty("convenienceBtn").objectReferenceValue = convBtn;
-            so.FindProperty("pharmacyBtn").objectReferenceValue = pharmBtn;
-            so.FindProperty("restaurantBtn").objectReferenceValue = restBtn;
             so.ApplyModifiedProperties();
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[TrainingHubSceneBuilder] 완료 (글래스 카드 3개 + 팁바)");
+            Debug.Log("[TrainingHubSceneBuilder] 완료 (글래스 카드 1개 + 팁바)");
         }
 
         // ===== 시나리오 글래스 카드 → "연습하기" 버튼 반환 =====
         static Button MakeScenarioCard(Transform parent, string goName, Vector2 pos,
-            string iconPath, string cardImagePath, string buttonPath, string title, string desc, TMP_FontAsset font,
-            CardKind kind)
+            string iconPath, string cardImagePath, string buttonPath, string title, string desc, TMP_FontAsset font)
         {
-            var theme = ThemeColor(kind);
-            var root = MakeGlassCard(parent, goName, pos, CardSize, 0.6f, theme);
+            var root = MakeGlassCard(parent, goName, pos, CardSize, 0.6f, ThemeBlue);
 
             // 마우스 hover 시 살짝 커지고 떠오르며 그림자 강화
             AddHover(root);
@@ -141,7 +112,7 @@ namespace Artti.Editor
             var sceneImg = scene.gameObject.AddComponent<Image>();
             sceneImg.sprite = sceneSp; sceneImg.preserveAspect = true; sceneImg.raycastTarget = false;
 
-            // 업종별 환경 효과 — 평소엔 숨기고 hover/터치 중에만 표시
+            // 매장 환경 효과 — 평소엔 숨기고 hover/터치 중에만 표시
             var ambience = ChildRect("Ambience", scene);
             StretchFull(ambience, 0);
             var ambienceCg = ambience.gameObject.AddComponent<CanvasGroup>();
@@ -149,12 +120,7 @@ namespace Artti.Editor
             ambienceCg.interactable = false;
             ambienceCg.blocksRaycasts = false;
 
-            switch (kind)
-            {
-                case CardKind.Convenience: AddConvenienceAmbience(ambience); break;
-                case CardKind.Pharmacy:    AddPharmacyAmbience(ambience);    break;
-                case CardKind.Restaurant:  AddRestaurantAmbience(ambience);  break;
-            }
+            AddConvenienceAmbience(ambience);
 
             // hover 효과에 ambience 페이드 연결
             var hoverFx = root.GetComponent<CardHoverEffect>();
@@ -205,7 +171,7 @@ namespace Artti.Editor
             }
         }
 
-        // ===== 업종별 환경 효과 =====
+        // ===== 매장 환경 효과 =====
         // 편의점: 상품 반짝임 (여러 점이 짧게 깜빡이며 반짝)
         static void AddConvenienceAmbience(RectTransform parent)
         {
@@ -237,96 +203,6 @@ namespace Artti.Editor
             arr.arraySize = sparkles.Length;
             for (int i = 0; i < sparkles.Length; i++) arr.GetArrayElementAtIndex(i).objectReferenceValue = sparkles[i];
             so.ApplyModifiedProperties();
-        }
-
-        // 약국: 십자가 은은한 펄스 (초록 십자 + 후광이 알파/스케일로 펄스)
-        static void AddPharmacyAmbience(RectTransform parent)
-        {
-            var cross = ChildRect("Cross", parent);
-            cross.anchorMin = cross.anchorMax = new Vector2(0.78f, 0.80f); // 우상단 간판 자리
-            cross.pivot = new Vector2(0.5f, 0.5f);
-            cross.anchoredPosition = Vector2.zero;
-            cross.sizeDelta = new Vector2(66, 66);
-            cross.gameObject.AddComponent<CanvasGroup>().alpha = 0.85f; // 에디터 미리보기용 초기값
-
-            var green = new Color(0.18f, 0.72f, 0.42f, 1f);
-
-            // 후광 (십자 뒤, 가장 먼저 생성 → 뒤에 렌더)
-            var halo = ChildRect("Halo", cross);
-            halo.anchorMin = halo.anchorMax = new Vector2(0.5f, 0.5f); halo.pivot = new Vector2(0.5f, 0.5f);
-            halo.anchoredPosition = Vector2.zero; halo.sizeDelta = new Vector2(112, 112);
-            var ha = halo.gameObject.AddComponent<Image>();
-            ha.sprite = SceneBuilderUtils.EnsureGlowSprite(); ha.type = Image.Type.Sliced;
-            ha.color = new Color(0.25f, 0.85f, 0.5f, 0.35f); ha.raycastTarget = false;
-
-            // 세로 막대
-            var v = ChildRect("V", cross);
-            v.anchorMin = v.anchorMax = new Vector2(0.5f, 0.5f); v.pivot = new Vector2(0.5f, 0.5f);
-            v.anchoredPosition = Vector2.zero; v.sizeDelta = new Vector2(20, 60);
-            var vi = v.gameObject.AddComponent<Image>();
-            vi.sprite = Rounded(); vi.type = Image.Type.Sliced; vi.pixelsPerUnitMultiplier = 2f;
-            vi.color = green; vi.raycastTarget = false;
-
-            // 가로 막대
-            var h = ChildRect("H", cross);
-            h.anchorMin = h.anchorMax = new Vector2(0.5f, 0.5f); h.pivot = new Vector2(0.5f, 0.5f);
-            h.anchoredPosition = Vector2.zero; h.sizeDelta = new Vector2(60, 20);
-            var hi = h.gameObject.AddComponent<Image>();
-            hi.sprite = Rounded(); hi.type = Image.Type.Sliced; hi.pixelsPerUnitMultiplier = 2f;
-            hi.color = green; hi.raycastTarget = false;
-
-            var pulse = cross.gameObject.AddComponent<GlowPulse>();
-            var so = new SerializedObject(pulse);
-            so.FindProperty("minAlpha").floatValue = 0.45f;
-            so.FindProperty("maxAlpha").floatValue = 0.95f;
-            so.FindProperty("period").floatValue = 2.6f;
-            so.FindProperty("scaleAmount").floatValue = 0.06f;
-            so.ApplyModifiedProperties();
-        }
-
-        // 음식점: 커피 김 + 따뜻한 조명
-        static void AddRestaurantAmbience(RectTransform parent)
-        {
-            // 따뜻한 조명: 장면 위 은은한 주황빛 (느린 펄스)
-            var warm = ChildRect("WarmLight", parent);
-            warm.anchorMin = warm.anchorMax = new Vector2(0.5f, 0.52f);
-            warm.pivot = new Vector2(0.5f, 0.5f);
-            warm.anchoredPosition = Vector2.zero;
-            warm.sizeDelta = new Vector2(280, 230); // 매장 이미지 안쪽으로 (밖으로 번짐 방지)
-            warm.gameObject.AddComponent<CanvasGroup>().alpha = 0.22f; // 에디터 미리보기용 초기값
-            var wi = warm.gameObject.AddComponent<Image>();
-            wi.sprite = SceneBuilderUtils.EnsureGlowSprite(); wi.type = Image.Type.Sliced;
-            wi.color = new Color(1f, 0.72f, 0.38f, 1f); wi.raycastTarget = false;
-            var wp = warm.gameObject.AddComponent<GlowPulse>();
-            var wso = new SerializedObject(wp);
-            wso.FindProperty("minAlpha").floatValue = 0.16f;
-            wso.FindProperty("maxAlpha").floatValue = 0.34f;
-            wso.FindProperty("period").floatValue = 3.6f;
-            wso.ApplyModifiedProperties();
-
-            // 커피 김: 가운데 아래에서 위로 올라가는 wisp들
-            var steamRoot = ChildRect("Steam", parent);
-            StretchFull(steamRoot, 0);
-            Vector2[] origin = { new(0.46f, 0.50f), new(0.50f, 0.48f), new(0.54f, 0.50f) };
-            var wisps = new Image[origin.Length];
-            for (int i = 0; i < origin.Length; i++)
-            {
-                var w = ChildRect($"Wisp{i}", steamRoot);
-                w.anchorMin = w.anchorMax = origin[i];
-                w.pivot = new Vector2(0.5f, 0.5f);
-                w.anchoredPosition = Vector2.zero;
-                w.sizeDelta = new Vector2(34, 34);
-                var im = w.gameObject.AddComponent<Image>();
-                im.sprite = SceneBuilderUtils.EnsureGlowSprite(); im.type = Image.Type.Sliced;
-                im.color = new Color(1f, 1f, 1f, 0f); im.raycastTarget = false;
-                wisps[i] = im;
-            }
-            var steam = steamRoot.gameObject.AddComponent<SteamRise>();
-            var sso = new SerializedObject(steam);
-            var arr = sso.FindProperty("wisps");
-            arr.arraySize = wisps.Length;
-            for (int i = 0; i < wisps.Length; i++) arr.GetArrayElementAtIndex(i).objectReferenceValue = wisps[i];
-            sso.ApplyModifiedProperties();
         }
 
         // ===== 하단 글래스 팁바 =====

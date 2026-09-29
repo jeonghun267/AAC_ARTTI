@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 using TMPro;
 using Artti.AAC;
@@ -13,10 +14,11 @@ namespace Artti.Training
         [SerializeField] private AACCardButton cardSlot2;
         [SerializeField] private TMP_Text npcDialoguePanel;
 
-        [Header("Pharmacy 4-card pool (스크롤 리스트)")]
-        [SerializeField] private AACCardButton[] pharmacyCardSlots;
+        [Header("4-card pool (스크롤 리스트)")]
+        [FormerlySerializedAs("pharmacyCardSlots")]
+        [SerializeField] private AACCardButton[] cardPoolSlots;
 
-        [Header("Pharmacy 기타 모달")]
+        [Header("기타 모달")]
         [SerializeField] private Button extraButton;          // 하단 "기타" 버튼
         [SerializeField] private Button freeTalkButton;        // 하단 "대화하기" 버튼 (자유 대화 토글)
         [SerializeField] private TMP_Text freeTalkLabel;       // 토글 상태에 따라 문구 교체
@@ -32,7 +34,7 @@ namespace Artti.Training
         [SerializeField] private Image npcBorderLeft;         // Filled Vertical,   Origin Bottom
         [SerializeField] private float npcBorderCycleSeconds = 1.6f; // 한 바퀴 시간
 
-        [Header("STT Overlay (legacy — 약국씬 호환용. 신규 씬은 비워두면 자동 무시)")]
+        [Header("STT Overlay (legacy — 비워두면 자동 무시)")]
         [SerializeField] private GameObject sttOverlay;       // 풀스크린 반투명 + 가운데 카드
         [SerializeField] private TMP_Text sttStatusText;      // "듣고 있어요..." / "이렇게 들렸어요" / "잘 못 들었어요"
         [SerializeField] private TMP_Text sttResultText;      // 인식된 텍스트
@@ -55,8 +57,8 @@ namespace Artti.Training
         {
             if (cardSlot1 != null) cardSlot1.OnCardSelected += HandleCardSelected;
             if (cardSlot2 != null) cardSlot2.OnCardSelected += HandleCardSelected;
-            if (pharmacyCardSlots != null)
-                foreach (var s in pharmacyCardSlots)
+            if (cardPoolSlots != null)
+                foreach (var s in cardPoolSlots)
                     if (s != null) s.OnCardSelected += HandleCardSelected;
             if (extraCardSlots != null)
                 foreach (var s in extraCardSlots)
@@ -70,8 +72,8 @@ namespace Artti.Training
         {
             if (cardSlot1 != null) cardSlot1.OnCardSelected -= HandleCardSelected;
             if (cardSlot2 != null) cardSlot2.OnCardSelected -= HandleCardSelected;
-            if (pharmacyCardSlots != null)
-                foreach (var s in pharmacyCardSlots)
+            if (cardPoolSlots != null)
+                foreach (var s in cardPoolSlots)
                     if (s != null) s.OnCardSelected -= HandleCardSelected;
             if (extraCardSlots != null)
                 foreach (var s in extraCardSlots)
@@ -147,7 +149,7 @@ namespace Artti.Training
                 if (npcBorderLeft != null)   npcBorderLeft.fillAmount   = left;
             }
 
-            // 레거시: 풀스크린 펄스 (약국씬 등에 와이어링돼 있을 때만)
+            // 레거시: 풀스크린 펄스 (와이어링돼 있을 때만)
             if (sttPulseCircle != null)
             {
                 _pulseTime += Time.deltaTime;
@@ -177,13 +179,13 @@ namespace Artti.Training
             if (cardSlot2 != null) cardSlot2.SetCard(card2);
         }
 
-        // 약국 풀 갱신 — pharmacyCardSlots 배열에 순서대로 N장 채우고 남는 슬롯은 비활성
+        // 카드 풀 갱신 — cardPoolSlots 배열에 순서대로 N장 채우고 남는 슬롯은 비활성
         public void SetCardList(System.Collections.Generic.IList<AACCard> cards)
         {
-            if (pharmacyCardSlots == null || pharmacyCardSlots.Length == 0) return;
-            for (int i = 0; i < pharmacyCardSlots.Length; i++)
+            if (cardPoolSlots == null || cardPoolSlots.Length == 0) return;
+            for (int i = 0; i < cardPoolSlots.Length; i++)
             {
-                var slot = pharmacyCardSlots[i];
+                var slot = cardPoolSlots[i];
                 if (slot == null) continue;
                 if (cards != null && i < cards.Count)
                 {
@@ -197,21 +199,21 @@ namespace Artti.Training
             }
         }
 
-        public bool HasPharmacyCardPool => pharmacyCardSlots != null && pharmacyCardSlots.Length > 0;
+        public bool HasCardPool => cardPoolSlots != null && cardPoolSlots.Length > 0;
 
         // STT 수집 중: 모든 카드 잠금, 선택 카드 외에는 은은히 흐림 (편의점 시안 3.png)
         public void SetPoolLocked(AACCard selected)
         {
-            if (pharmacyCardSlots == null) return;
-            foreach (var slot in pharmacyCardSlots)
+            if (cardPoolSlots == null) return;
+            foreach (var slot in cardPoolSlots)
                 if (slot != null && slot.gameObject.activeSelf)
                     slot.SetLocked(true, dim: slot.Card != selected);
         }
 
         public void UnlockPool()
         {
-            if (pharmacyCardSlots == null) return;
-            foreach (var slot in pharmacyCardSlots)
+            if (cardPoolSlots == null) return;
+            foreach (var slot in cardPoolSlots)
                 if (slot != null && slot.gameObject.activeSelf)
                     slot.SetLocked(false, dim: false);
         }
@@ -230,7 +232,7 @@ namespace Artti.Training
             if (!visible) ResetBorderFill();
             if (visible && npcDialoguePanel != null) npcDialoguePanel.text = "듣고 있어요...";
 
-            // 레거시: 풀스크린 오버레이 (약국씬 등에 와이어링됐을 때만)
+            // 레거시: 풀스크린 오버레이 (와이어링됐을 때만)
             if (sttOverlay != null) sttOverlay.SetActive(visible);
             if (sttStatusText != null) sttStatusText.text = "듣고 있어요...";
             if (sttResultText != null) sttResultText.text = "";
