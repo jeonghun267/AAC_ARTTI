@@ -253,6 +253,36 @@ namespace Artti.Training
             return true;
         }
 
+        // 대화 모드: 어눌한 인식 문장을 화면 후보 문장 중 가장 가까운 것으로 해석한다.
+        //   어느 후보와도 충분히 가깝지 않으면(편집 거리 > 후보 글자 수의 절반) 추천 문장(target)을 말한 것으로 본다.
+        //   동점이면 추천 문장을 우선한다. 인식 원문과 명료도 기록은 호출 측 책임.
+        public static string ResolveConversationUtterance(string recognized, string target, IEnumerable<string> candidates)
+        {
+            var r = NormalizeSpeech(recognized);
+            string best = null;
+            int bestDistance = int.MaxValue;
+            int bestLength = 0;
+
+            if (r.Length > 0 && candidates != null)
+            {
+                foreach (var candidate in candidates)
+                {
+                    var c = NormalizeSpeech(candidate);
+                    if (c.Length == 0) continue;
+                    int d = EditDistance(r, c);
+                    if (d < bestDistance || (d == bestDistance && candidate == target))
+                    {
+                        best = candidate;
+                        bestDistance = d;
+                        bestLength = c.Length;
+                    }
+                }
+            }
+
+            if (best != null && bestDistance <= Math.Max(1, bestLength / 2)) return best;
+            return string.IsNullOrWhiteSpace(target) ? recognized : target;
+        }
+
         // 공백·문장부호·따옴표를 뺀 비교용 문자열
         private static string NormalizeSpeech(string s)
         {

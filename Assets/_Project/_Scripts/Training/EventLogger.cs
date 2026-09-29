@@ -1,4 +1,5 @@
 using Artti.AAC.Logging;
+using Artti.Common;
 using Artti.Common.Speech;
 using UnityEngine;
 using System;
@@ -20,9 +21,11 @@ namespace Artti.Training
             _sessionId = Guid.NewGuid().ToString();
         }
 
-        public void LogScenarioEntered()
+        // payload: "mode:accuracy" / "mode:conversation" — 레포트에서 두 모드 기록을 구분하기 위함
+        public void LogScenarioEntered(TrainingMode mode = TrainingMode.Accuracy)
         {
-            Log(AACEventType.ScenarioEntered);
+            Log(AACEventType.ScenarioEntered,
+                payload: mode == TrainingMode.Conversation ? "mode:conversation" : "mode:accuracy");
         }
 
         // status: "completed" — 시나리오 마지막 objective 도달 시

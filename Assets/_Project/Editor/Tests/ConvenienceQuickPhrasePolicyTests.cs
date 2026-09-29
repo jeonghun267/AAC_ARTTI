@@ -114,6 +114,27 @@ namespace Artti.EditorTests.Training
         {
             Assert.That(ConvenienceQuickPhrasePolicy.IsAttemptAtTarget("물 주세요", null, BagCandidates), Is.False);
         }
+
+        // 대화 모드: 어눌한 발화를 후보 문장으로 해석
+        private static readonly string[] ItemCandidates =
+            { "물 주세요", "어디에 있어요?", "얼마예요?", "계산할게요", "감사합니다", "우유 주세요" };
+
+        [TestCase("물 주세요", ExpectedResult = "물 주세요")]       // 정확히 말함
+        [TestCase("무 주세여", ExpectedResult = "물 주세요")]       // 어눌하지만 가까움
+        [TestCase("계산할께요", ExpectedResult = "계산할게요")]     // 추천 문장이 아닌 다른 후보
+        [TestCase("우유 주세여", ExpectedResult = "우유 주세요")]   // 상품 요청 문장
+        [TestCase("아아아아아아", ExpectedResult = "물 주세요")]    // 어느 후보와도 멀면 추천 문장
+        public string ResolveConversationUtterance_ItemStep(string recognized)
+        {
+            return ConvenienceQuickPhrasePolicy.ResolveConversationUtterance(recognized, "물 주세요", ItemCandidates);
+        }
+
+        [Test]
+        public void ResolveConversationUtterance_NoTargetAndNoMatch_KeepsRecognized()
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.ResolveConversationUtterance("아아아아아아", null, ItemCandidates),
+                Is.EqualTo("아아아아아아"));
+        }
     }
 }
 #endif
