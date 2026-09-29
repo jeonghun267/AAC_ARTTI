@@ -382,6 +382,8 @@ namespace Artti.UI
             sb.Append("</b></size>\n");
             sb.Append("<color=#6E7687>서버 STT가 목표 문장과 비교해 채점한 값이에요.");
             if (r.avgClarityPct >= 0) sb.Append(" 평균은 음성으로 말한 모든 시도 기준이에요.");
+            if (r.mode == TrainingMode.Conversation)
+                sb.Append(" 대화 모드라 발음이 달라도 가장 가까운 문장으로 대화를 이어갔어요.");
             sb.Append("</color>\n\n");
 
             if (measured == 0)
@@ -411,6 +413,9 @@ namespace Artti.UI
                 sb.Append('\n');
                 if (!string.IsNullOrEmpty(s.clarityTarget)) sb.Append($"   목표 문장: {Escape(s.clarityTarget)}\n");
                 if (!string.IsNullOrEmpty(s.clarityHeard)) sb.Append($"   들린 문장: {Escape(s.clarityHeard)}\n");
+                // 대화 모드: 들린 문장과 실제로 대화에 쓴(해석된) 문장이 다르면 함께 보여 준다
+                if (r.mode == TrainingMode.Conversation && !string.IsNullOrEmpty(s.heardText) && s.heardText != s.userText)
+                    sb.Append($"   대화에 쓴 문장: {Escape(s.userText)}\n");
                 if (!string.IsNullOrEmpty(s.clarityReason)) sb.Append($"   이유: {Escape(s.clarityReason)}\n");
                 sb.Append('\n');
             }
@@ -476,7 +481,7 @@ namespace Artti.UI
                 clarityAvgText.text = r.avgClarityPct >= 0 ? $"발화 정확도 {r.avgClarityPct}% ›" : "발화 정확도 기록 없음 ›";
 
             // 스탯 카드
-            if (scenarioNameText != null) scenarioNameText.text = r.scenarioName;
+            if (scenarioNameText != null) scenarioNameText.text = $"{r.scenarioName} · {TrainingModeContext.DisplayName(r.mode)}";
             if (statusText != null) statusText.text = r.completed ? "완료" : "미완료";
             if (dateText != null)
             {

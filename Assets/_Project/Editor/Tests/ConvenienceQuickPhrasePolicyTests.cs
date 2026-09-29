@@ -130,6 +130,15 @@ namespace Artti.EditorTests.Training
         }
 
         [Test]
+        public void TryMatchCandidate_FarFromEverything_IsLeftForAiJudge()
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.TryMatchCandidate("생수 하나요", "물 주세요", ItemCandidates, out var match), Is.False);
+            Assert.That(match, Is.Null);
+            Assert.That(ConvenienceQuickPhrasePolicy.TryMatchCandidate("무 주세여", "물 주세요", ItemCandidates, out match), Is.True);
+            Assert.That(match, Is.EqualTo("물 주세요"));
+        }
+
+        [Test]
         public void ResolveConversationUtterance_NoTargetAndNoMatch_KeepsRecognized()
         {
             Assert.That(ConvenienceQuickPhrasePolicy.ResolveConversationUtterance("아아아아아아", null, ItemCandidates),

@@ -100,6 +100,7 @@ namespace Artti.Training
             _npcTtsService = npcSpeechSource != null
                 ? new CloudTtsService(ttsKey, npcSpeechSource)
                 : _ttsService;
+            _npcTtsService.SetVoice(TrainingModeContext.VoiceFor(_mode)); // 모드별 점원 목소리
 
             ISttService deviceStt;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -724,6 +725,16 @@ namespace Artti.Training
                     return;
                 }
 
+                // 정확도 모드 관문: 탭한 카드 문장 대비 발화 정확도가 기준 미만이면 Gemini 호출 없이 다시 말하기.
+                if (ShouldRetryForAccuracy(sttResultP))
+                {
+                    _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
+                    _dialogueManager.RegisterFailure();
+                    _lastToolSpoke = true;
+                    SpeakNpc(AccuracyRetryLine, isFallback: true);
+                    return;
+                }
+
                 // 대화 모드: 어눌하게 말해도 탭한 카드 문장을 말한 것으로 보고 진행한다.
                 //   인식 원문·명료도는 위 LogCardSelected에서 이미 기록됐다.
                 var turnText = IsConversationMode && !string.IsNullOrWhiteSpace(card.phrase?.text)
@@ -873,12 +884,25 @@ namespace Artti.Training
                     return;
                 }
 
-                // 대화 모드: 어눌하게 말해도 화면의 후보 문장 중 가장 가까운 것(없으면 추천 문장)으로 해석해 진행한다.
-                //   인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다.
-                utterance = IsConversationMode && dashboardView != null
-                    ? ConvenienceQuickPhrasePolicy.ResolveConversationUtterance(
-                        recognized, clarityTarget, dashboardView.GetSpeechCandidates())
-                    : recognized;
+                if (IsConversationMode && dashboardView != null)
+                {
+                    // 대화 모드: 어눌하게 말해도 화면 후보 문장으로 해석해 진행한다 (규칙 -> 애매하면 AI -> 추천 문장).
+                    //   인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다.
+                    utterance = await ResolveConversationUtteranceAsync(recognized, clarityTarget, _cts.Token);
+                }
+                else
+                {
+                    // 정확도 모드 관문: 발화 정확도가 기준 미만이면 Gemini 호출 없이 다시 말하기.
+                    if (ShouldRetryForAccuracy(spoken))
+                    {
+                        _eventLogger?.LogCardSelected("guided_voice", recognized, spoken);
+                        _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
+                        _dialogueManager.RegisterFailure();
+                        SpeakNpc(AccuracyRetryLine, isFallback: true);
+                        return;
+                    }
+                    utterance = recognized;
+                }
             }
             finally
             {
@@ -898,6 +922,58 @@ namespace Artti.Training
                 false,
                 captureWater ? "물" : null,
                 spoken).Forget();
+        }
+
+        private const string AccuracyRetryLine = "좋아요! 조금만 더 또박또박 다시 말해볼까요?";
+
+        // 정확도 모드에서 다시 말하게 할지. 정확도를 잴 수 없는 발화(기기 STT, 다른 정답 문장)는 통과,
+        // 한 단계에서 AccuracyMaxRetries번 미달했으면 좌절 방지를 위해 통과.
+        private bool ShouldRetryForAccuracy(SttResult spoken) =>
+            TrainingModeContext.ShouldRetry(_mode, spoken.hasClarity, spoken.clarityPercent, _dialogueManager.AttemptCount);
+
+        // 대화 모드 문장 해석: 1) 규칙(틀린 글자 수)으로 확실하면 바로 결정
+        //   2) 애매하면 Gemini가 뜻으로 판단 (최대 ConversationJudgeTimeoutSeconds초)
+        //   3) Gemini도 못 고르거나 늦으면 추천 문장
+        private const float ConversationJudgeTimeoutSeconds = 3f;
+
+        private async UniTask<string> ResolveConversationUtteranceAsync(string recognized, string target, CancellationToken ct)
+        {
+            var candidates = dashboardView.GetSpeechCandidates().ToList();
+            if (ConvenienceQuickPhrasePolicy.TryMatchCandidate(recognized, target, candidates, out var match))
+            {
+                Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(규칙): '{recognized}' -> '{match}'");
+                return match;
+            }
+
+            if (_geminiService != null && candidates.Count > 0)
+            {
+                using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    timeout.CancelAfterSlim(System.TimeSpan.FromSeconds(ConversationJudgeTimeoutSeconds), DelayType.Realtime);
+                    hud?.ShowThinking(true);
+                    try
+                    {
+                        int index = await _geminiService.RequestPhraseMatchAsync(recognized, candidates, timeout.Token);
+                        if (index >= 0)
+                        {
+                            Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(AI): '{recognized}' -> '{candidates[index]}'");
+                            return candidates[index];
+                        }
+                    }
+                    catch (System.OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        Debug.LogWarning("[TrainingSceneRoot] 대화 모드 AI 판단 시간 초과 — 추천 문장으로 진행");
+                    }
+                    finally
+                    {
+                        hud?.ShowThinking(false);
+                    }
+                }
+            }
+
+            var fallback = ConvenienceQuickPhrasePolicy.ConversationFallback(recognized, target);
+            Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(폴백): '{recognized}' -> '{fallback}'");
+            return fallback;
         }
 
         private void StartFreeTalk()
