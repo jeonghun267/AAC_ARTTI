@@ -686,6 +686,13 @@ namespace Artti.Editor
                 var sp = AssetDatabase.LoadAssetAtPath<Sprite>(p);
                 if (sp != null) sprites.Add(sp);
             }
+            // 프로필 등록 1단계(아바타 선택)의 새 아바타. 여기서 빠지면 이 빌더를 돌릴 때 라이브러리에서 사라진다.
+            foreach (var ap in ProfileAvatarStepBuilder.AvatarPaths())
+            {
+                EnsureSprite(ap);
+                var sp = AssetDatabase.LoadAssetAtPath<Sprite>(ap);
+                if (sp != null && !sprites.Contains(sp)) sprites.Add(sp);
+            }
             lib.sprites = sprites.ToArray();
             EditorUtility.SetDirty(lib);
             AssetDatabase.SaveAssets();
