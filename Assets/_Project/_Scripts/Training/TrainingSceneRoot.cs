@@ -725,16 +725,6 @@ namespace Artti.Training
                     return;
                 }
 
-                // 정확도 모드 관문: 탭한 카드 문장 대비 발화 정확도가 기준 미만이면 Gemini 호출 없이 다시 말하기.
-                if (ShouldRetryForAccuracy(sttResultP))
-                {
-                    _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
-                    _dialogueManager.RegisterFailure();
-                    _lastToolSpoke = true;
-                    SpeakNpc(AccuracyRetryLine, isFallback: true);
-                    return;
-                }
-
                 // 대화 모드: 어눌하게 말해도 탭한 카드 문장을 말한 것으로 보고 진행한다.
                 //   인식 원문·명료도는 위 LogCardSelected에서 이미 기록됐다.
                 var turnText = IsConversationMode && !string.IsNullOrWhiteSpace(card.phrase?.text)
@@ -884,25 +874,11 @@ namespace Artti.Training
                     return;
                 }
 
-                if (IsConversationMode && dashboardView != null)
-                {
-                    // 대화 모드: 어눌하게 말해도 화면 후보 문장으로 해석해 진행한다 (규칙 -> 애매하면 AI -> 추천 문장).
-                    //   인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다.
-                    utterance = await ResolveConversationUtteranceAsync(recognized, clarityTarget, _cts.Token);
-                }
-                else
-                {
-                    // 정확도 모드 관문: 발화 정확도가 기준 미만이면 Gemini 호출 없이 다시 말하기.
-                    if (ShouldRetryForAccuracy(spoken))
-                    {
-                        _eventLogger?.LogCardSelected("guided_voice", recognized, spoken);
-                        _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
-                        _dialogueManager.RegisterFailure();
-                        SpeakNpc(AccuracyRetryLine, isFallback: true);
-                        return;
-                    }
-                    utterance = recognized;
-                }
+                // 대화 모드: 어눌하게 말해도 화면 후보 문장으로 해석해 진행한다 (규칙 -> 애매하면 AI -> 추천 문장).
+                //   인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다. 정확도 모드는 기존 흐름 그대로.
+                utterance = IsConversationMode && dashboardView != null
+                    ? await ResolveConversationUtteranceAsync(recognized, clarityTarget, _cts.Token)
+                    : recognized;
             }
             finally
             {
@@ -923,13 +899,6 @@ namespace Artti.Training
                 captureWater ? "물" : null,
                 spoken).Forget();
         }
-
-        private const string AccuracyRetryLine = "좋아요! 조금만 더 또박또박 다시 말해볼까요?";
-
-        // 정확도 모드에서 다시 말하게 할지. 정확도를 잴 수 없는 발화(기기 STT, 다른 정답 문장)는 통과,
-        // 한 단계에서 AccuracyMaxRetries번 미달했으면 좌절 방지를 위해 통과.
-        private bool ShouldRetryForAccuracy(SttResult spoken) =>
-            TrainingModeContext.ShouldRetry(_mode, spoken.hasClarity, spoken.clarityPercent, _dialogueManager.AttemptCount);
 
         // 대화 모드 문장 해석: 1) 규칙(틀린 글자 수)으로 확실하면 바로 결정
         //   2) 애매하면 Gemini가 뜻으로 판단 (최대 ConversationJudgeTimeoutSeconds초)
