@@ -81,12 +81,30 @@ namespace Artti.Editor
         //   s = 112.4 / 1478 = 0.076049
         //   영역 = (1622, 1616) x s,  세로 위치 = 본체 상단(66.1)에서 여백(71) x s를 뺀 값
         //   가로 위치 63.8은 에디터에서 눈으로 맞춘 값(계산값 42.75에서 오른쪽으로 21.05 이동)
-        //   팝업 = 본체 좌하단에서 12 아래가 되도록 좌측(73)·하단(84) 여백만큼 보정.
+        //   팝업 = 본체 오른쪽에 가로로 펼친다(아래 MenuBody*, MenuItem* 참조).
         //          ToastBar의 자식이라 버튼 위치를 옮기면 함께 따라온다.
         const string AacMenuPath = HomeDir + "menu_button.png";
         static readonly Vector2 MenuBtnSize  = new Vector2(123.4f, 122.9f);
         static readonly Vector2 MenuBtnPos   = new Vector2(63.8f, -60.70f);
-        static readonly Vector2 MenuPopupPos = new Vector2(5.55f, -5.61f);
+        // 햄버거 본체 오른쪽 끝(73+1478)x s = 117.95, 본체 세로 중심 (71+1461/2)x s = 60.95 (ToastBar 좌상단 기준)
+        const float MenuBodyRight   = 117.95f;
+        const float MenuBodyCenterY = 60.95f;
+
+        // 팝업 버튼(레포트 보기/종료하기) v2 시안. _N = 기본, _S = 눌림.
+        // 2000x667, 불투명 알약 본체 (195,80)-(1805,579) = 1610x499, 투명 여백 L195 T80 R195 B88.
+        // 본체 높이를 88에 맞춘다. s = 88 / 499 = 0.17635
+        //   이미지 영역 = (2000, 667) x s = 352.7 x 117.6
+        //   본체 = 283.9 x 88,  여백 = L34.4 T14.1 R34.4 B15.5
+        // 버튼 루트(클릭 영역)는 본체 크기로 두고, 이미지는 여백만큼 바깥으로 넘치게 붙인다.
+        // 이미지 영역째로 클릭을 받으면 가로로 붙였을 때 옆 버튼의 투명 여백이 본체 클릭을 가로챈다.
+        const string MenuReportN = HomeDir + "menu_report_N.png";
+        const string MenuReportS = HomeDir + "menu_report_S.png";
+        const string MenuQuitN   = HomeDir + "menu_quit_N.png";
+        const string MenuQuitS   = HomeDir + "menu_quit_S.png";
+        static readonly Vector2 MenuItemBody  = new Vector2(283.9f, 88f);
+        static readonly Vector2 MenuItemPadLB = new Vector2(34.4f, 15.5f);  // 좌, 하 여백
+        static readonly Vector2 MenuItemPadRT = new Vector2(34.4f, 14.1f);  // 우, 상 여백
+        const float MenuItemGap  = 14f;  // 햄버거 본체와 첫 버튼, 버튼과 버튼 사이 (보이는 본체 기준)
 
         const string EmojiDir   = "Assets/_Project/openmoji-master/color/svg/";
         const string Sparkle    = EmojiDir + "2728.svg";   // ✨
@@ -713,19 +731,16 @@ namespace Artti.Editor
 
             var menu = rect.gameObject.AddComponent<HomeMenu>();
 
-            // 팝업 패널 (햄버거 아래로 펼쳐짐). ToastBar 영역 좌하단 기준이라 헤일로·그림자 여백만큼
-            // 보정해, 보이는 버튼 본체의 좌하단에서 12 아래에 오게 한다.
+            // 팝업 (햄버거 오른쪽으로 가로 펼침). 배경 패널 없이 버튼 이미지만 띄운다.
+            // ToastBar 좌상단 기준으로 햄버거 본체 오른쪽 MenuItemGap 뒤에서 시작하고, 본체와 세로 중심을 맞춘다.
             var popup = ChildRect("MenuPopup", rect);
-            popup.anchorMin = popup.anchorMax = new Vector2(0f, 0f);
-            popup.pivot = new Vector2(0f, 1f);
-            popup.anchoredPosition = MenuPopupPos;
-            popup.sizeDelta = new Vector2(264, 180);
-            var pimg = popup.gameObject.AddComponent<Image>();
-            pimg.sprite = Rounded(); pimg.type = Image.Type.Sliced; pimg.pixelsPerUnitMultiplier = 1f;
-            pimg.color = new Color(1f, 1f, 1f, 0.92f);
+            popup.anchorMin = popup.anchorMax = new Vector2(0f, 1f);
+            popup.pivot = new Vector2(0f, 0.5f);
+            popup.anchoredPosition = new Vector2(MenuBodyRight + MenuItemGap, -MenuBodyCenterY);
+            popup.sizeDelta = new Vector2(MenuItemBody.x * 2f + MenuItemGap, MenuItemBody.y);
 
-            var reportItem = MakeMenuItem(popup, "레포트 보기", new Vector2(0, -14), font);
-            var quitItem = MakeMenuItem(popup, "종료하기", new Vector2(0, -98), font);
+            var reportItem = MakeMenuItem(popup, "Item_Report", MenuReportN, MenuReportS, 0f);
+            var quitItem = MakeMenuItem(popup, "Item_Quit", MenuQuitN, MenuQuitS, MenuItemBody.x + MenuItemGap);
 
             menu.SetPopup(popup.gameObject);
             WireClick(btn, menu, nameof(HomeMenu.Toggle));
@@ -733,20 +748,37 @@ namespace Artti.Editor
             WireClick(quitItem, menu, nameof(HomeMenu.Quit));
         }
 
-        static Button MakeMenuItem(Transform parent, string label, Vector2 pos, TMP_FontAsset font)
+        // 루트 = 클릭 영역(알약 본체 크기, 투명 Image), 자식 Visual = 여백 포함 버튼 이미지.
+        // 눌림 표현은 틴트 대신 _S 스프라이트로 교체한다. _S가 없으면 기본 스프라이트가 그대로 보인다.
+        static Button MakeMenuItem(Transform parent, string name, string normalPath, string pressedPath, float x)
         {
-            var rect = ChildRect("Item_" + label, parent);
-            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.anchoredPosition = pos;
-            rect.sizeDelta = new Vector2(236, 72);
-            var img = rect.gameObject.AddComponent<Image>();
-            img.sprite = Rounded(); img.type = Image.Type.Sliced; img.pixelsPerUnitMultiplier = 1f;
-            img.color = new Color(0.95f, 0.97f, 1f, 1f);
+            var rect = ChildRect(name, parent);
+            rect.anchorMin = rect.anchorMax = new Vector2(0f, 0.5f);
+            rect.pivot = new Vector2(0f, 0.5f);
+            rect.anchoredPosition = new Vector2(x, 0f);
+            rect.sizeDelta = MenuItemBody;
+            var hit = rect.gameObject.AddComponent<Image>();
+            hit.color = new Color(1f, 1f, 1f, 0f);
+
+            var visual = ChildRect("Visual", rect);
+            visual.anchorMin = Vector2.zero;
+            visual.anchorMax = Vector2.one;
+            visual.offsetMin = -MenuItemPadLB;
+            visual.offsetMax = MenuItemPadRT;
+            var img = visual.gameObject.AddComponent<Image>();
+            img.sprite = LoadPngSprite(normalPath);
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+
             var btn = rect.gameObject.AddComponent<Button>();
             btn.targetGraphic = img;
-            var t = MakeText("Text", rect, label, 28, TitleColor, font, bold: false);
-            StretchFull(t.rectTransform, 6);
+            btn.transition = Selectable.Transition.SpriteSwap;
+            var pressed = LoadPngSprite(pressedPath);
+            btn.spriteState = new SpriteState
+            {
+                highlightedSprite = pressed,
+                pressedSprite = pressed,
+            };
             return btn;
         }
 
