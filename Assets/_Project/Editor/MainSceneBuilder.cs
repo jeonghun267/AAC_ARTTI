@@ -749,7 +749,7 @@ namespace Artti.Editor
         }
 
         // 루트 = 클릭 영역(알약 본체 크기, 투명 Image), 자식 Visual = 여백 포함 버튼 이미지.
-        // 눌림 표현은 틴트 대신 _S 스프라이트로 교체한다. _S가 없으면 기본 스프라이트가 그대로 보인다.
+        // 눌림 표현은 _S 스프라이트 교체가 기본이고, _S 파일이 없으면 ColorTint로 대신한다.
         static Button MakeMenuItem(Transform parent, string name, string normalPath, string pressedPath, float x)
         {
             var rect = ChildRect(name, parent);
@@ -772,13 +772,25 @@ namespace Artti.Editor
 
             var btn = rect.gameObject.AddComponent<Button>();
             btn.targetGraphic = img;
-            btn.transition = Selectable.Transition.SpriteSwap;
-            var pressed = LoadPngSprite(pressedPath);
-            btn.spriteState = new SpriteState
+            // _S가 있으면 스프라이트 교체, 없으면 햄버거 버튼과 같은 회색 틴트로 눌림을 표현한다.
+            if (AssetDatabase.LoadAssetAtPath<Texture2D>(pressedPath) != null)
             {
-                highlightedSprite = pressed,
-                pressedSprite = pressed,
-            };
+                var pressed = LoadPngSprite(pressedPath);
+                btn.transition = Selectable.Transition.SpriteSwap;
+                btn.spriteState = new SpriteState
+                {
+                    highlightedSprite = pressed,
+                    pressedSprite = pressed,
+                };
+            }
+            else
+            {
+                var colors = btn.colors;
+                colors.highlightedColor = new Color(0.93f, 0.93f, 0.93f, 1f);
+                colors.pressedColor = new Color(0.80f, 0.80f, 0.80f, 1f);
+                colors.fadeDuration = 0.08f;
+                btn.colors = colors;
+            }
             return btn;
         }
 
