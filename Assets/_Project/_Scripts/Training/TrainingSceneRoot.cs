@@ -59,7 +59,7 @@ namespace Artti.Training
         private int _listeningCount; // 마이크로 사용자 발화를 듣는 중인 호출 수 (겹친 호출이 서로의 표시를 지우지 않게 센다)
         private GeminiDialogueService _geminiService;
         private string _systemPrompt; // system_prompts.json에서 시나리오별로 빌드 (Awake)
-        // Unit 3: 풀 모드에서 룰베이스 대신 Gemini가 대화를 주도. 우선 편의점만 적용, 검증 후 약국·음식점 확대.
+        // Unit 3: 풀 모드에서 룰베이스 대신 Gemini가 대화를 주도 (편의점).
         private bool _useGemini;
         private EventLogger _eventLogger;
         private FallbackResponsePicker _fallbackPicker;
@@ -195,28 +195,22 @@ namespace Artti.Training
         // 시나리오별 objective 순서 (scenarios.json과 동기화)
         private static readonly Dictionary<string, string[]> ObjectiveOrderByScenario = new Dictionary<string, string[]>
         {
-            { "pharmacy",    new[] { "greeting", "identify_needs", "serve_meds", "payment", "farewell" } },
             // 봉투를 먼저 묻고 결제한다 — 실제 편의점 흐름이자 페르소나("Always ask about 봉투 needed
             // before payment confirmation")와 few-shot 예시가 이미 전제하던 순서.
-            { "convenience", new[] { "greeting", "select_items", "extras", "checkout", "farewell" } },
-            { "restaurant",  new[] { "greeting", "menu_browse", "order", "order_modifications", "payment", "farewell" } }
+            { "convenience", new[] { "greeting", "select_items", "extras", "checkout", "farewell" } }
         };
 
         // 점원이 "물건을 건네는" 동작(HandOver)을 하는 objective. 그 외 성공은 끄덕임(Nod).
         private static readonly HashSet<string> HandOverObjectives = new HashSet<string>
         {
-            "select_items", // 편의점 — 콜라 등 물건 건네기
-            "serve_meds",   // 약국 — 약 건네기
-            "order"         // 음식점 — 주문 받기
+            "select_items" // 편의점 — 콜라 등 물건 건네기
         };
 
         // 진행 표시(스테퍼)용 objective 한국어 라벨 — 시안 기준 5단계 명칭
         private static readonly Dictionary<string, string> StepperLabels = new Dictionary<string, string>
         {
             { "greeting", "점원에게 인사하기" }, { "select_items", "원하는 상품 고르기" }, { "checkout", "결제 방법 말하기" },
-            { "extras", "봉투 여부 답하기" }, { "farewell", "감사 인사하기" },
-            { "identify_needs", "증상 말하기" }, { "serve_meds", "물품 요구하기" }, { "payment", "계산하기" },
-            { "menu_browse", "메뉴 보기" }, { "order", "주문하기" }, { "order_modifications", "추가 주문" }
+            { "extras", "봉투 여부 답하기" }, { "farewell", "감사 인사하기" }
         };
 
         private string _lastNpcLine;
@@ -230,15 +224,6 @@ namespace Artti.Training
         // v1 풀 모드: 각 objective 진입 시 NPC가 말하는 대사 (STT만 사용, Gemini 미사용 흐름)
         private static readonly Dictionary<string, Dictionary<string, string>> ObjectivePromptsByScenario = new Dictionary<string, Dictionary<string, string>>
         {
-            { "pharmacy", new Dictionary<string, string>
-                {
-                    { "greeting",       "안녕하세요! 약사예요." },
-                    { "identify_needs", "어디가 아파서 오셨어요?" },
-                    { "serve_meds",     "이 약을 드릴게요." },
-                    { "payment",        "결제는 어떻게 하시겠어요?" },
-                    { "farewell",       "안녕히 가세요!" }
-                }
-            },
             { "convenience", new Dictionary<string, string>
                 {
                     { "greeting",     "어서 오세요!" },
@@ -246,16 +231,6 @@ namespace Artti.Training
                     { "checkout",     "결제는 어떻게 하시겠어요?" },
                     { "extras",       "봉투 필요하세요?" },
                     { "farewell",     "안녕히 가세요!" }
-                }
-            },
-            { "restaurant", new Dictionary<string, string>
-                {
-                    { "greeting",            "어서 오세요! 몇 분이세요?" },
-                    { "menu_browse",         "메뉴 보여드릴게요. 천천히 보세요." },
-                    { "order",               "주문하시겠어요?" },
-                    { "order_modifications", "추가로 더 필요한 거 있으세요?" },
-                    { "payment",             "결제는 어떻게 하시겠어요?" },
-                    { "farewell",            "맛있게 드세요! 안녕히 가세요." }
                 }
             }
         };
@@ -481,7 +456,7 @@ namespace Artti.Training
         private bool IsPoolMode =>
             uiView != null
             && ObjectiveOrderByScenario.ContainsKey(scenarioId)
-            && (uiView.HasPharmacyCardPool || (dashboardView != null && dashboardView.HasProducts));
+            && (uiView.HasCardPool || (dashboardView != null && dashboardView.HasProducts));
 
         private bool TryGetObjectivePrompt(string objectiveId, out string line)
         {
@@ -754,7 +729,7 @@ namespace Artti.Training
                     return;
                 }
 
-                // ── 이하 기존 룰베이스 흐름 (약국·음식점은 아직 이 경로) ──
+                // ── 이하 기존 룰베이스 흐름 (Gemini 미사용 시) ──
                 // 서브플로 카드(위치 문의 등): 점원이 안내만 하고 같은 objective 유지 — 다음 단계로 넘기지 않음
                 // (scenarios.json location_subflow: "위치 안내 후 사용자가 다시 물건을 들고 오는 가정으로 진행")
                 if (TryGetSubflowPrompt(card.branchId, out var subflowLine))

@@ -52,8 +52,6 @@ namespace Artti.UI
         [Header("TTS")]
         [SerializeField] private AudioSource audioSource;
 
-        private static readonly string[] ScenarioCycle = { "pharmacy", "convenience", "restaurant" };
-
         private ReportDataService _service;
         private ReportRecordDetail _report;
         private ITtsService _tts;
@@ -565,14 +563,11 @@ namespace Artti.UI
         private void HandleRetry()
         {
             if (_report == null) { GoReport(); return; }
-            SceneManager.LoadScene(TrainingScene(_report.scenarioId));
+            SceneManager.LoadScene(TrainingConvenienceScene);
         }
 
-        private void HandleNext()
-        {
-            string next = NextScenario(_report != null ? _report.scenarioId : null);
-            SceneManager.LoadScene(TrainingScene(next));
-        }
+        // 시나리오가 편의점 하나뿐이라 "다음 시나리오"도 편의점 훈련으로 연결
+        private void HandleNext() => SceneManager.LoadScene(TrainingConvenienceScene);
 
         private void HandleShare()
         {
@@ -580,22 +575,7 @@ namespace Artti.UI
             Debug.Log("[RecordDetail] 공유 기능 미구현");
         }
 
-        private static string TrainingScene(string scenarioId)
-        {
-            switch (scenarioId)
-            {
-                case "convenience": return "TrainingConvenienceScene";
-                case "restaurant":  return "TrainingRestaurantScene";
-                default:            return "TrainingPharmacyScene";
-            }
-        }
-
-        private static string NextScenario(string scenarioId)
-        {
-            int i = System.Array.IndexOf(ScenarioCycle, scenarioId);
-            if (i < 0) return ScenarioCycle[0];
-            return ScenarioCycle[(i + 1) % ScenarioCycle.Length];
-        }
+        private const string TrainingConvenienceScene = "TrainingConvenienceScene";
 
         // ===== TTS =====
 

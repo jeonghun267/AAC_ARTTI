@@ -161,7 +161,8 @@ namespace Artti.Report
                     try
                     {
                         var ev = JsonUtility.FromJson<AACEvent>(line);
-                        if (ev != null) _events.Add(ev);
+                        // 변경점: 삭제된 시나리오(약국·음식점)의 과거 기록은 레포트에서 제외
+                        if (ev != null && ReportLabels.IsSupportedScenario(ev.scenarioId)) _events.Add(ev);
                     }
                     catch { /* malformed line 무시 */ }
                 }
@@ -236,7 +237,7 @@ namespace Artti.Report
             return stats;
         }
 
-        // 추천 다음 연습: 완료 횟수가 가장 적은 시나리오 (동률이면 약국 > 편의점 > 음식점 순).
+        // 추천 다음 연습: 완료 횟수가 가장 적은 시나리오 (현재는 편의점 하나).
         public string GetRecommendedScenario()
         {
             var overview = GetOverview();
@@ -246,7 +247,7 @@ namespace Artti.Report
                 overview.completedByScenario.TryGetValue(id, out var n);
                 if (n < bestCount) { bestCount = n; best = id; }
             }
-            return best ?? "pharmacy";
+            return best ?? "convenience";
         }
 
         static string LevelTitle(int level)
@@ -663,32 +664,25 @@ namespace Artti.Report
     // scenarioId / objectiveId → 화면 표시용 한국어 라벨
     public static class ReportLabels
     {
-        public static readonly string[] ScenarioIds = { "pharmacy", "convenience", "restaurant" };
+        public static readonly string[] ScenarioIds = { "convenience" };
+
+        public static bool IsSupportedScenario(string scenarioId) =>
+            string.IsNullOrEmpty(scenarioId) || Array.IndexOf(ScenarioIds, scenarioId) >= 0;
 
         static readonly Dictionary<string, string> Scenario = new Dictionary<string, string>
         {
-            { "pharmacy", "약국" }, { "convenience", "편의점" }, { "restaurant", "음식점" }
+            { "convenience", "편의점" }
         };
 
         // 추천 카드용 시나리오 제목 / 설명
         public static string ScenarioTaskTitle(string scenarioId)
         {
-            switch (scenarioId)
-            {
-                case "convenience": return "편의점에서 물건 사기";
-                case "restaurant":  return "음식점 주문하기";
-                default:            return "약국에서 약 사기";
-            }
+            return "편의점에서 물건 사기";
         }
 
         public static string ScenarioTaskDesc(string scenarioId)
         {
-            switch (scenarioId)
-            {
-                case "convenience": return "계산할 때 쓰는 표현을 연습해보세요!";
-                case "restaurant":  return "실생활에 바로 쓰는 표현을 연습해보세요!";
-                default:            return "증상을 말하는 표현을 연습해보세요!";
-            }
+            return "계산할 때 쓰는 표현을 연습해보세요!";
         }
 
         // 최근 기록 행의 한 줄 코멘트 (정답률 기반)
@@ -704,18 +698,9 @@ namespace Artti.Report
         {
             { "greeting",            "인사하기" },
             { "farewell",            "시나리오 완료" },
-            { "payment",             "물품 계산하기" },
-            // pharmacy
-            { "identify_needs",      "증상 말하기" },
-            { "serve_meds",          "필요한 물품 요구하기" },
-            // convenience
             { "select_items",        "물건 고르기" },
             { "checkout",            "계산하기" },
-            { "extras",              "추가 요청하기" },
-            // restaurant
-            { "menu_browse",         "메뉴 보기" },
-            { "order",               "주문하기" },
-            { "order_modifications", "추가 주문하기" }
+            { "extras",              "추가 요청하기" }
         };
 
         public static string ScenarioName(string scenarioId) =>

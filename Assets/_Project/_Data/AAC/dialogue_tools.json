@@ -10,7 +10,7 @@
           "card_ids": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Card IDs to display, e.g. ['card_pharm_med_headache', 'card_pharm_med_cold']. Length 1-2."
+            "description": "Card IDs to display, e.g. ['card_cvs_water', 'card_cvs_snack']. Length 1-2."
           },
           "npc_speech": {
             "type": "string",
@@ -32,7 +32,7 @@
         "properties": {
           "objective_id": {
             "type": "string",
-            "description": "The objective that just completed, e.g. 'identify_needs'."
+            "description": "The objective that just completed, e.g. 'select_items'."
           },
           "slots_filled": {
             "type": "object",

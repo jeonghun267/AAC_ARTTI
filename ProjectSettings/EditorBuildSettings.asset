@@ -21,14 +21,8 @@ EditorBuildSettings:
     path: Assets/_Project/Scenes/TrainingHubScene.unity
     guid: 7dfe1a4123e193b44ace2e3a37e548e6
   - enabled: 1
-    path: Assets/_Project/Scenes/TrainingPharmacyScene.unity
-    guid: 917abf22a3a0d9440b7d7b47bc95462d
-  - enabled: 1
     path: Assets/_Project/Scenes/TrainingConvenienceScene.unity
     guid: 7f7558d1bb16363499ffa1ca6879052c
-  - enabled: 1
-    path: Assets/_Project/Scenes/TrainingRestaurantScene.unity
-    guid: fc33ee6f0896c0643999ebb4a91ec362
   - enabled: 1
     path: Assets/_Project/Scenes/ARFieldScene.unity
     guid: fa93277fb21aec84e8fb787d7847e194

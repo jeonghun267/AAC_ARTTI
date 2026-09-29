@@ -15,9 +15,7 @@ namespace Artti.Editor
         public const string ProfileSelect      = "Assets/_Project/Scenes/ProfileSelectScene.unity";
         public const string Main               = "Assets/_Project/Scenes/MainScene.unity";
         public const string TrainingHub        = "Assets/_Project/Scenes/TrainingHubScene.unity";
-        public const string TrainingPharmacy   = "Assets/_Project/Scenes/TrainingPharmacyScene.unity";
         public const string TrainingConvenience = "Assets/_Project/Scenes/TrainingConvenienceScene.unity";
-        public const string TrainingRestaurant = "Assets/_Project/Scenes/TrainingRestaurantScene.unity";
         public const string ARField            = "Assets/_Project/Scenes/ARFieldScene.unity";
         public const string ARStore            = "Assets/_Project/Scenes/ARStoreScene.unity"; // Blender 매장 월드 고정 AR 쇼케이스
         public const string Report             = "Assets/_Project/Scenes/ReportScene.unity";

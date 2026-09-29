@@ -4,7 +4,7 @@
 
 캡스톤 디자인 프로젝트. 발달장애인의 지역사회 소통 참여를 지원하는 듀얼 모드 Unity 앱.
 
-- 훈련모드: 약국·편의점·음식점 시나리오에서 LLM(Gemini Flash) 대화 매니저 기반 발화 훈련
+- 훈련모드: 편의점 시나리오에서 LLM(Gemini Flash) 대화 매니저 기반 발화 훈련 (약국·음식점 훈련 씬은 삭제됨)
 - AR현장모드: 카메라로 간판 인식 후 OCR 기반 AAC 카드 표시 (오프라인 동작)
 
 ## 참조 문서
@@ -70,7 +70,7 @@
 - Unity 메뉴 `Artti > Build XxxScene Hierarchy`로 실행. 전체 일괄 빌드는 `Artti > Build All Scenes`.
 - 빌더 실행 시: 기존 씬 GameObject 제거 → .cs 레시피대로 재생성 → 자동 저장.
 - 목적: `.unity` 파일의 git 머지 충돌 방지, 협업 시 씬 재현성 확보.
-- 약국·편의점·음식점 3개 훈련 씬은 `TrainingSceneBuilder.cs` 한 파일로 처리 (시나리오 ID 파라미터로 분기).
+- 훈련 씬은 편의점 하나뿐이며 `ConvenienceTrainingSceneBuilder.cs`로 생성.
 
 ### 진실의 원본
 - 빌더 `.cs` 파일이 원본. `.unity`는 빌더가 `.cs`로부터 자동 생성하는 산출물.
@@ -85,9 +85,6 @@
 - 씬에 미커밋 손배치 GameObject가 있는 상태 — 덮어쓰기로 영구 손실.
 - Unity Play 모드 실행 중 — InvalidOperationException.
 - 변경 성격이 로직만 수정(스크립트 내부 메서드/분기)일 때 — 빌더 불필요.
-
-### 특이사항
-- TrainingPharmacyScene 빌더는 실행 시 확인 다이얼로그 표시. 빌더 코드 수정 반영 목적이 아니면 [취소] 선택.
 
 ### 손배치 → 빌더 코드 이식
 - Unity Inspector의 값(Position, Anchor, Size, 컴포넌트 설정 등)을 빌더 `.cs`로 옮겨 적기.
