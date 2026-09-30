@@ -5074,8 +5074,6 @@ MonoBehaviour:
   - {fileID: 1609736735}
   moreBtn: {fileID: 1743714885}
   convenienceIcon: {fileID: 21300000, guid: 78785189c478c5349a0b2135fbc0cf9f, type: 3}
-  pharmacyIcon: {fileID: 21300000, guid: 6a21d1e0b08a83748851b1dd647d680d, type: 3}
-  restaurantIcon: {fileID: 21300000, guid: ca500c5547986724bb0fdc4435515825, type: 3}
   allSessionsPanel: {fileID: 629717519}
   allSessionsContainer: {fileID: 1149251981}
   allSessionsEmpty: {fileID: 1907684004}
@@ -5122,7 +5120,7 @@ MonoBehaviour:
   m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 1920, y: 1080}
+  m_ReferenceResolution: {x: 1920, y: 1440}
   m_ScreenMatchMode: 1
   m_MatchWidthOrHeight: 0
   m_PhysicalUnit: 3
