@@ -13,8 +13,9 @@ namespace Artti.Common
         public static TrainingMode Mode = TrainingMode.Accuracy;
 
         // 모드별 점원 목소리 (Google Cloud TTS 한국어 표준 음성. A·B 여성, C·D 남성)
+        // 대화 모드 점원은 남자 캐릭터(ARTTI_Male)라 남성 음성을 쓴다.
         public const string AccuracyVoice = "ko-KR-Standard-A";
-        public const string ConversationVoice = "ko-KR-Standard-B";
+        public const string ConversationVoice = "ko-KR-Standard-C";
 
         public static string DisplayName(TrainingMode mode) =>
             mode == TrainingMode.Accuracy ? "정확도 모드" : "대화 모드";
