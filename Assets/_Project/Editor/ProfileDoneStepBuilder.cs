@@ -38,6 +38,7 @@ namespace Artti.Editor
         static readonly Rect TitleBody  = Rect.MinMaxRect(391, 256, 1784, 483);   // 36
         static readonly Rect RowBody    = Rect.MinMaxRect(136, 167, 2036, 552);   // 37 (38도 거의 같음)
         static readonly Rect Row38Body  = Rect.MinMaxRect(161, 199, 2012, 537);   // 38
+        static readonly Rect BirthBody  = Rect.MinMaxRect(178, 184, 1995, 543);   // 41
         static readonly Rect TipBody    = Rect.MinMaxRect(153, 129, 2020, 605);   // 39
         static readonly Rect StartBody  = Rect.MinMaxRect(159, 191, 2015, 524);   // 40
 
@@ -46,8 +47,6 @@ namespace Artti.Editor
 
         static readonly Color PanelFill = new Color(0.05f, 0.08f, 0.20f, 0.86f);
         static readonly Color PanelLine = new Color(0.35f, 0.55f, 1.00f, 0.55f);
-        static readonly Color RowFill   = new Color(0.06f, 0.10f, 0.26f, 0.92f);
-        static readonly Color RowLine   = new Color(0.30f, 0.50f, 1.00f, 0.85f);
         static readonly Color TextWhite = new Color(0.96f, 0.97f, 1.00f, 1.00f);
         static readonly Color TextDim   = new Color(0.62f, 0.68f, 0.88f, 0.75f);
 
@@ -143,7 +142,7 @@ namespace Artti.Editor
             // ===== 오른쪽 열: 생년월일 / 대한민국 / 기본 스타일 / 안내 / 시작하기 =====
             float rowH = ColW * RowBody.height / RowBody.width;
             float y = -Top - rowH / 2f;
-            r.birth = BirthRow(stage, font, new Vector2(ColX, y), new Vector2(ColW * 0.955f, rowH * 0.92f));
+            r.birth = BirthRow(stage, font, new Vector2(ColX, y));
             y -= rowH + Gap;
             Place("RowCountry", stage, Dir + "37.png", RowBody, PillW, PillH, new Vector2(ColX, y), ColW);
             y -= rowH + Gap;
@@ -161,26 +160,18 @@ namespace Artti.Editor
             return r;
         }
 
-        // 생년월일 줄: 37/38과 같은 크기의 둥근 칸 + 왼쪽 원 아이콘 자리 + 날짜 글자
-        static TMP_Text BirthRow(Transform parent, TMP_FontAsset font, Vector2 center, Vector2 size)
+        // 생년월일 줄: 41(달력 아이콘이 있는 빈 칸) 위에 날짜 글자를 얹는다. 글자 시작점은 37의 "대한민국"과 맞춘다.
+        static TMP_Text BirthRow(Transform parent, TMP_FontAsset font, Vector2 center)
         {
-            RoundedBox("RowBirthLine", parent, center, size + new Vector2(6f, 6f), RowLine);
-            var row = RoundedBox("RowBirth", parent, center, size, RowFill);
-            float h = size.y;
-            var icon = ChildRect("Icon", row);
-            icon.anchorMin = icon.anchorMax = icon.pivot = new Vector2(0f, 0.5f);
-            icon.anchoredPosition = new Vector2(h * 0.18f, 0f);
-            icon.sizeDelta = new Vector2(h * 0.64f, h * 0.64f);
-            var iconImg = icon.gameObject.AddComponent<Image>();
-            iconImg.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
-            iconImg.color = new Color(0.12f, 0.18f, 0.40f, 1f);
-            iconImg.raycastTarget = false;
-            var iconText = AddText(icon, "Label", "생일", font, 20, TextWhite, true, Vector2.zero, Vector2.zero, TextAlignmentOptions.Center);
-            StretchFull(iconText.rectTransform);
+            float bodyW = ColW; // 41은 빛 번짐이 얇아 본체 폭을 37과 같게 두어야 겉보기 폭이 맞는다
+            float bodyH = bodyW * BirthBody.height / BirthBody.width;
+            Place("RowBirth", parent, Dir + "41.png", BirthBody, PillW, PillH, center, bodyW);
 
-            var t = AddText(row, "Value", "생년월일 미입력", font, 32, TextWhite, false,
-                new Vector2(h * 0.18f + h * 0.64f + 28f, -(h - 50f) / 2f), new Vector2(size.x - h * 1.2f, 50f), TextAlignmentOptions.Left);
-            return t;
+            const float textStart = 0.23f; // 본체 왼쪽 끝에서 글자 시작까지 (본체 너비 비율)
+            float left = center.x - bodyW / 2f + bodyW * textStart;
+            float width = bodyW * (1f - textStart) - 24f;
+            return AddText(parent, "BirthValue", "생년월일 미입력", font, 36, TextWhite, false,
+                new Vector2(left, center.y + bodyH / 2f), new Vector2(width, bodyH), TextAlignmentOptions.Left);
         }
 
         // 이미지 속 본체(px)가 center/bodyWidth에 오도록 전체 이미지를 놓는다 (클릭 없음)
