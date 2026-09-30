@@ -13,8 +13,10 @@ namespace Artti.Common
         public string avatarId;
         public string colorHex;
         public bool isTeacherMode;
-        public int birthYear;
-        public int birthMonth;
+        public int birthYear;   // 0 = 입력 안 함 (생년월일은 선택 항목)
+        public int birthMonth;  // 0 = 입력 안 함
+        public int birthDay;    // 0 = 입력 안 함
+        public string intro;    // 한마디 소개 (선택)
         public long lastUsedAtTicks; // 마지막 사용일자 (DateTime.Ticks)
 
         public ProfileData()
