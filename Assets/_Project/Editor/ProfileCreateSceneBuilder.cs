@@ -9,26 +9,26 @@ using static Artti.Editor.ProfileAvatarStepBuilder;
 
 namespace Artti.Editor
 {
-    // 프로필 등록 씬 (다크 네온). 두 단계를 한 씬에 겹쳐 둔다.
+    // 프로필 등록 씬 (다크 네온). 세 단계를 한 씬에 겹쳐 두고, 셋 다 같은 틀(BuildFrame: 패널 + 로고 + 단계 표시 + 닫기)을 쓴다.
     //   1단계 아바타 선택: ProfileAvatarStepBuilder가 만든 패널. 처음에 켜져 있고 '다음'을 누르면 닫힌다.
-    //   2단계 프로필 설정: 이 빌더가 만든다. 이름(필수) / 생년월일(선택) / 한마디 소개(선택).
-    // 2단계 배경은 시안 한 장(profiles/29.png, 1463x1075)에 입력 칸과 글자가 그려져 있고,
-    // 그 위에 투명한 입력 필드/드롭다운을 칸 자리에 맞춰 얹는다. 좌표는 전부 시안 px(좌상단 기준).
+    //   2단계 프로필 설정: 이 빌더가 만든다. 왼쪽 고른 아바타 카드 + 오른쪽 폼(이름 필수 / 생년월일·한마디 소개 선택).
     //   3단계 완료: ProfileDoneStepBuilder가 만든 패널. 2단계 '다음'에서 저장이 끝나면 켜진다.
+    // 좌표는 1920x1080 Stage 좌상단 기준(y 아래가 -).
     // 겹침 순서(아래 -> 위): 2단계, 3단계, 1단계, 유효성 팝업
     public static class ProfileCreateSceneBuilder
     {
         static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
         const string KoreanFontPath = "Assets/Fonts/NotoSansKR-Medium SDF.asset";
-        const string Step2Path = Dir + "29.png";   // 2단계 시안 원본 (1463x1075)
 
-        // 시안 크기와 Stage 배치: 세로 1080에 맞추고 가로 가운데 정렬 (좌우 225는 10.png 배경이 채운다)
-        const float ImgW = 1463f, ImgH = 1075f;
-        const float Sc = 1080f / ImgH;                  // 1.00465
-        const float OffX = (1920f - ImgW * Sc) / 2f;    // 225.1
-        static Vector2 P(float x, float y) => new Vector2(OffX + x * Sc, -y * Sc);   // 시안 px -> Stage 좌상단 기준
-        static Vector2 L(float w, float h) => new Vector2(w * Sc, h * Sc);
+        // 2단계 배치 (Stage px)
+        static readonly Vector2 CardCenter = new Vector2(400f, -665f), CardSize = new Vector2(520f, 690f);   // x 140~660, y 320~1010
+        static readonly Vector2 FormCenter = new Vector2(1250f, -615f), FormSize = new Vector2(1060f, 590f); // x 720~1780, y 320~910
+        const float IconX = 790f, FieldL = 830f, FieldR = 1740f, FieldH = 70f;
 
+        static readonly Color FormFill  = new Color(0.07f, 0.11f, 0.26f, 0.85f);
+        static readonly Color FormLine  = new Color(0.35f, 0.55f, 1.00f, 0.45f);
+        static readonly Color FieldFill = new Color(0.10f, 0.16f, 0.36f, 0.95f);
+        static readonly Color FieldLine = new Color(0.35f, 0.55f, 1.00f, 0.55f);
         static readonly Color FieldText   = new Color(0.96f, 0.97f, 1.00f, 1.00f);
         static readonly Color Placeholder = new Color(0.62f, 0.68f, 0.88f, 0.70f);
         static readonly Color ListBg      = new Color(0.07f, 0.11f, 0.26f, 0.98f);
@@ -50,63 +50,38 @@ namespace Artti.Editor
             var font = LoadFont();
             var res = BuildTmpResources();
 
-            // ===== 2단계: 프로필 설정 =====
-            var step = ChildRect("ProfileStep", canvas);
-            StretchFull(step);
-            var bg = ChildRect("Background", step);
-            StretchFull(bg);
-            var bgImg = bg.gameObject.AddComponent<Image>();
-            bgImg.sprite = LoadSprite(Dir + "10.png", 2048);
-            bgImg.raycastTarget = false;
-            var fit = bg.gameObject.AddComponent<AspectRatioFitter>();
-            fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
-            fit.aspectRatio = 1448f / 1086f;
+            // ===== 2단계: 프로필 설정 (1·3단계와 같은 틀, 단계 표시 2) =====
+            var stage = BuildFrame(canvas, "ProfileStep", font, 1, out var closeBtn);
+            var title = AddHeading(stage, font, "프로필을 꾸며보세요", "이름과 스타일을 설정하면 더 특별해져요.");
 
-            var stage = ChildRect("Stage", step);
-            stage.anchorMin = stage.anchorMax = stage.pivot = new Vector2(0.5f, 0.5f);
-            stage.sizeDelta = ReferenceResolution;
+            // 왼쪽: 1단계에서 고른 아바타 카드. 카드 전체를 누르면 1단계로 돌아가 다시 고른다.
+            var avatarImg = AvatarCard(stage, CardCenter, CardSize, "“ 작은 변화가\n새로운 나를 만들어가요. ”", font);
+            var changeAvatar = HitButton("ChangeAvatarBtn", stage, CardCenter, CardSize);
 
-            var sheet = ChildRect("Step2Sheet", stage);
-            sheet.anchorMin = sheet.anchorMax = sheet.pivot = new Vector2(0.5f, 0.5f);
-            sheet.sizeDelta = L(ImgW, ImgH);
-            var sheetImg = sheet.gameObject.AddComponent<Image>();
-            sheetImg.sprite = LoadSprite(Step2Path, 2048);
-            sheetImg.preserveAspect = true;
-            sheetImg.raycastTarget = false;
+            // 오른쪽: 폼 패널 + 항목(아이콘 / 제목 / 입력 칸)
+            RoundedBox("FormLine", stage, FormCenter, FormSize + new Vector2(6f, 6f), FormLine);
+            RoundedBox("Form", stage, FormCenter, FormSize, FormFill);
 
-            // 시안 좌우 경계가 배경과 딱 끊겨 보이지 않게 양옆을 어둡게 덮고 경계 120px에 걸쳐 흐리게 풀어 준다.
-            // 넓은 화면(20:9)에서도 양끝까지 덮이도록 Stage 밖으로 길게 늘인다.
-            SideShade(stage, left: true);
-            SideShade(stage, left: false);
+            FieldLabel(stage, font, "icon_name", "이름", 375f);
+            var nameInput = DarkInput("NameInput", stage, res, font, "이름을 입력하세요",
+                FieldBox(stage, "NameBox", FieldL, FieldR, 440f, FieldH), new Vector2(FieldR - FieldL, FieldH), multiline: false);
 
-            // 왼쪽 카드(시안 30~595, 300~995): 1단계에서 고른 아바타. 아래 인용문(y 860~) 위까지만 채운다.
-            var avatarRt = ChildRect("SelectedAvatar", stage);
-            avatarRt.anchorMin = avatarRt.anchorMax = new Vector2(0f, 1f);
-            avatarRt.pivot = new Vector2(0.5f, 0f);
-            avatarRt.anchoredPosition = P(312.5f, 850f);
-            avatarRt.sizeDelta = L(520f, 530f);
-            var avatarImg = avatarRt.gameObject.AddComponent<Image>();
-            avatarImg.sprite = LoadSprite(Dir + "19.png", 1024);
-            avatarImg.preserveAspect = true;
-            avatarImg.raycastTarget = false;
-            // 카드 전체를 누르면 1단계로 돌아가 다시 고른다
-            var changeAvatar = HitButton("ChangeAvatarBtn", stage, P(312.5f, 647.5f), L(565f, 695f));
+            FieldLabel(stage, font, "icon_birth", "생년월일 <color=#7FB2FF>(선택)</color>", 525f);
+            const float ddGap = 24f;
+            float ddW = (FieldR - FieldL - ddGap * 2f) / 3f;
+            var yearDd  = DarkDropdown("YearDropdown",  stage, res, font, FieldBox(stage, "YearBox",  FieldL, FieldL + ddW, 590f, FieldH), new Vector2(ddW, FieldH));
+            var monthDd = DarkDropdown("MonthDropdown", stage, res, font, FieldBox(stage, "MonthBox", FieldL + ddW + ddGap, FieldL + ddW * 2f + ddGap, 590f, FieldH), new Vector2(ddW, FieldH));
+            var dayDd   = DarkDropdown("DayDropdown",   stage, res, font, FieldBox(stage, "DayBox",   FieldR - ddW, FieldR, 590f, FieldH), new Vector2(ddW, FieldH));
 
-            // 닫기(X, 시안 1403,48에 그려져 있음)
-            var closeBtn = HitButton("CloseBtn", stage, P(1403f, 48f), L(84f, 84f));
+            FieldLabel(stage, font, "icon_intro", "한마디 소개 <color=#7FB2FF>(선택)</color>", 675f);
+            var introInput = DarkInput("IntroInput", stage, res, font, "나를 한마디로 소개해 보세요",
+                FieldBox(stage, "IntroBox", FieldL, FieldR, 785f, 160f), new Vector2(FieldR - FieldL, 160f), multiline: true);
 
-            // 입력 칸 (시안에 그려진 칸 자리)
-            var nameInput = DarkInput("NameInput", stage, res, font, "이름을 입력하세요", P(1068.5f, 417f), L(671f, 60f), multiline: false);
-            var yearDd  = DarkDropdown("YearDropdown",  stage, res, font, P(834f, 566f),  L(206f, 60f));
-            var monthDd = DarkDropdown("MonthDropdown", stage, res, font, P(1071f, 566f), L(206f, 60f));
-            var dayDd   = DarkDropdown("DayDropdown",   stage, res, font, P(1306f, 566f), L(202f, 60f));
-            var introInput = DarkInput("IntroInput", stage, res, font, "나를 한마디로 소개해 보세요", P(1069f, 751.5f), L(676f, 123f), multiline: true);
-
-            // 다음 (폼 패널 오른쪽 아래, 본체 높이 76)
+            // 다음 (폼 패널 오른쪽 끝에 맞춤, 본체 높이 76)
             const float nextH = 76f;
             float nextW = nextH * NextBody.width / NextBody.height;
             var nextBtn = MakeImageButton("NextBtn", stage, Dir + "17.png", NextBody, PillW, PillH,
-                P(1435f, 975f) - new Vector2(nextW / 2f, 0f), nextW);
+                new Vector2(FormCenter.x + FormSize.x / 2f - nextW / 2f, -965f), nextW);
 
             // ===== 유효성 팝업 (이름을 입력해 주세요) =====
             var validation = MakePopup("ValidationPopup", canvas, font, "이름을 입력해 주세요", out var valOk, out var valClose);
@@ -141,6 +116,7 @@ namespace Artti.Editor
             so.FindProperty("validationPopup").objectReferenceValue = validation;
             so.FindProperty("validationOkButton").objectReferenceValue = valOk;
             so.FindProperty("validationCloseButton").objectReferenceValue = valClose;
+            so.FindProperty("titleText").objectReferenceValue = title;
             so.ApplyModifiedProperties();
 
             // 팝업은 1단계보다 위에 그려지도록 맨 뒤로
@@ -151,34 +127,30 @@ namespace Artti.Editor
             Debug.Log("[ProfileCreateSceneBuilder] 완료 (1단계 아바타 선택 + 2단계 프로필 설정 + 3단계 완료)");
         }
 
-        static readonly Color ShadeColor = new Color(0.03f, 0.05f, 0.14f, 0.8f);
-
-        // 한쪽 옆 가림: 단색(화면 끝 ~ 시안 경계-20) + 페이드(경계-20 ~ 경계+100)
-        static void SideShade(Transform stage, bool left)
+        // 입력 칸 테두리 + 바탕. 칸 가운데(Stage px)를 돌려준다.
+        static Vector2 FieldBox(Transform stage, string name, float left, float right, float centerY, float h)
         {
-            const float far = 1000f, fadeW = 120f, inset = 20f, h = 1680f;
-            float edge = left ? OffX : 1920f - OffX;
-            float solidW = far + OffX - inset;
+            var center = new Vector2((left + right) / 2f, -centerY);
+            var size = new Vector2(right - left, h);
+            RoundedBox(name + "Line", stage, center, size + new Vector2(4f, 4f), FieldLine);
+            RoundedBox(name, stage, center, size, FieldFill);
+            return center;
+        }
 
-            var solid = ChildRect(left ? "ShadeL" : "ShadeR", stage);
-            solid.anchorMin = solid.anchorMax = new Vector2(0f, 1f);
-            solid.pivot = new Vector2(left ? 1f : 0f, 0.5f);
-            solid.anchoredPosition = new Vector2(left ? edge - inset : edge + inset, -540f);
-            solid.sizeDelta = new Vector2(solidW, h);
-            var sImg = solid.gameObject.AddComponent<Image>();
-            sImg.color = ShadeColor;
-            sImg.raycastTarget = false;
-
-            var fade = ChildRect(left ? "FadeL" : "FadeR", stage);
-            fade.anchorMin = fade.anchorMax = new Vector2(0f, 1f);
-            fade.pivot = new Vector2(0f, 0.5f);
-            fade.anchoredPosition = new Vector2(left ? edge - inset : edge + inset, -540f);
-            fade.sizeDelta = new Vector2(fadeW, h);
-            fade.localScale = new Vector3(left ? 1f : -1f, 1f, 1f);   // 스프라이트는 왼쪽이 진하고 오른쪽으로 사라진다
-            var fImg = fade.gameObject.AddComponent<Image>();
-            fImg.sprite = LoadSprite(Dir + "edge_fade.png", 256);
-            fImg.color = ShadeColor;
-            fImg.raycastTarget = false;
+        // 항목 제목: 왼쪽 아이콘(29.png에서 따낸 흰 아이콘) + 글자
+        static void FieldLabel(Transform stage, TMP_FontAsset font, string icon, string text, float centerY)
+        {
+            var rt = ChildRect(icon, stage);
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = new Vector2(IconX, -centerY);
+            rt.sizeDelta = new Vector2(40f, 40f);
+            var img = rt.gameObject.AddComponent<Image>();
+            img.sprite = LoadSprite(Dir + icon + ".png", 256);
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+            AddText(stage, icon + "Label", text, font, 28, FieldText, true,
+                new Vector2(FieldL, -centerY + 22f), new Vector2(FieldR - FieldL, 44f), TextAlignmentOptions.Left);
         }
 
         // 투명 클릭 영역 (가운데 기준)
@@ -197,7 +169,7 @@ namespace Artti.Editor
             return btn;
         }
 
-        // 시안에 칸이 그려져 있어 배경은 투명. 글자만 흰색으로 얹는다.
+        // 칸 바탕은 FieldBox가 그려 입력 필드 자체 배경은 투명. 글자만 흰색으로 얹는다.
         static TMP_InputField DarkInput(string name, Transform parent, TMP_DefaultControls.Resources res, TMP_FontAsset font,
             string placeholder, Vector2 center, Vector2 size, bool multiline)
         {
@@ -236,7 +208,7 @@ namespace Artti.Editor
             return input;
         }
 
-        // 칸과 펼침 화살표는 시안에 그려져 있어 배경/화살표를 숨기고 글자만 보인다. 펼친 목록은 어두운 톤.
+        // 칸 바탕은 FieldBox가 그려 드롭다운 자체 배경은 투명. 펼친 목록은 어두운 톤.
         static TMP_Dropdown DarkDropdown(string name, Transform parent, TMP_DefaultControls.Resources res, TMP_FontAsset font,
             Vector2 center, Vector2 size)
         {
@@ -250,8 +222,14 @@ namespace Artti.Editor
             rt.sizeDelta = size;
             var img = go.GetComponent<Image>();
             if (img != null) img.color = new Color(1f, 1f, 1f, 0f);
-            var arrow = go.transform.Find("Arrow");
-            if (arrow != null) arrow.gameObject.SetActive(false);
+            // 펼침 화살표: 칸이 코드로 그려지므로 보이게 두고 밝은 파랑으로
+            if (go.transform.Find("Arrow") is RectTransform arrow)
+            {
+                arrow.anchoredPosition = new Vector2(-30f, 0f);
+                arrow.sizeDelta = new Vector2(28f, 28f);
+                var arrowImg = arrow.GetComponent<Image>();
+                if (arrowImg != null) arrowImg.color = Accent;
+            }
 
             var dd = go.GetComponent<TMP_Dropdown>();
             if (dd.captionText != null)
