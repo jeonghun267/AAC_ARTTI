@@ -2,41 +2,60 @@ using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
+using Artti.Common;
 using Artti.UI;
+using static Artti.Editor.ProfileAvatarStepBuilder;
 
 namespace Artti.Editor
 {
-    // 말하기 훈련 시나리오 선택 화면. 가로 1920x1080. (완성본: kk.png)
-    // 편의점 카드 2개(정확도 모드 / 대화 모드) = 글래스 카드(드롭섀도우 + 반투명 흰 바디 + 밝은 림).
-    //   각 카드: 컬러 원형 아이콘 + 제목 + 설명 + 둥근 매장 씬 이미지 + "연습하기" 버튼.
-    // 하단: 글래스 팁바(파란 챗 마스코트 + 안내문).
+    // 말하기 훈련 모드 선택 화면 (다크 네온). 가로 1920x1080 Stage 기준, 좌상단 원점(y 아래가 -).
+    // 에셋: Art/UI/TrainingHub/
+    //   56 배경(1672x941, 매장 / 왼쪽 문구 "작은 변화가 더 나은 내일을 만들어요." / 오른쪽 위 ARTTI 간판 / 왼쪽 위 뒤로 버튼이 그려져 있음)
+    //   57 제목 "말하기 훈련 / 오늘은 어떤 연습을 해볼까요?"   58 정확도 모드 카드   59 대화 모드 카드
+    //   60 연습하기(파랑, 정확도)   61 연습하기(보라, 대화)   tip_bulb 안내 바 전구(코드로 그린 안내 바에 씀)
+    // 좌표는 시안(1672x941)을 1920 폭으로 환산(x1.1483)한 값. 카드는 56 왼쪽 문구(Stage x ~505, y 258~597)를 피해 오른쪽에 두고,
+    // 태블릿(16:10)에서 좌우가 44씩 잘려도 대화 모드 카드 오른쪽 끝이 남는 크기(0.52배)로 정했다.
+    // 카드와 그 아래 연습하기 버튼 어디를 눌러도 그 모드로 시작한다(모드마다 Button 하나).
     public static class TrainingHubSceneBuilder
     {
         static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
+        const string HubDir = "Assets/_Project/Art/UI/TrainingHub/";
 
-        static readonly Color32 BgColor    = new Color32(233, 239, 250, 255);
-        static readonly Color32 TitleColor = new Color32(33, 41, 60, 255);
-        static readonly Color32 SubColor   = new Color32(110, 118, 135, 255);
-        static readonly Color   White      = Color.white;
+        // 뒤로: 56에 그려진 원(시안 px 67~142, 47~122) 위에 투명 버튼. 누르는 동안만 옅은 원이 뜬다.
+        static readonly Vector2 BackCenter = new Vector2(119.8f, -97.4f);
+        const float BackDiameter = 87f, BackHit = 124f;
 
-        // 글래스 색
-        static readonly Color GlassEdge   = new Color(1f, 1f, 1f, 0.85f);   // 밝은 림
-        static readonly Color GlassFill   = new Color(1f, 1f, 1f, 0.62f);   // 반투명 프로스트 내부
-        static readonly Color GlassShadow = new Color(0.15f, 0.20f, 0.42f, 0.16f);
+        // 제목(57, 2172x724). 본체 = 알파>200. 두 카드 묶음의 가운데 위.
+        const float TitleImgW = 2172f, TitleImgH = 724f;
+        static readonly Rect TitleBody = Rect.MinMaxRect(499, 175, 1681, 557);
+        static readonly Vector2 TitleCenter = new Vector2(1172f, -164f);
+        const float TitleWidth = 400f;
 
-        // 편의점 테마색 (파랑) — 카드 테두리 글로우용
-        static readonly Color ThemeBlue   = new Color(0.23f, 0.51f, 0.96f, 1f);
-        static readonly Color ThemeOrange = new Color(0.98f, 0.60f, 0.20f, 1f); // 대화 모드 카드 후광 (정확도 모드는 파랑)
+        // 카드(58/59, 1448x1086) 0.52배. 위치 = 이미지 좌상단. 두 카드는 같은 높이(59는 그림 자체가 조금 낮게 그려져 있음).
+        const float CardImgW = 1448f, CardImgH = 1086f, CardScale = 0.52f;
+        static readonly Vector2 AccuracyCardPos = new Vector2(470f, -218f);
+        static readonly Vector2 ConversationCardPos = new Vector2(1106f, -218f);
+        // 누르는 영역(카드 px, 위에서부터 y). 기울어진 두 카드 사이 틈에서 서로 겹치지 않게 본체보다 조금 안쪽.
+        static readonly Rect AccuracyCardHit = Rect.MinMaxRect(130, 90, 1290, 985);
+        static readonly Rect ConversationCardHit = Rect.MinMaxRect(110, 125, 1370, 985);
 
-        const string RoundedPath  = "Assets/_Project/Art/UI/RoundedRect.png";
-        const string ScenarioDir  = "Assets/_Project/Art/UI/Scenario/";
-        const string CardConvenience = ScenarioDir + "card_convenience.png";
-        const string IconConvenience = ScenarioDir + "icon_convenience.png";
-        const string BtnBlue   = ScenarioDir + "btn_practice_blue.png";
-        const string HelperChat = ScenarioDir + "helper_chat.png";
+        // 연습하기(60/61, 2172x724). 본체 = 알파>250(알약 테두리). 두 버튼은 높이를 맞춘다.
+        // 카드 아래 가장자리(기울어져 y 718~728) 가운데 밑.
+        const float PillImgW = 2172f, PillImgH = 724f, PillHeight = 76f;
+        static readonly Rect BluePillBody = Rect.MinMaxRect(259, 135, 1912, 559);
+        static readonly Rect PurplePillBody = Rect.MinMaxRect(291, 162, 1878, 542);
+        static readonly Vector2 AccuracyPillCenter = new Vector2(818f, -785f);
+        static readonly Vector2 ConversationPillCenter = new Vector2(1466f, -785f);
 
-        static readonly Vector2 CardSize = new Vector2(430, 720);
-        const float CardOffsetX = 390f; // 모드 카드 2장의 중심 x (±). 손배치 시안 기준 추정값
+        // 아래 안내 바(코드로 그림). 폰(20:9)은 배경 위아래가 잘려 Stage y 49~965만 보이므로 그 안에 둔다.
+        static readonly Vector2 TipCenter = new Vector2(1172f, -913f);
+        static readonly Vector2 TipSize = new Vector2(730f, 66f);   // 안내문(26pt) 폭 586 + 전구 + 좌우 여백
+        const string TipText = "원하는 모드를 선택하면, 바로 연습을 시작할 수 있어요.";
+
+        static readonly Color TipFill = new Color(0.04f, 0.07f, 0.20f, 0.62f);
+        static readonly Color TipLine = new Color(0.55f, 0.68f, 1.00f, 0.55f);
+        static readonly Color TipTextColor = new Color(0.93f, 0.95f, 1.00f, 1.00f);
+        static readonly Color BackFlash = new Color(0.62f, 0.80f, 1.00f, 1.00f);
 
         [MenuItem("Artti/Build TrainingHubScene Hierarchy")]
         public static void BuildMenu() => Build();
@@ -48,29 +67,36 @@ namespace Artti.Editor
 
             SceneBuilderUtils.CreateEventSystem();
             SceneBuilderUtils.EnsureAudioListener();
-            var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution);
+            var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution, CanvasScaler.ScreenMatchMode.Expand);
             var font = SceneBuilderUtils.GetKoreanFont();
 
-            BuildBackground(canvasGo.transform);
+            // ===== 배경 (56, 화면 꽉 채움) + Stage (배경을 따라 같이 늘어남) =====
+            var bg = BuildBackground(canvasGo.transform);
+            var stage = ChildRect("Stage", bg);
+            stage.anchorMin = stage.anchorMax = stage.pivot = new Vector2(0.5f, 0.5f);
+            stage.anchoredPosition = Vector2.zero;
+            stage.sizeDelta = ReferenceResolution;
+            bg.GetComponent<CoverImageFitter>().SetFollower(stage, ReferenceResolution);
 
-            MakeCircleBackButton(canvasGo.transform, font);
+            BuildBackButton(stage);
 
-            var title = MakeText("Title", canvasGo.transform, "말하기 훈련", 72, TitleColor, font, bold: true);
-            PlaceTop(title.rectTransform, new Vector2(0, -60), new Vector2(900, 100));
+            // ===== 제목 (57) =====
+            float ts = TitleWidth / TitleBody.width;
+            var title = ChildRect("Title", stage);
+            title.anchorMin = title.anchorMax = new Vector2(0f, 1f);
+            title.pivot = new Vector2(0.5f, 0.5f);
+            title.sizeDelta = new Vector2(TitleImgW, TitleImgH) * ts;
+            title.anchoredPosition = TitleCenter + new Vector2((TitleImgW / 2f - TitleBody.center.x) * ts,
+                (TitleBody.center.y - TitleImgH / 2f) * ts);
+            AddImage(title, HubDir + "57.png");
 
-            var subtitle = MakeText("Subtitle", canvasGo.transform, "오늘은 어떤 연습을 해볼까요?", 40, SubColor, font, bold: false);
-            PlaceTop(subtitle.rectTransform, new Vector2(0, -168), new Vector2(900, 64));
+            // ===== 모드 카드 2장: 좌 = 정확도 모드(58 + 60), 우 = 대화 모드(59 + 61) =====
+            var accuracyBtn = BuildModeCard(stage, "AccuracyModeCard", HubDir + "58.png", AccuracyCardPos, AccuracyCardHit,
+                HubDir + "60.png", BluePillBody, AccuracyPillCenter);
+            var conversationBtn = BuildModeCard(stage, "ConversationModeCard", HubDir + "59.png", ConversationCardPos, ConversationCardHit,
+                HubDir + "61.png", PurplePillBody, ConversationPillCenter);
 
-            // 편의점 카드 2장: 좌 = 정확도 모드, 우 = 대화 모드
-            var accuracyBtn = MakeScenarioCard(canvasGo.transform, "AccuracyModeCard", new Vector2(-CardOffsetX, -30),
-                IconConvenience, CardConvenience, BtnBlue, ThemeBlue,
-                "정확도 모드", "또렷하게 말하면\n다음으로 넘어가요", font);
-
-            var conversationBtn = MakeScenarioCard(canvasGo.transform, "ConversationModeCard", new Vector2(CardOffsetX, -30),
-                IconConvenience, CardConvenience, BtnBlue, ThemeOrange,
-                "대화 모드", "편하게 말해도\n대화가 이어져요", font);
-
-            MakeTipBar(canvasGo.transform, font);
+            BuildTipBar(stage, font);
 
             var view = canvasGo.AddComponent<TrainingHubView>();
             var so = new SerializedObject(view);
@@ -80,343 +106,146 @@ namespace Artti.Editor
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[TrainingHubSceneBuilder] 완료 (글래스 카드 2개 + 팁바)");
+            Debug.Log("[TrainingHubSceneBuilder] 완료 (배경 56 꽉 채움 + 제목 57 + 모드 카드 58/59 + 연습하기 60/61 + 안내 바)");
         }
 
-        // ===== 시나리오 글래스 카드 → "연습하기" 버튼 반환 =====
-        static Button MakeScenarioCard(Transform parent, string goName, Vector2 pos,
-            string iconPath, string cardImagePath, string buttonPath, Color theme, string title, string desc, TMP_FontAsset font)
+        // 배경(56): 화면을 빈틈 없이 꽉 채운다. 왼쪽 문구와 뒤로 버튼이 가장자리 가까이 그려져 있어
+        // 사용자 선택 화면(48)과 같이 CoverImageFitter로 비율을 최대 6%만 바꿔 태블릿 좌우 잘림을 줄인다.
+        // 폰(20:9)은 위아래가 잘리는데, 뒤로 버튼(Stage y 54~)이 남도록 기준점을 위쪽(0.70)에 둔다.
+        static RectTransform BuildBackground(Transform canvas)
         {
-            var root = MakeGlassCard(parent, goName, pos, CardSize, 0.6f, theme);
+            var bg = ChildRect("Background", canvas);
+            var img = bg.gameObject.AddComponent<Image>();
+            img.sprite = LoadSprite(HubDir + "56.png", 2048);
+            img.raycastTarget = false;
+            bg.gameObject.AddComponent<CoverImageFitter>().Setup(1672f / 941f, 1.06f, new Vector2(0.5f, 0.70f));
+            return bg;
+        }
 
-            // 마우스 hover 시 살짝 커지고 떠오르며 그림자 강화
-            AddHover(root);
+        // 뒤로: 56에 그려진 원 위의 투명 버튼 -> MainScene. 누르는 동안(마우스는 올린 동안) 원 위에 옅은 빛을 띄운다.
+        static void BuildBackButton(Transform stage)
+        {
+            var rt = ChildRect("BackButton", stage);
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = BackCenter;
+            rt.sizeDelta = new Vector2(BackHit, BackHit);
+            var hit = rt.gameObject.AddComponent<Image>();
+            hit.color = new Color(1f, 1f, 1f, 0f);
 
-            // 컬러 원형 아이콘 배지 (상단 중앙)
-            var icon = ChildRect("Icon", root);
-            icon.anchorMin = icon.anchorMax = new Vector2(0.5f, 1f);
-            icon.pivot = new Vector2(0.5f, 1f);
-            icon.anchoredPosition = new Vector2(0, -34);
-            icon.sizeDelta = new Vector2(92, 92);
-            var iconImg = icon.gameObject.AddComponent<Image>();
-            iconImg.sprite = LoadSprite(iconPath); iconImg.preserveAspect = true; iconImg.raycastTarget = false;
+            var flashRt = ChildRect("PressFlash", rt);
+            flashRt.anchorMin = flashRt.anchorMax = flashRt.pivot = new Vector2(0.5f, 0.5f);
+            flashRt.sizeDelta = new Vector2(BackDiameter, BackDiameter);
+            var flash = flashRt.gameObject.AddComponent<Image>();
+            flash.sprite = SceneBuilderUtils.EnsureCircleSprite();
+            flash.color = new Color(BackFlash.r, BackFlash.g, BackFlash.b, 0f);   // 평소 투명(에디터 화면에서도)
+            flash.raycastTarget = false;
 
-            var nameText = MakeText("Name", root, title, 42, TitleColor, font, bold: true);
-            PlaceTop(nameText.rectTransform, new Vector2(0, -140), new Vector2(390, 56));
+            var btn = rt.gameObject.AddComponent<Button>();
+            btn.targetGraphic = hit;
+            btn.transition = Selectable.Transition.None;
 
-            var descText = MakeText("Desc", root, desc, 25, SubColor, font, bold: false);
-            descText.textWrappingMode = TextWrappingModes.Normal;
-            PlaceTop(descText.rectTransform, new Vector2(0, -200), new Vector2(394, 84));
+            var glow = rt.gameObject.AddComponent<HomeButtonGlow>();
+            glow.Setup(flash, null);
+            var gso = new SerializedObject(glow);
+            gso.FindProperty("baseAlpha").floatValue = 0f;
+            gso.FindProperty("hoverAlpha").floatValue = 0.3f;
+            gso.ApplyModifiedPropertiesWithoutUndo();
 
-            // 둥근 매장 씬 이미지 (이미지 비율 그대로)
-            var sceneSp = LoadSprite(cardImagePath);
-            float ratio = (sceneSp != null && sceneSp.rect.width > 0) ? sceneSp.rect.height / sceneSp.rect.width : 0.82f;
-            float sw = 366f;
-            var scene = ChildRect("Scene", root);
-            scene.anchorMin = scene.anchorMax = new Vector2(0.5f, 1f);
-            scene.pivot = new Vector2(0.5f, 1f);
-            scene.anchoredPosition = new Vector2(0, -300);
-            scene.sizeDelta = new Vector2(sw, sw * ratio);
-            var sceneImg = scene.gameObject.AddComponent<Image>();
-            sceneImg.sprite = sceneSp; sceneImg.preserveAspect = true; sceneImg.raycastTarget = false;
+            var back = rt.gameObject.AddComponent<SceneBackButton>();
+            back.SetTarget("MainScene");
+            var method = typeof(SceneBackButton).GetMethod(nameof(SceneBackButton.GoBack));
+            var action = (UnityEngine.Events.UnityAction)System.Delegate.CreateDelegate(typeof(UnityEngine.Events.UnityAction), back, method);
+            UnityEditor.Events.UnityEventTools.AddPersistentListener(btn.onClick, action);
+        }
 
-            // 매장 환경 효과 — 평소엔 숨기고 hover/터치 중에만 표시
-            var ambience = ChildRect("Ambience", scene);
-            StretchFull(ambience, 0);
-            var ambienceCg = ambience.gameObject.AddComponent<CanvasGroup>();
-            ambienceCg.alpha = 0f;            // 평소 숨김 (CardHoverEffect가 hover 시 페이드 인)
-            ambienceCg.interactable = false;
-            ambienceCg.blocksRaycasts = false;
+        // 모드 카드: 루트 = 카드 이미지 자리(가운데 기준). Visual(카드 + 연습하기 그림)만 HomeButtonGlow가 살짝 키우고/줄이고,
+        // 누르는 영역(CardHit + PillHit, 투명)은 그대로 둔다. 두 영역 모두 루트의 Button 하나로 이어진다.
+        static Button BuildModeCard(Transform stage, string name, string cardPath, Vector2 cardPos, Rect cardHit,
+            string pillPath, Rect pillBody, Vector2 pillCenter)
+        {
+            var cardSize = new Vector2(CardImgW, CardImgH) * CardScale;
+            var root = ChildRect(name, stage);
+            root.anchorMin = root.anchorMax = new Vector2(0f, 1f);
+            root.pivot = new Vector2(0.5f, 0.5f);
+            root.anchoredPosition = cardPos + new Vector2(cardSize.x / 2f, -cardSize.y / 2f);
+            root.sizeDelta = cardSize;
+            Vector2 rootCenter = root.anchoredPosition;
 
-            AddConvenienceAmbience(ambience);
+            var visual = ChildRect("Visual", root);
+            StretchFull(visual);
+            var card = ChildRect("Card", visual);
+            StretchFull(card);
+            AddImage(card, cardPath);
 
-            // hover 효과에 ambience 페이드 연결
-            var hoverFx = root.GetComponent<CardHoverEffect>();
-            if (hoverFx != null)
-            {
-                var hso = new SerializedObject(hoverFx);
-                hso.FindProperty("ambience").objectReferenceValue = ambienceCg;
-                hso.ApplyModifiedProperties();
-            }
+            // 연습하기: 본체(알약) 가운데가 pillCenter(Stage 좌표)에 오게 한다
+            float ps = PillHeight / pillBody.height;
+            var pillBodyPos = pillCenter - rootCenter;
+            var pill = ChildRect("PracticeBtn", visual);
+            pill.anchorMin = pill.anchorMax = pill.pivot = new Vector2(0.5f, 0.5f);
+            pill.sizeDelta = new Vector2(PillImgW, PillImgH) * ps;
+            pill.anchoredPosition = pillBodyPos + new Vector2((PillImgW / 2f - pillBody.center.x) * ps,
+                (pillBody.center.y - PillImgH / 2f) * ps);
+            AddImage(pill, pillPath);
 
-            // "연습하기" 버튼 (색상별 베이크 이미지)
-            var btnSp = LoadSprite(buttonPath);
-            float bratio = (btnSp != null && btnSp.rect.width > 0) ? btnSp.rect.height / btnSp.rect.width : 0.27f;
-            float bw = 300f;
-            var btnRT = ChildRect("PracticeBtn", root);
-            btnRT.anchorMin = btnRT.anchorMax = new Vector2(0.5f, 1f);
-            btnRT.pivot = new Vector2(0.5f, 1f);
-            btnRT.anchoredPosition = new Vector2(0, -630);
-            btnRT.sizeDelta = new Vector2(bw, bw * bratio);
-            var btnImg = btnRT.gameObject.AddComponent<Image>();
-            btnImg.sprite = btnSp; btnImg.preserveAspect = true;
-            var btn = btnRT.gameObject.AddComponent<Button>();
-            btn.targetGraphic = btnImg;
-            var colors = btn.colors;
-            colors.highlightedColor = new Color(1f, 1f, 1f, 1f);
-            colors.pressedColor = new Color(0.88f, 0.9f, 0.94f, 1f);
-            colors.fadeDuration = 0.08f;
-            btn.colors = colors;
+            // 누르는 영역 (카드 px -> 루트 가운데 기준)
+            var cardHitImg = AddHit(root, "CardHit",
+                new Vector2((cardHit.center.x - CardImgW / 2f) * CardScale, (CardImgH / 2f - cardHit.center.y) * CardScale),
+                cardHit.size * CardScale);
+            AddHit(root, "PillHit", pillBodyPos, new Vector2(pillBody.width * ps, PillHeight));
+
+            var btn = root.gameObject.AddComponent<Button>();
+            btn.targetGraphic = cardHitImg;
+            btn.transition = Selectable.Transition.None;
+            root.gameObject.AddComponent<HomeButtonGlow>().Setup(null, visual);
             return btn;
         }
 
-        // ===== Hover 효과 =====
-        // 카드 root에 투명 raycast 카처를 깔고 CardHoverEffect를 붙인다.
-        // (카드 전체 영역에서 hover 감지 → 버튼 위에서도 enter 유지)
-        static void AddHover(RectTransform cardRoot)
+        // 아래 안내 바: 어두운 반투명 알약 + 옅은 파란 테두리 + 전구 + 안내문
+        static void BuildTipBar(Transform stage, TMP_FontAsset font)
         {
-            var catcher = cardRoot.gameObject.AddComponent<Image>();
-            catcher.color = new Color(0f, 0f, 0f, 0f); // 투명, 단 raycast는 받음
-            catcher.raycastTarget = true;
+            var line = RoundedBox("TipBar", stage, TipCenter, TipSize + new Vector2(3f, 3f), TipLine);
+            line.GetComponent<Image>().pixelsPerUnitMultiplier = 44f / ((TipSize.y + 3f) / 2f);   // RoundedRect 테두리 44 -> 반원 끝
+            var fill = ChildRect("Fill", line);
+            fill.anchorMin = Vector2.zero; fill.anchorMax = Vector2.one;
+            fill.offsetMin = new Vector2(1.5f, 1.5f); fill.offsetMax = new Vector2(-1.5f, -1.5f);
+            var fillImg = fill.gameObject.AddComponent<Image>();
+            fillImg.sprite = Rounded(); fillImg.type = Image.Type.Sliced;
+            fillImg.pixelsPerUnitMultiplier = 44f / (TipSize.y / 2f);
+            fillImg.color = TipFill;
+            fillImg.raycastTarget = false;
 
-            var hover = cardRoot.gameObject.AddComponent<CardHoverEffect>();
-            var shadow = cardRoot.Find("Shadow")?.GetComponent<Image>();
-            if (shadow != null)
-            {
-                var so = new SerializedObject(hover);
-                so.FindProperty("shadow").objectReferenceValue = shadow;
-                so.ApplyModifiedProperties();
-            }
+            var bulb = ChildRect("Bulb", line);
+            bulb.anchorMin = bulb.anchorMax = new Vector2(0f, 0.5f);
+            bulb.pivot = new Vector2(0f, 0.5f);
+            bulb.anchoredPosition = new Vector2(34f, 1f);
+            bulb.sizeDelta = new Vector2(44f, 44f);
+            AddImage(bulb, HubDir + "tip_bulb.png", 256);
+
+            var tip = AddText(line, "Tip", TipText, font, 26, TipTextColor, false, Vector2.zero, Vector2.zero, TextAlignmentOptions.Center);
+            tip.rectTransform.anchorMin = Vector2.zero; tip.rectTransform.anchorMax = Vector2.one;
+            tip.rectTransform.offsetMin = new Vector2(92f, 0f); tip.rectTransform.offsetMax = new Vector2(-44f, 0f);
         }
 
-        // ===== 매장 환경 효과 =====
-        // 편의점: 상품 반짝임 (여러 점이 짧게 깜빡이며 반짝)
-        static void AddConvenienceAmbience(RectTransform parent)
+        static Image AddImage(RectTransform rt, string path, int maxSize = 2048)
         {
-            var container = ChildRect("Sparkles", parent);
-            StretchFull(container, 0);
-
-            // 매장 이미지 내 비율 좌표(0..1)로 배치 → 이미지 크기와 무관하게 안정적
-            Vector2[] pts   = { new(0.28f, 0.62f), new(0.70f, 0.55f), new(0.50f, 0.78f), new(0.38f, 0.40f), new(0.66f, 0.74f) };
-            float[]   sizes = { 26f, 34f, 22f, 30f, 24f };
-
-            var sparkles = new Graphic[pts.Length];
-            for (int i = 0; i < pts.Length; i++)
-            {
-                var s = ChildRect($"Sparkle{i}", container);
-                s.anchorMin = s.anchorMax = pts[i];
-                s.pivot = new Vector2(0.5f, 0.5f);
-                s.anchoredPosition = Vector2.zero;
-                s.sizeDelta = new Vector2(sizes[i], sizes[i]);
-                var im = s.gameObject.AddComponent<Image>();
-                im.sprite = SceneBuilderUtils.EnsureGlowSprite(); im.type = Image.Type.Sliced;
-                im.color = new Color(1f, 0.97f, 0.8f, 0f); // 따뜻한 화이트, 시작은 투명
-                im.raycastTarget = false;
-                sparkles[i] = im;
-            }
-
-            var field = container.gameObject.AddComponent<SparkleField>();
-            var so = new SerializedObject(field);
-            var arr = so.FindProperty("sparkles");
-            arr.arraySize = sparkles.Length;
-            for (int i = 0; i < sparkles.Length; i++) arr.GetArrayElementAtIndex(i).objectReferenceValue = sparkles[i];
-            so.ApplyModifiedProperties();
-        }
-
-        // ===== 하단 글래스 팁바 =====
-        static void MakeTipBar(Transform parent, TMP_FontAsset font)
-        {
-            var root = ChildRect("TipBar", parent);
-            root.anchorMin = root.anchorMax = new Vector2(0.5f, 0f);
-            root.pivot = new Vector2(0.5f, 0f);
-            root.anchoredPosition = new Vector2(0, 52);
-            root.sizeDelta = new Vector2(1000, 96);
-            DressGlass(root, 0.9f); // 높이의 절반만큼 둥근 알약
-
-            var mascot = ChildRect("Mascot", root);
-            mascot.anchorMin = mascot.anchorMax = new Vector2(0f, 0.5f);
-            mascot.pivot = new Vector2(0f, 0.5f);
-            mascot.anchoredPosition = new Vector2(40, 0);
-            mascot.sizeDelta = new Vector2(64, 64);
-            var mImg = mascot.gameObject.AddComponent<Image>();
-            mImg.sprite = LoadSprite(HelperChat); mImg.preserveAspect = true; mImg.raycastTarget = false;
-
-            var tip = MakeText("Tip", root, "원하는 모드를 선택하면, 연습이 시작돼요.", 34, TitleColor, font, bold: true);
-            tip.alignment = TextAlignmentOptions.Center;
-            tip.rectTransform.anchorMin = tip.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-            tip.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-            tip.rectTransform.anchoredPosition = new Vector2(40, 0);
-            tip.rectTransform.sizeDelta = new Vector2(820, 60);
-        }
-
-        // ===== 글래스 빌딩 블록 =====
-        // theme 지정 시 카드 바깥/안쪽 테두리에 테마색 글로우를 입힌다.
-        static RectTransform MakeGlassCard(Transform parent, string name, Vector2 pos, Vector2 size, float corner, Color? theme = null)
-        {
-            var root = ChildRect(name, parent);
-            root.anchorMin = root.anchorMax = new Vector2(0.5f, 0.5f);
-            root.pivot = new Vector2(0.5f, 0.5f);
-            root.anchoredPosition = pos;
-            root.sizeDelta = size;
-            DressGlass(root, corner, theme);
-            return root; // 콘텐츠는 이 위에 자식으로 추가
-        }
-
-        // 이미 크기/위치가 잡힌 root에 글래스 레이어를 입힌다.
-        // 레이어 순서(뒤→앞): OuterGlow(테마) → Shadow → Edge → InnerGlow(테마) → Fill
-        static void DressGlass(RectTransform root, float corner, Color? theme = null)
-        {
-            // 겉 테두리 컬러 글로우 — 카드 바깥으로 은은히 번지는 테마색 후광
-            if (theme.HasValue)
-            {
-                var outer = ChildRect("OuterGlow", root);
-                outer.anchorMin = Vector2.zero; outer.anchorMax = Vector2.one;
-                outer.offsetMin = new Vector2(-30, -34); outer.offsetMax = new Vector2(30, 24);
-                var og = outer.gameObject.AddComponent<Image>();
-                og.sprite = SceneBuilderUtils.EnsureGlowSprite(); og.type = Image.Type.Sliced;
-                og.color = new Color(theme.Value.r, theme.Value.g, theme.Value.b, 0.5f);
-                og.raycastTarget = false;
-            }
-
-            var shadow = ChildRect("Shadow", root);
-            shadow.anchorMin = Vector2.zero; shadow.anchorMax = Vector2.one;
-            shadow.offsetMin = new Vector2(-16, -30); shadow.offsetMax = new Vector2(16, -2); // 아래로 퍼지는 부드러운 그림자
-            var sh = shadow.gameObject.AddComponent<Image>();
-            sh.sprite = SceneBuilderUtils.EnsureGlowSprite(); sh.type = Image.Type.Sliced;
-            sh.color = GlassShadow; sh.raycastTarget = false;
-
-            var edge = ChildRect("Edge", root);
-            StretchFull(edge, 0);
-            var e = edge.gameObject.AddComponent<Image>();
-            e.sprite = Rounded(); e.type = Image.Type.Sliced; e.pixelsPerUnitMultiplier = corner;
-            // 테마가 있으면 밝은 림을 테마색 쪽으로 살짝 물들임 (안쪽 테두리 발광)
-            e.color = theme.HasValue ? Color.Lerp(GlassEdge, theme.Value, 0.45f) : GlassEdge;
-            e.raycastTarget = false;
-
-            // 안쪽 테두리 컬러 글로우 — 림 안쪽을 따라 도는 소프트 테마색 링
-            if (theme.HasValue)
-            {
-                var inner = ChildRect("InnerGlow", root);
-                StretchFull(inner, 3f);
-                var ig = inner.gameObject.AddComponent<Image>();
-                ig.sprite = SceneBuilderUtils.EnsureGlowSprite(); ig.type = Image.Type.Sliced;
-                ig.color = new Color(theme.Value.r, theme.Value.g, theme.Value.b, 0.5f);
-                ig.raycastTarget = false;
-            }
-
-            var fill = ChildRect("Fill", root);
-            // 테마 글로우가 있으면 Fill을 더 안쪽으로 인셋해 안쪽 글로우 띠가 보이게
-            StretchFull(fill, theme.HasValue ? 12f : 3f);
-            var f = fill.gameObject.AddComponent<Image>();
-            f.sprite = Rounded(); f.type = Image.Type.Sliced; f.pixelsPerUnitMultiplier = corner;
-            f.color = theme.HasValue ? new Color(GlassFill.r, GlassFill.g, GlassFill.b, 0.78f) : GlassFill;
-            f.raycastTarget = false;
-        }
-
-        static void BuildBackground(Transform parent)
-        {
-            var bg = SceneBuilderUtils.CreatePanel("Background", parent);
-            var bgImg = bg.AddComponent<Image>();
-            bgImg.color = BgColor; bgImg.raycastTarget = false;
-            // 부드러운 그라데이션 근사: 상단 밝게 + 하단 푸른끼 + 은은한 장식 blob
-            AddGlow(parent, new Vector2(0, 420),  new Vector2(2200, 900), new Color(1f, 1f, 1f, 0.6f));
-            AddGlow(parent, new Vector2(0, -380), new Vector2(2200, 820), new Color(0.78f, 0.84f, 0.98f, 0.5f));
-            AddGlow(parent, new Vector2(-770, 250), new Vector2(360, 360), new Color(0.80f, 0.86f, 1f, 0.45f));
-            AddGlow(parent, new Vector2(790, -160), new Vector2(320, 320), new Color(0.86f, 0.90f, 1f, 0.45f));
-        }
-
-        static void AddGlow(Transform parent, Vector2 pos, Vector2 size, Color color)
-        {
-            var rt = ChildRect("Glow", parent);
-            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = pos; rt.sizeDelta = size;
             var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = SceneBuilderUtils.EnsureGlowSprite(); img.type = Image.Type.Sliced;
-            img.color = color; img.raycastTarget = false;
+            img.sprite = LoadSprite(path, maxSize);
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+            return img;
         }
 
-        static Sprite LoadSprite(string path)
+        // 투명 raycast 영역 (부모 가운데 기준 center/size)
+        static Image AddHit(RectTransform parent, string name, Vector2 center, Vector2 size)
         {
-            if (AssetImporter.GetAtPath(path) is TextureImporter ti)
-            {
-                bool dirty = false;
-                if (ti.textureType != TextureImporterType.Sprite) { ti.textureType = TextureImporterType.Sprite; dirty = true; }
-                if (ti.spriteImportMode != SpriteImportMode.Single) { ti.spriteImportMode = SpriteImportMode.Single; dirty = true; }
-                if (!ti.alphaIsTransparency) { ti.alphaIsTransparency = true; dirty = true; }
-                if (ti.maxTextureSize < 2048) { ti.maxTextureSize = 2048; dirty = true; }
-                if (dirty) ti.SaveAndReimport();
-            }
-            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            if (sprite == null) Debug.LogWarning($"[TrainingHubSceneBuilder] 이미지 없음: {path}");
-            return sprite;
-        }
-
-        // ===== 공통 UI 헬퍼 =====
-        static GameObject MakeCircleBackButton(Transform parent, TMP_FontAsset font)
-        {
-            // 그림자
-            var shadow = ChildRect("BackShadow", parent);
-            shadow.anchorMin = shadow.anchorMax = new Vector2(0f, 1f);
-            shadow.pivot = new Vector2(0f, 1f);
-            shadow.anchoredPosition = new Vector2(44, -44);
-            shadow.sizeDelta = new Vector2(104, 104);
-            var shImg = shadow.gameObject.AddComponent<Image>();
-            shImg.sprite = SceneBuilderUtils.EnsureGlowSprite(); shImg.type = Image.Type.Sliced;
-            shImg.color = GlassShadow; shImg.raycastTarget = false;
-
-            var rect = ChildRect("BackButton", parent);
-            rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = new Vector2(48, -40);
-            rect.sizeDelta = new Vector2(88, 88);
-            var img = rect.gameObject.AddComponent<Image>();
-            img.sprite = Builtin("UI/Skin/Knob.psd");
-            img.color = White;
-            var btn = rect.gameObject.AddComponent<Button>();
-            btn.targetGraphic = img;
-            var t = MakeText("Text", rect, "←", 44, TitleColor, font, bold: true);
-            StretchFull(t.rectTransform, 4);
-
-            var back = rect.gameObject.AddComponent<Artti.Common.SceneBackButton>();
-            back.SetTarget("MainScene");
-            var method = typeof(Artti.Common.SceneBackButton).GetMethod(nameof(Artti.Common.SceneBackButton.GoBack));
-            var action = (UnityEngine.Events.UnityAction)System.Delegate.CreateDelegate(typeof(UnityEngine.Events.UnityAction), back, method);
-            UnityEditor.Events.UnityEventTools.AddPersistentListener(btn.onClick, action);
-            return rect.gameObject;
-        }
-
-        static TMP_Text MakeText(string name, Transform parent, string text, int fontSize, Color color, TMP_FontAsset font, bool bold)
-        {
-            var tmp = SceneBuilderUtils.CreateTMPText(name, parent, text, fontSize);
-            tmp.color = color;
-            if (bold) tmp.fontStyle = FontStyles.Bold;
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.textWrappingMode = TextWrappingModes.NoWrap;
-            tmp.raycastTarget = false;
-            if (font != null) tmp.font = font;
-            return tmp;
-        }
-
-        static RectTransform ChildRect(string name, Transform parent)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            return go.AddComponent<RectTransform>();
-        }
-
-        static void PlaceTop(RectTransform rect, Vector2 pos, Vector2 size)
-        {
-            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.anchoredPosition = pos;
-            rect.sizeDelta = size;
-        }
-
-        static void StretchFull(RectTransform rect, float padding)
-        {
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(padding, padding);
-            rect.offsetMax = new Vector2(-padding, -padding);
-        }
-
-        static Sprite Builtin(string path) => AssetDatabase.GetBuiltinExtraResource<Sprite>(path);
-
-        static Sprite Rounded()
-        {
-            var s = AssetDatabase.LoadAssetAtPath<Sprite>(RoundedPath);
-            return s != null ? s : Builtin("UI/Skin/UISprite.psd");
+            var rt = ChildRect(name, parent);
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = center;
+            rt.sizeDelta = size;
+            var img = rt.gameObject.AddComponent<Image>();
+            img.color = new Color(1f, 1f, 1f, 0f);
+            return img;
         }
     }
 }
