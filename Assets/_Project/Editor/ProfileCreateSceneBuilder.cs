@@ -12,14 +12,15 @@ namespace Artti.Editor
     // 프로필 등록 씬 (다크 네온). 두 단계를 한 씬에 겹쳐 둔다.
     //   1단계 아바타 선택: ProfileAvatarStepBuilder가 만든 패널. 처음에 켜져 있고 '다음'을 누르면 닫힌다.
     //   2단계 프로필 설정: 이 빌더가 만든다. 이름(필수) / 생년월일(선택) / 한마디 소개(선택).
-    // 2단계 배경은 시안 한 장(profiles/step2_bg.png, 1463x1075)에 입력 칸과 글자가 그려져 있고,
+    // 2단계 배경은 시안 한 장(profiles/29.png, 1463x1075)에 입력 칸과 글자가 그려져 있고,
     // 그 위에 투명한 입력 필드/드롭다운을 칸 자리에 맞춰 얹는다. 좌표는 전부 시안 px(좌상단 기준).
-    // 3단계(완료)는 에셋을 받으면 추가한다. 지금은 2단계 '다음'에서 저장 후 ProfileSelectScene으로 간다.
+    //   3단계 완료: ProfileDoneStepBuilder가 만든 패널. 2단계 '다음'에서 저장이 끝나면 켜진다.
+    // 겹침 순서(아래 -> 위): 2단계, 3단계, 1단계, 유효성 팝업
     public static class ProfileCreateSceneBuilder
     {
         static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
         const string KoreanFontPath = "Assets/Fonts/NotoSansKR-Medium SDF.asset";
-        const string Step2Path = Dir + "step2_bg.png";
+        const string Step2Path = Dir + "29.png";   // 2단계 시안 원본 (1463x1075)
 
         // 시안 크기와 Stage 배치: 세로 1080에 맞추고 가로 가운데 정렬 (좌우 225는 10.png 배경이 채운다)
         const float ImgW = 1463f, ImgH = 1075f;
@@ -113,6 +114,9 @@ namespace Artti.Editor
             // ===== View 와이어링 =====
             var view = canvasGo.AddComponent<ProfileCreateView>();
 
+            // ===== 3단계: 완료 (2단계 위, 1단계 아래) =====
+            var done = ProfileDoneStepBuilder.Build(canvas, font);
+
             // ===== 1단계: 아바타 선택 (맨 위에 덮는다) =====
             var avatarStep = ProfileAvatarStepBuilder.Build(canvas, view, font);
 
@@ -127,6 +131,13 @@ namespace Artti.Editor
             so.FindProperty("previewAvatar").objectReferenceValue = avatarImg;
             so.FindProperty("changeAvatarButton").objectReferenceValue = changeAvatar;
             so.FindProperty("avatarStep").objectReferenceValue = avatarStep.gameObject;
+            so.FindProperty("doneStep").objectReferenceValue = done.root.gameObject;
+            so.FindProperty("doneName").objectReferenceValue = done.name;
+            so.FindProperty("doneAvatar").objectReferenceValue = done.avatar;
+            so.FindProperty("doneBirth").objectReferenceValue = done.birth;
+            so.FindProperty("doneStartButton").objectReferenceValue = done.start;
+            so.FindProperty("doneEditButton").objectReferenceValue = done.edit;
+            so.FindProperty("doneCloseButton").objectReferenceValue = done.close;
             so.FindProperty("validationPopup").objectReferenceValue = validation;
             so.FindProperty("validationOkButton").objectReferenceValue = valOk;
             so.FindProperty("validationCloseButton").objectReferenceValue = valClose;
@@ -137,7 +148,7 @@ namespace Artti.Editor
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[ProfileCreateSceneBuilder] 완료 (1단계 아바타 선택 + 2단계 프로필 설정)");
+            Debug.Log("[ProfileCreateSceneBuilder] 완료 (1단계 아바타 선택 + 2단계 프로필 설정 + 3단계 완료)");
         }
 
         static readonly Color ShadeColor = new Color(0.03f, 0.05f, 0.14f, 0.8f);

@@ -9,7 +9,7 @@ namespace Artti.UI
 {
     // 프로필 등록 2단계(프로필 설정) 폼: 이름(필수) + 생년월일(선택) + 한마디 소개(선택).
     // 1단계(ProfileAvatarStepView)에서 고른 아바타를 SetAvatar로 받아 왼쪽 카드에 보여 준다.
-    // 다음 -> 이름이 비면 유효성 팝업, 아니면 저장 후 nextScene으로 이동.
+    // 다음 -> 이름이 비면 유효성 팝업, 아니면 저장 후 3단계(완료)를 보인다. 3단계가 없으면 nextScene으로 이동.
     public class ProfileCreateView : MonoBehaviour
     {
         [SerializeField] private TMP_InputField nameInput;
@@ -24,6 +24,16 @@ namespace Artti.UI
         [SerializeField] private Image previewAvatar;          // 왼쪽 카드
         [SerializeField] private Button changeAvatarButton;    // 왼쪽 카드 탭 -> 1단계로 돌아가 다시 고르기
         [SerializeField] private GameObject avatarStep;        // 1단계 패널
+
+        [Header("3단계: 완료")]
+        [SerializeField] private GameObject doneStep;
+        [SerializeField] private TMP_Text doneName;
+        [SerializeField] private Image doneAvatar;
+        [SerializeField] private TMP_Text doneBirth;
+        [SerializeField] private Button doneStartButton;   // 시작하기 -> startScene
+        [SerializeField] private Button doneEditButton;    // 편집 배지 -> 1단계부터 다시
+        [SerializeField] private Button doneCloseButton;   // X -> backScene
+        [SerializeField] private string startScene = "MainScene";
 
         [Header("Confirm Popup (없으면 확인 없이 바로 저장)")]
         [SerializeField] private GameObject confirmPopup;
@@ -48,10 +58,12 @@ namespace Artti.UI
         private ProfileData _editing;
 
         private string _avatarId;
+        private Sprite _avatarSprite;
 
         public void SetAvatar(string avatarId, Sprite sprite)
         {
             _avatarId = avatarId;
+            _avatarSprite = sprite;
             if (previewAvatar != null && sprite != null) previewAvatar.sprite = sprite;
         }
 
@@ -71,6 +83,11 @@ namespace Artti.UI
             if (confirmYesButton != null) confirmYesButton.onClick.AddListener(OnConfirmCreate);
             if (confirmNoButton != null) confirmNoButton.onClick.AddListener(CloseConfirm);
             if (confirmCloseButton != null) confirmCloseButton.onClick.AddListener(CloseConfirm);
+
+            if (doneStartButton != null) doneStartButton.onClick.AddListener(() => SceneManager.LoadScene(startScene));
+            if (doneCloseButton != null) doneCloseButton.onClick.AddListener(() => SceneManager.LoadScene(backScene));
+            if (doneEditButton != null) doneEditButton.onClick.AddListener(EditFromDone);
+            if (doneStep != null) doneStep.SetActive(false);
 
             if (validationOkButton != null) validationOkButton.onClick.AddListener(CloseValidation);
             if (validationCloseButton != null) validationCloseButton.onClick.AddListener(CloseValidation);
@@ -133,10 +150,39 @@ namespace Artti.UI
                     boot.ProfileManager.AddProfile(profile);
                     boot.SwitchProfile(profile.id);
                 }
+                // 3단계에서 편집으로 돌아와 다시 저장하면 새로 만들지 않고 이 프로필을 고친다
+                _editing = profile;
             }
 
             CloseConfirm();
-            SceneManager.LoadScene(nextScene);
+            if (doneStep != null) ShowDone(nick, year, month, day);
+            else SceneManager.LoadScene(nextScene);
+        }
+
+        private void ShowDone(string nick, int year, int month, int day)
+        {
+            if (doneName != null) doneName.text = nick;
+            if (doneAvatar != null && _avatarSprite != null) doneAvatar.sprite = _avatarSprite;
+            if (doneBirth != null) doneBirth.text = FormatBirth(year, month, day);
+            doneStep.SetActive(true);
+        }
+
+        // 3단계 편집 배지: 완료 화면을 닫고 1단계(아바타)부터 다시. 입력한 값은 2단계에 그대로 남아 있다.
+        private void EditFromDone()
+        {
+            doneStep.SetActive(false);
+            if (avatarStep != null) avatarStep.SetActive(true);
+        }
+
+        // 입력한 만큼만 보인다: 2001. 05. 20 / 2001. 05 / 2001년 / 05. 20 / 미입력
+        private static string FormatBirth(int year, int month, int day)
+        {
+            if (year > 0 && month > 0 && day > 0) return $"{year}. {month:D2}. {day:D2}";
+            if (year > 0 && month > 0) return $"{year}. {month:D2}";
+            if (year > 0) return $"{year}년";
+            if (month > 0 && day > 0) return $"{month:D2}. {day:D2}";
+            if (month > 0) return $"{month}월";
+            return "생년월일 미입력";
         }
 
         // 수정 모드: 기존 프로필 값으로 폼 채우기 (아바타는 1단계 뷰가 Awake에서 미리 고른다)
