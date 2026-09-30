@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -47,6 +49,26 @@ namespace Artti.UI
         private bool _showingProducts;
         private string[] _activeQuickPhrases;
 
+        // 변경점: 화면 효과 (씬 수정 없이 기존 연결만 사용)
+        // - 상품/분류 칸: 목록이 바뀔 때 차례로 톡 나타나고, 누르면 살짝 작아졌다 돌아온다
+        // - 대화 힌트: 누른 문장이 톡 커지고, 단계가 바뀌어 문장이 바뀌면 차례로 스며 나오며, 새 추천 문장이 한 번 톡 커진다
+        // - 안내 문구: 바뀔 때 스며 나온다
+        static readonly Vector2 LabelAnchorLeft = new Vector2(0f, 0.5f);
+        const float TileStep = 0.05f;
+        const float TileSeconds = 0.28f;
+        const float TileFromScale = 0.85f;
+        const float FirstRevealDelay = 0.3f;   // 씬 진입 페이드가 걷히는 동안 나타나게
+        const float HintStep = 0.05f;
+
+        private Vector2[] _labelHomes;
+        private CanvasGroup[] _labelGroups;
+        private CanvasGroup _guideGroup;
+        private CanvasGroup _practiceGroup;
+        private CancellationTokenSource _tilesCts;
+        private CancellationTokenSource _hintsCts;
+        private bool _tilesRevealed;
+        private int _recommendedIndex = -1;
+
         private static readonly string[] BagPhrases =
             { "봉투 주세요", "봉투 필요 없어요", "얼마예요?", "계산할게요", "감사합니다" };
         private static readonly string[] PaymentPhrases =
@@ -82,6 +104,10 @@ namespace Artti.UI
             WireCategories();
             WireProducts();
             WireQuickPhrases();
+            AttachPress(categoryButtons);
+            AttachPress(productButtons);
+            if (helpButton != null) UIPressScale.Attach(helpButton);
+            CacheTextEffects();
             _activeQuickPhrases = quickPhrases;
             ShowCategories();
             if (helpPanel != null) helpPanel.SetActive(false);
@@ -166,25 +192,117 @@ namespace Artti.UI
 
             RecommendedPhrase = ValueAt(_activeQuickPhrases, recommendedIndex, ValueAt(quickPhrases, recommendedIndex, string.Empty));
 
+            bool phrasesChanged = false;
             for (int i = 0; quickPhraseLabels != null && i < quickPhraseLabels.Length; i++)
             {
                 var label = quickPhraseLabels[i];
                 if (label == null) continue;
-                label.text = ValueAt(_activeQuickPhrases, i, ValueAt(quickPhrases, i, string.Empty));
+                string phrase = ValueAt(_activeQuickPhrases, i, ValueAt(quickPhrases, i, string.Empty));
+                if (label.text != phrase)
+                {
+                    label.text = phrase;
+                    phrasesChanged = true;
+                }
                 bool recommended = i == recommendedIndex;
                 label.color = recommended ? new Color32(31, 94, 220, 255) : new Color32(26, 35, 58, 255);
                 label.fontStyle = recommended ? FontStyles.Bold : FontStyles.Normal;
             }
+            PlayHintEffects(phrasesChanged, recommendedIndex);
+        }
+
+        // 변경점: 문장이 바뀌면 차례로 스며 나오고, 추천 문장이 바뀌면 그 문장이 한 번 톡 커져 "다음에 할 말"을 알려 준다.
+        //   씬 첫 표시(시작 단계)는 그대로 둔다.
+        private void PlayHintEffects(bool phrasesChanged, int recommendedIndex)
+        {
+            bool first = _recommendedIndex < 0;
+            bool recommendedChanged = recommendedIndex != _recommendedIndex;
+            _recommendedIndex = recommendedIndex;
+            if (first || _labelGroups == null || (!phrasesChanged && !recommendedChanged)) return;
+
+            var ct = UIFx.Restart(ref _hintsCts, this);
+            ResetHints();   // 앞 연출이 중간에 끊겨 흐리거나 커진 채 남지 않게
+            float punchDelay = 0.15f;
+            if (phrasesChanged)
+            {
+                for (int i = 0; i < _labelGroups.Length; i++)
+                    UIFx.FadeGroup(_labelGroups[i], 0f, 1f, i * HintStep, 0.25f, ct).Forget();
+                punchDelay += _labelGroups.Length * HintStep + 0.1f;
+            }
+            PunchLabel(recommendedIndex, punchDelay, ct);
+        }
+
+        private void ResetHints()
+        {
+            for (int i = 0; i < _labelGroups.Length; i++)
+            {
+                if (_labelGroups[i] != null) _labelGroups[i].alpha = 1f;
+                if (quickPhraseLabels[i] != null)
+                    UIFx.SetScaleAround(quickPhraseLabels[i].rectTransform, _labelHomes[i], LabelAnchorLeft, 1f);
+            }
+        }
+
+        private void PunchLabel(int index, float delay, CancellationToken ct)
+        {
+            if (quickPhraseLabels == null || _labelHomes == null || index < 0 || index >= quickPhraseLabels.Length
+                || quickPhraseLabels[index] == null) return;
+            UIFx.PunchAround(quickPhraseLabels[index].rectTransform, _labelHomes[index], LabelAnchorLeft, 0.1f, delay, 0.26f, ct).Forget();
         }
 
         private void SetGuide(string text)
         {
-            if (quickPhraseGuide != null) quickPhraseGuide.text = text;
+            if (quickPhraseGuide == null || quickPhraseGuide.text == text) return;
+            quickPhraseGuide.text = text;
+            FadeInText(_guideGroup);
         }
 
         private void SetSpeechPractice(string text)
         {
-            if (speechPracticeText != null) speechPracticeText.text = text;
+            if (speechPracticeText == null || speechPracticeText.text == text) return;
+            speechPracticeText.text = text;
+            FadeInText(_practiceGroup);
+        }
+
+        private void FadeInText(CanvasGroup group)
+        {
+            if (_recommendedIndex < 0) return;   // 씬 첫 표시는 그대로
+            UIFx.FadeGroup(group, 0f, 1f, 0f, 0.3f, this.GetCancellationTokenOnDestroy()).Forget();
+        }
+
+        private void CacheTextEffects()
+        {
+            int n = quickPhraseLabels != null ? quickPhraseLabels.Length : 0;
+            _labelHomes = new Vector2[n];
+            _labelGroups = new CanvasGroup[n];
+            for (int i = 0; i < n; i++)
+            {
+                if (quickPhraseLabels[i] == null) continue;
+                _labelHomes[i] = quickPhraseLabels[i].rectTransform.anchoredPosition;
+                _labelGroups[i] = UIFx.Group(quickPhraseLabels[i]);
+            }
+            if (quickPhraseGuide != null) _guideGroup = UIFx.Group(quickPhraseGuide);
+            if (speechPracticeText != null) _practiceGroup = UIFx.Group(speechPracticeText);
+        }
+
+        private static void AttachPress(Button[] buttons)
+        {
+            for (int i = 0; buttons != null && i < buttons.Length; i++) UIPressScale.Attach(buttons[i]);
+        }
+
+        // 목록이 바뀔 때 보이는 칸이 차례로 톡 나타난다(칸은 가로 레이아웃 자식이라 크기·알파만 바꾼다)
+        private void RevealTiles(Button[] tiles)
+        {
+            if (tiles == null) return;
+            float delay = _tilesRevealed ? 0f : FirstRevealDelay;
+            _tilesRevealed = true;
+            var ct = UIFx.Restart(ref _tilesCts, this);
+            int n = 0;
+            for (int i = 0; i < tiles.Length; i++)
+            {
+                if (tiles[i] == null || !tiles[i].gameObject.activeSelf) continue;
+                UIFx.PopScaleIn((RectTransform)tiles[i].transform, delay + Mathf.Min(n, 6) * TileStep,
+                    TileSeconds, TileFromScale, ct).Forget();
+                n++;
+            }
         }
 
         private void WireCategories()
@@ -255,6 +373,7 @@ namespace Artti.UI
                 productScroll.horizontalNormalizedPosition = 0f;
             }
             _showingProducts = true;
+            RevealTiles(productButtons);
         }
 
         private void ShowCategories()
@@ -268,12 +387,15 @@ namespace Artti.UI
                 productScroll.horizontalNormalizedPosition = 0f;
             }
             _showingProducts = false;
+            RevealTiles(categoryButtons);
         }
 
         private void SelectQuickPhrase(int index)
         {
             string phrase = ValueAt(_activeQuickPhrases, index, ValueAt(quickPhrases, index, null));
-            if (!string.IsNullOrWhiteSpace(phrase)) OnQuickPhraseSelected?.Invoke(phrase);
+            if (string.IsNullOrWhiteSpace(phrase)) return;
+            PunchLabel(index, 0f, this.GetCancellationTokenOnDestroy());   // 변경점: 누른 문장이 톡 커진다
+            OnQuickPhraseSelected?.Invoke(phrase);
         }
 
         private static string ValueAt(string[] values, int index, string fallback) =>
@@ -301,14 +423,9 @@ namespace Artti.UI
                 productScroll.horizontalNormalizedPosition + amount);
         }
 
-        private void ShowHelp()
-        {
-            if (helpPanel != null) helpPanel.SetActive(true);
-        }
+        // 변경점: 팝업 열기/닫기 연출
+        private void ShowHelp() => UIPopupMotion.Open(helpPanel);
 
-        private void HideHelp()
-        {
-            if (helpPanel != null) helpPanel.SetActive(false);
-        }
+        private void HideHelp() => UIPopupMotion.Close(helpPanel);
     }
 }

@@ -53,6 +53,9 @@ namespace Artti.Editor
                 ScenePaths.TrainingConvenience,
                 ScenePaths.ARField,
                 ScenePaths.Report,
+                // [추가] 빠지면 이 메뉴를 누르는 순간 Build Settings에서 지워져 ReportView의 LoadScene("RecordDetailScene")이 실패한다
+                ScenePaths.ARStore,
+                ScenePaths.RecordDetail,
             };
             var list = new EditorBuildSettingsScene[scenes.Length];
             for (int i = 0; i < scenes.Length; i++)

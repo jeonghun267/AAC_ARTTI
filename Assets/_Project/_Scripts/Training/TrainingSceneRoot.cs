@@ -29,6 +29,10 @@ namespace Artti.Training
         [Header("Clerk 애니메이션 (옵션 — 미와이어링 시 무동작)")]
         [SerializeField] private ClerkView clerkView;
 
+        // 변경점: 모드별 점원 배역 (대화 모드 = 남자 점원). 연결되어 있으면 Awake에서 clerkView·npcSpeechSource를 바꿔 끼운다.
+        [Header("모드별 점원 배역 (옵션 — 미연결 시 clerkView 그대로)")]
+        [SerializeField] private ClerkCast clerkCast;
+
         [Header("NPC 음성 (옵션 — 미연결 시 기존 TTS 소스 사용)")]
         [SerializeField] private AudioSource npcSpeechSource;
         public AudioSource NpcSpeechSource => npcSpeechSource != null ? npcSpeechSource : GetComponent<AudioSource>();
@@ -47,6 +51,14 @@ namespace Artti.Training
         [SerializeField] private string sttServerUrl;
         [Tooltip("인식 요청 경로. 비우면 서버의 API 문서(/openapi.json 등)나 흔한 경로에서 자동으로 찾는다 (예: /stt, /transcribe)")]
         [SerializeField] private string sttServerPath;
+
+        // 변경점: 정확도 모드 명료도 관문 (ClarityGatePolicy). 대화 모드에는 적용하지 않는다.
+        [Header("정확도 모드 명료도 기준")]
+        [Tooltip("목표 문장을 말했을 때 서버 명료도가 이 값(%)보다 낮으면 같은 단계에서 다시 말하게 한다")]
+        [SerializeField, Range(0, 100)] private int accuracyClarityMinPercent = 60;
+        [Tooltip("같은 단계에서 이만큼 다시 말해도 기준 미달이면, 그다음 시도는 통과시킨다(막히지 않게)")]
+        [SerializeField, Range(0, 5)] private int accuracyClarityMaxRetries = 2;
+        private ClarityGatePolicy _clarityGate;
 
         private DialogueManager _dialogueManager;
         private ITtsService _ttsService;
@@ -89,11 +101,21 @@ namespace Artti.Training
         {
             _dialogueManager = new DialogueManager();
             _mode = TrainingModeContext.Mode;
+            _clarityGate = new ClarityGatePolicy(accuracyClarityMinPercent, accuracyClarityMaxRetries);
 
             // .env: GEMINI_API_KEY + GOOGLE_TTS_API_KEY 사용. STT는 OS 네이티브(키 불필요).
             // Android 단말이 ko-KR TTS 언어 데이터를 지원 안 해서 TTS만 Cloud로 유지.
             var geminiKey = ApiKeyLoader.Get(ApiKeyLoader.GeminiApi);
             var ttsKey    = ApiKeyLoader.GetOrFallback(ApiKeyLoader.GoogleTtsApi, ApiKeyLoader.GeminiApi);
+
+            // 변경점: 모드에 맞는 점원만 켜고, 그 점원의 뷰·음성 채널로 NPC 발화와 스피커 표시를 연결한다.
+            if (clerkCast != null)
+            {
+                var actor = clerkCast.Activate(_mode);
+                if (actor.view != null) clerkView = actor.view;
+                if (actor.speech != null) npcSpeechSource = actor.speech;
+                hud?.SetSpeakerSource(npcSpeechSource);
+            }
 
             _cardSpeechSource = GetComponent<AudioSource>();
             _ttsService = new CloudTtsService(ttsKey, _cardSpeechSource);
@@ -311,12 +333,13 @@ namespace Artti.Training
         {
             if (hud == null) return;
             // 일시정지 종료 — 중단 기록은 OnDestroy의 SessionAbandoned 경로가 처리
-            hud.OnExitRequested += () => SceneManager.LoadScene("TrainingHubScene");
+            // 변경점: 씬 전환은 페이드(SceneFader)로
+            hud.OnExitRequested += () => SceneFader.Load("TrainingHubScene");
             hud.OnReplayRequested += ReplayNpcLine;
-            hud.OnRetrySession += () => SceneManager.LoadScene(SceneManager.GetActiveScene().name);
-            hud.OnGoHub += () => SceneManager.LoadScene("TrainingHubScene");
-            hud.OnGoHome += () => SceneManager.LoadScene("MainScene");
-            hud.OnGoReport += () => SceneManager.LoadScene("ReportScene");
+            hud.OnRetrySession += () => SceneFader.Load(SceneManager.GetActiveScene().name);
+            hud.OnGoHub += () => SceneFader.Load("TrainingHubScene");
+            hud.OnGoHome += () => SceneFader.Load("MainScene");
+            hud.OnGoReport += () => SceneFader.Load("ReportScene");
             hud.SetObjective(0, StepperLabel("greeting"));
         }
 
@@ -341,6 +364,13 @@ namespace Artti.Training
             if (_npcTtsService != null)
                 TrackSpeech(_npcTtsService.SpeakAsync(line, SpeechToken)).Forget();
             _eventLogger?.LogNpcTurn(line, tool);
+        }
+
+        // 변경점: "생각하는 중"(LLM 대기) 표시는 HUD(옛 시안)와 점원 말풍선(대시보드) 양쪽에 보낸다.
+        private void ShowThinking(bool on)
+        {
+            hud?.ShowThinking(on);
+            uiView.ShowNpcThinking(on);
         }
 
         private void ReplayNpcLine()
@@ -725,6 +755,9 @@ namespace Artti.Training
                     return;
                 }
 
+                // 변경점: 정확도 모드 명료도 관문 (발화는 위 LogCardSelected에서 이미 기록됨)
+                if (BlockLowClarity(card.id, sttResultP, logUtterance: false)) return;
+
                 // 대화 모드: 어눌하게 말해도 탭한 카드 문장을 말한 것으로 보고 진행한다.
                 //   인식 원문·명료도는 위 LogCardSelected에서 이미 기록됐다.
                 var turnText = IsConversationMode && !string.IsNullOrWhiteSpace(card.phrase?.text)
@@ -798,7 +831,7 @@ namespace Artti.Training
             }
 
             // LLM 처리 동안 "생각하는 중" 인디케이터 (응답 지연/무응답 fallback 패턴 공통)
-            hud?.ShowThinking(true);
+            ShowThinking(true);
             // 변경점(Unit 2): 하드코딩 "System Prompt" → 시나리오 페르소나 주입.
             //   userPrompt에 현재 목표/시도 맥락 추가. (대화 이력·슬롯은 Unit 4에서 보강)
             var userPrompt =
@@ -806,7 +839,7 @@ namespace Artti.Training
                 $"[attempt: {_dialogueManager.AttemptCount}, scaffold_level: {(int)_dialogueManager.CurrentScaffoldLevel}]\n" +
                 $"User selected card '{card.id}' ({card.phrase?.text}) and said: \"{sttResult.text}\"";
             var turn = await _geminiService.RequestNextTurnAsync(_systemPrompt, userPrompt, _cts.Token);
-            hud?.ShowThinking(false);
+            ShowThinking(false);
 
             // Gemini 실패/키없음 → fallback 응답으로 대체
             if (turn == null)
@@ -874,6 +907,9 @@ namespace Artti.Training
                     return;
                 }
 
+                // 변경점: 정확도 모드는 목표 문장을 또렷하게 말해야 다음으로 넘어간다(명료도 관문).
+                if (BlockLowClarity("guided_voice", spoken, logUtterance: true)) return;
+
                 // 대화 모드: 어눌하게 말해도 화면 후보 문장으로 해석해 진행한다 (규칙 -> 애매하면 AI -> 추천 문장).
                 //   인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다. 정확도 모드는 기존 흐름 그대로.
                 utterance = IsConversationMode && dashboardView != null
@@ -900,6 +936,30 @@ namespace Artti.Training
                 spoken).Forget();
         }
 
+        // 정확도 모드 명료도 관문. 기준 미달이면 점원이 다시 말해 달라고 하고 true를 돌려준다(이번 턴은 진행하지 않음).
+        //   명료도가 없으면(다른 후보 문장을 말함, 명료도를 주지 않는 기기 STT) 막지 않는다.
+        //   기준 미달 시도도 레포트에 남도록 발화(명료도 포함)와 재시도를 기록한다.
+        //   DialogueManager.RegisterFailure는 부르지 않는다: 실패 4회면 시나리오가 강제 종료되기 때문(횟수는 관문이 따로 센다).
+        private bool BlockLowClarity(string sourceId, SttResult spoken, bool logUtterance)
+        {
+            if (IsConversationMode || _clarityGate == null) return false;
+            var verdict = _clarityGate.Evaluate(_dialogueManager.CurrentObjectiveId, spoken.hasClarity, spoken.clarityPercent);
+            if (verdict == ClarityVerdict.PassAfterRetries)
+                Debug.Log($"[TrainingSceneRoot] 명료도 {spoken.clarityPercent}% 기준 미달이지만 {_clarityGate.Failures}번 다시 말해서 통과");
+            if (verdict != ClarityVerdict.Retry) return false;
+
+            Debug.Log($"[TrainingSceneRoot] 명료도 {spoken.clarityPercent}% < {_clarityGate.MinPercent}% -> 다시 말하기 ({_clarityGate.Failures}/{_clarityGate.MaxRetries})");
+            if (logUtterance)
+            {
+                _eventLogger?.LogCardSelected(sourceId, spoken.text, spoken);
+                hud?.SetUserUtterance(spoken.text);
+            }
+            _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
+            _lastToolSpoke = true;
+            SpeakNpc(_clarityGate.RetryLine(), isFallback: true);
+            return true;
+        }
+
         // 대화 모드 문장 해석: 1) 규칙(틀린 글자 수)으로 확실하면 바로 결정
         //   2) 애매하면 Gemini가 뜻으로 판단 (최대 ConversationJudgeTimeoutSeconds초)
         //   3) Gemini도 못 고르거나 늦으면 추천 문장
@@ -919,7 +979,7 @@ namespace Artti.Training
                 using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
                 {
                     timeout.CancelAfterSlim(System.TimeSpan.FromSeconds(ConversationJudgeTimeoutSeconds), DelayType.Realtime);
-                    hud?.ShowThinking(true);
+                    ShowThinking(true);
                     try
                     {
                         int index = await _geminiService.RequestPhraseMatchAsync(recognized, candidates, timeout.Token);
@@ -935,7 +995,7 @@ namespace Artti.Training
                     }
                     finally
                     {
-                        hud?.ShowThinking(false);
+                        ShowThinking(false);
                     }
                 }
             }
@@ -989,10 +1049,10 @@ namespace Artti.Training
                     }
 
                     hud?.SetUserUtterance(stt.text);
-                    hud?.ShowThinking(true);
+                    ShowThinking(true);
                     var reply = await _geminiService.RequestFreeTalkAsync(
                         _freeTalkSystemPrompt, BuildFreeTalkUserPrompt(stt.text), ct);
-                    hud?.ShowThinking(false);
+                    ShowThinking(false);
                     if (!_freeTalkActive) break;
 
                     bool failed = string.IsNullOrWhiteSpace(reply);
@@ -1005,7 +1065,7 @@ namespace Artti.Training
             finally
             {
                 _freeTalkBusy = false;
-                hud?.ShowThinking(false);
+                ShowThinking(false);
                 uiView.ShowMicIndicator(false);
             }
         }
@@ -1192,10 +1252,10 @@ namespace Artti.Training
             }
             else
             {
-                hud?.ShowThinking(true);
+                ShowThinking(true);
                 turn = await _geminiService.RequestNextTurnAsync(
                     _systemPrompt, BuildUserPrompt(card, sttText, sourceContext), _cts.Token);
-                hud?.ShowThinking(false);
+                ShowThinking(false);
             }
 
             // Gemini 실패/키없음 → fallback 발화 + 룰 기반 풀로 카드 유지(대화 끊기지 않게)

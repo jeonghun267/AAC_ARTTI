@@ -13830,6 +13830,7 @@ MonoBehaviour:
   dashboardView: {fileID: 1827857716}
   hud: {fileID: 1827857714}
   clerkView: {fileID: 1897224170}
+  clerkCast: {fileID: 1835871665}
   npcSpeechSource: {fileID: 1897224168}
   counter: {fileID: 0}
   speakCardOnTap: 0
@@ -15936,7 +15937,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0}
   m_AnchorMax: {x: 1, y: 0}
-  m_AnchoredPosition: {x: 29.601, y: 55.357}
+  m_AnchoredPosition: {x: 29.600952, y: 55.356995}
   m_SizeDelta: {x: 340, y: 114}
   m_Pivot: {x: 1, y: 0}
 --- !u!114 &1801771774
@@ -16339,7 +16340,7 @@ MonoBehaviour:
   cardSlot1: {fileID: 0}
   cardSlot2: {fileID: 0}
   npcDialoguePanel: {fileID: 437837138}
-  pharmacyCardSlots: []
+  cardPoolSlots: []
   extraButton: {fileID: 0}
   freeTalkButton: {fileID: 1801771774}
   freeTalkLabel: {fileID: 0}
@@ -16808,6 +16809,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1835871664}
+  - component: {fileID: 1835871665}
   m_Layer: 0
   m_Name: '[ClerkStage]'
   m_TagString: Untagged
@@ -16832,8 +16834,36 @@ Transform:
   - {fileID: 902336425}
   - {fileID: 1849251830}
   - {fileID: 109243731}
+  - {fileID: 2033277097}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1835871665
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1835871663}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1239e10758fe7a44a9a117fa45e8fd11, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Artti.Training.ClerkCast
+  clerkCamera: {fileID: 902336427}
+  accuracyClerk:
+    root: {fileID: 1897224167}
+    view: {fileID: 1897224170}
+    speech: {fileID: 1897224168}
+    cameraLocalPosition: {x: 0, y: 1.4, z: 2.2}
+    cameraLookLocal: {x: 0, y: 1.4, z: 0}
+    fieldOfView: 40
+  conversationClerk:
+    root: {fileID: 2033277096}
+    view: {fileID: 2033277098}
+    speech: {fileID: 2033277094}
+    cameraLocalPosition: {x: 0, y: 1.4, z: 2.2}
+    cameraLookLocal: {x: 0, y: 1.4, z: 0}
+    fieldOfView: 40
 --- !u!1 &1844858076
 GameObject:
   m_ObjectHideFlags: 0
@@ -18983,6 +19013,123 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2015588191}
   m_CullTransparentMesh: 1
+--- !u!1001 &2033277093
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 1835871664}
+    m_Modifications:
+    - target: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5638355817867414265, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_Name
+      value: ARTTI_Male
+      objectReference: {fileID: 0}
+    - target: {fileID: 5638355817867414265, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 5638355817867414265, guid: 99f28491e4468a242bd6c5c16a6e1621,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2033277098}
+  m_SourcePrefab: {fileID: 100100000, guid: 99f28491e4468a242bd6c5c16a6e1621, type: 3}
+--- !u!82 &2033277094 stripped
+AudioSource:
+  m_CorrespondingSourceObject: {fileID: 4658233442404695672, guid: 99f28491e4468a242bd6c5c16a6e1621,
+    type: 3}
+  m_PrefabInstance: {fileID: 2033277093}
+  m_PrefabAsset: {fileID: 0}
+--- !u!95 &2033277095 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 1410905166935427641, guid: 99f28491e4468a242bd6c5c16a6e1621,
+    type: 3}
+  m_PrefabInstance: {fileID: 2033277093}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &2033277096 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5638355817867414265, guid: 99f28491e4468a242bd6c5c16a6e1621,
+    type: 3}
+  m_PrefabInstance: {fileID: 2033277093}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &2033277097 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 5004807684899131459, guid: 99f28491e4468a242bd6c5c16a6e1621,
+    type: 3}
+  m_PrefabInstance: {fileID: 2033277093}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &2033277098
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2033277096}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c2d8452e7d7177c44a7693fc47f654cb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Artti.Training.ClerkView
+  animator: {fileID: 2033277095}
+  handHeldItem: {fileID: 0}
+  handHeldVisibleSeconds: 2.5
+  showDebugButtons: 0
 --- !u!1 &2047990011
 GameObject:
   m_ObjectHideFlags: 0
