@@ -3,35 +3,33 @@ using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Artti.Common;
 
 namespace Artti.UI
 {
-    // 사용자 선택 화면: 가로 카드 줄(한 번에 visibleCount장, < > 로 넘김) + 맨 끝 "새 사용자" 카드.
+    // 사용자 선택 화면: 가로 카드 줄(옆으로 끌어서 넘김) + 맨 앞(왼쪽) "새 사용자" 카드.
     // 카드 탭 = 선택(강조). 다음 = 선택한 사용자로 시작. 프로필 설정 = 선택한 사용자 수정(없으면 새로 만들기).
     public class ProfileSelectView : MonoBehaviour
     {
         [Header("카드 줄")]
         [SerializeField] private RectTransform cardContainer; // 가로 레이아웃 Content (뷰포트 마스크 안)
         [SerializeField] private GameObject cardPrefab;
-        [SerializeField] private RectTransform addCard;       // "새 사용자" 카드. 항상 줄 맨 끝.
+        [SerializeField] private RectTransform addCard;       // "새 사용자" 카드. 항상 줄 맨 앞(왼쪽 첫 칸).
         [SerializeField] private Button addCardButton;
-        [SerializeField] private Button prevButton;
-        [SerializeField] private Button nextPageButton;
-        [SerializeField] private int visibleCount = 5;
-        [SerializeField] private float cardPitch = 190f;      // 카드 폭 + 간격
+        [SerializeField] private ScrollRect cardScroll;       // 카드 줄을 옆으로 끌어서 넘긴다
 
         [Header("버튼")]
         [SerializeField] private Button nextButton;           // 다음 -> proceedScene
         [SerializeField] private Button settingsButton;       // 프로필 설정 -> 선택한 사용자 수정
         [SerializeField] private Button backButton;           // X
 
-        [Header("Delete Confirm Popup (가운데 모달)")]
+        [Header("Delete Confirm Popup (가운데 모달, 52 판에 제목/안내/입력칸이 그려져 있음)")]
         [SerializeField] private GameObject deletePopup;
-        [SerializeField] private TMP_Text deleteMessageText;
         [SerializeField] private TMP_InputField deleteInput;
+        [SerializeField] private GameObject deleteFieldCover; // 52 입력칸 속 '동의한다' 안내 글자를 가리는 조각
         [SerializeField] private Button deleteConfirmButton; // 삭제
         [SerializeField] private Button deleteCancelButton;  // 취소
         [SerializeField] private Button deleteCloseButton;   // X
@@ -41,15 +39,14 @@ namespace Artti.UI
         [SerializeField] private string proceedScene = "MainScene";
 
         private const string ConfirmWord = "동의한다";
-        private const string DeletePrompt = "정말 삭제할까요?\n동의하시면 아래에 '동의한다'를 입력하세요.";
-        private const string DeleteHint = "'동의한다'를 정확히 입력해야 삭제됩니다.";
+        private const string DeleteHint = "'동의한다'를 정확히 입력해 주세요";
 
         private AvatarLibrary _avatarLib;
         private readonly List<ProfileCardView> _cards = new List<ProfileCardView>();
         private readonly List<string> _cardIds = new List<string>();
         private string _selectedId;
         private string _pendingDeleteId;
-        private int _firstVisible;
+        private bool _deleteHintShown;
 
         private void Start()
         {
@@ -60,12 +57,12 @@ namespace Artti.UI
             if (backButton != null) backButton.onClick.AddListener(() => SceneManager.LoadScene(backScene));
             if (nextButton != null) nextButton.onClick.AddListener(OnNext);
             if (settingsButton != null) settingsButton.onClick.AddListener(OnSettings);
-            if (prevButton != null) prevButton.onClick.AddListener(() => Scroll(-1));
-            if (nextPageButton != null) nextPageButton.onClick.AddListener(() => Scroll(1));
+            RaiseDragThreshold();
 
             if (deleteConfirmButton != null) deleteConfirmButton.onClick.AddListener(OnDeleteConfirm);
             if (deleteCancelButton != null) deleteCancelButton.onClick.AddListener(CloseDelete);
             if (deleteCloseButton != null) deleteCloseButton.onClick.AddListener(CloseDelete);
+            if (deleteInput != null) deleteInput.onValueChanged.AddListener(_ => UpdateFieldCover());
             if (deletePopup != null) deletePopup.SetActive(false);
 
             var active = ProfileManagerOrNull()?.ActiveProfile;
@@ -118,11 +115,10 @@ namespace Artti.UI
                 _cards.Add(card);
                 _cardIds.Add(pid);
             }
-            if (addCard != null) addCard.SetAsLastSibling();
+            if (addCard != null) addCard.SetAsFirstSibling();
 
             ApplySelection();
-            _firstVisible = Mathf.Clamp(_firstVisible, 0, MaxFirstVisible());
-            ApplyScroll();
+            ResetScroll();
         }
 
         private void Select(string id)
@@ -137,25 +133,21 @@ namespace Artti.UI
             if (nextButton != null) nextButton.interactable = _selectedId != null;
         }
 
-        // 한 칸씩 넘긴다. 카드 수(+새 사용자 카드)가 visibleCount 이하면 화살표를 숨긴다.
-        private void Scroll(int dir)
+        // 줄을 맨 왼쪽(새 사용자 카드가 보이는 자리)으로 되돌린다. 콘텐츠는 왼쪽 기준(pivot x 0)이라 x 0이 맨 왼쪽.
+        private void ResetScroll()
         {
-            _firstVisible = Mathf.Clamp(_firstVisible + dir, 0, MaxFirstVisible());
-            ApplyScroll();
+            if (cardScroll != null) cardScroll.StopMovement();
+            var p = cardContainer.anchoredPosition;
+            p.x = 0f;
+            cardContainer.anchoredPosition = p;
         }
 
-        private int MaxFirstVisible() => Mathf.Max(0, _cards.Count + 1 - visibleCount);
-
-        // 카드가 한 화면보다 적으면 가운데 정렬, 많으면 _firstVisible만큼 왼쪽으로 민다.
-        private void ApplyScroll()
+        // 태블릿은 dpi가 높아 기본 10px이면 살짝 흔들린 탭도 드래그로 잡혀 카드 선택이 안 된다. 약 2mm로 올린다.
+        private static void RaiseDragThreshold()
         {
-            int items = _cards.Count + 1;   // + 새 사용자 카드
-            var p = cardContainer.anchoredPosition;
-            p.x = items < visibleCount ? (visibleCount - items) * cardPitch * 0.5f : -_firstVisible * cardPitch;
-            cardContainer.anchoredPosition = p;
-            bool paged = MaxFirstVisible() > 0;
-            if (prevButton != null) prevButton.gameObject.SetActive(paged && _firstVisible > 0);
-            if (nextPageButton != null) nextPageButton.gameObject.SetActive(paged && _firstVisible < MaxFirstVisible());
+            var es = EventSystem.current;
+            if (es != null && Screen.dpi > 0f)
+                es.pixelDragThreshold = Mathf.Max(es.pixelDragThreshold, Mathf.RoundToInt(Screen.dpi * 0.08f));
         }
 
         private void OnNext()
@@ -189,7 +181,7 @@ namespace Artti.UI
         {
             _pendingDeleteId = id;
             if (deleteInput != null) deleteInput.text = "";
-            if (deleteMessageText != null) deleteMessageText.text = DeletePrompt;
+            SetDeleteHint(false);
             if (deletePopup != null) deletePopup.SetActive(true);
         }
 
@@ -199,7 +191,9 @@ namespace Artti.UI
             var typed = deleteInput != null ? deleteInput.text.Trim() : "";
             if (typed != ConfirmWord)
             {
-                if (deleteMessageText != null) deleteMessageText.text = DeleteHint;
+                // 칸을 비우고 칸 안에 안내를 띄운다(다시 치기 시작하면 안내는 사라진다)
+                if (deleteInput != null) deleteInput.text = "";
+                SetDeleteHint(true);
                 return;
             }
 
@@ -216,6 +210,22 @@ namespace Artti.UI
         {
             _pendingDeleteId = null;
             if (deletePopup != null) deletePopup.SetActive(false);
+        }
+
+        // 틀렸다는 안내는 입력칸의 placeholder로 띄운다(칸이 비어 있을 때만 보임).
+        private void SetDeleteHint(bool on)
+        {
+            _deleteHintShown = on;
+            if (deleteInput != null && deleteInput.placeholder is TMP_Text ph) ph.text = on ? DeleteHint : "";
+            UpdateFieldCover();
+        }
+
+        // 52에 그려진 '동의한다' 안내 글자는 글자를 치는 중이거나 틀렸다는 안내를 띄울 때 가린다.
+        private void UpdateFieldCover()
+        {
+            if (deleteFieldCover == null) return;
+            bool typing = deleteInput != null && !string.IsNullOrEmpty(deleteInput.text);
+            deleteFieldCover.SetActive(typing || _deleteHintShown);
         }
 
         private static ProfileManager ProfileManagerOrNull() =>

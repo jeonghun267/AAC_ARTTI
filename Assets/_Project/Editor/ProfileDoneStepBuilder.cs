@@ -42,6 +42,10 @@ namespace Artti.Editor
         static readonly Rect TipBody    = Rect.MinMaxRect(153, 129, 2020, 605);   // 39
         static readonly Rect StartBody  = Rect.MinMaxRect(159, 191, 2015, 524);   // 40
 
+        // 원 안 아바타 크기(원 지름 대비). 아래를 원 바닥에 맞추므로, 1보다 크면 머리(올림머리/모자)가 원 위에서 잘린다.
+        // 0.92면 아바타 9종 모두 머리 위에 여유가 남는다.
+        const float AvatarFill = 0.92f;
+
         // 오른쪽 열: 폭 640, 줄 높이는 이미지 비율(약 130), 간격 16. 카드(폭 약 641)와 100 띄워 둘을 가운데 정렬
         const float ColX = 1331f, ColW = 640f, Gap = 16f, Top = 295f;
 
@@ -63,7 +67,7 @@ namespace Artti.Editor
             float cardW = CardBody.width * CardScale;
             Place("ProfileCard", stage, Dir + "35.png", CardBody, CardImgW, CardImgH, CardCenter, cardW);
 
-            // 원 테두리 안쪽을 둥글게 잘라 아바타를 넣는다(Knob 원형 마스크)
+            // 원 테두리 안쪽을 둥글게 잘라 아바타를 넣는다(매끈한 원 마스크)
             float d = 524f * CardScale;
             var mask = ChildRect("AvatarMask", stage);
             mask.anchorMin = mask.anchorMax = new Vector2(0f, 1f);
@@ -71,14 +75,14 @@ namespace Artti.Editor
             mask.anchoredPosition = CardPx(540f, 546f);
             mask.sizeDelta = new Vector2(d, d);
             var maskImg = mask.gameObject.AddComponent<Image>();
-            maskImg.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
+            maskImg.sprite = SceneBuilderUtils.EnsureCircleSprite();   // [변경] Knob -> Circle256 (머리 위 평평하게 잘림 수정)
             maskImg.raycastTarget = false;
             mask.gameObject.AddComponent<Mask>().showMaskGraphic = false;
             var av = ChildRect("Avatar", mask);
             av.anchorMin = av.anchorMax = new Vector2(0.5f, 0f);
             av.pivot = new Vector2(0.5f, 0f);
             av.anchoredPosition = Vector2.zero;
-            av.sizeDelta = new Vector2(d * 1.05f, d * 1.05f);
+            av.sizeDelta = new Vector2(d * AvatarFill, d * AvatarFill);
             r.avatar = av.gameObject.AddComponent<Image>();
             r.avatar.sprite = LoadSprite(Dir + "19.png", 1024);
             r.avatar.preserveAspect = true;
@@ -94,7 +98,7 @@ namespace Artti.Editor
             badge.anchoredPosition = badgeCenter;
             badge.sizeDelta = new Vector2(badgeD, badgeD);
             var badgeMask = badge.gameObject.AddComponent<Image>();
-            badgeMask.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
+            badgeMask.sprite = SceneBuilderUtils.EnsureCircleSprite();
             badgeMask.raycastTarget = false;
             badge.gameObject.AddComponent<Mask>().showMaskGraphic = false;
             var cardCopy = ChildRect("Card", badge);
@@ -133,6 +137,44 @@ namespace Artti.Editor
 
             root.gameObject.SetActive(false);
             return r;
+        }
+
+        // 손배치가 있는 ProfileCreateScene에 완료 화면의 아바타 원만 다시 적용한다(원 마스크 교체 + 아바타 크기).
+        // 원/배지의 위치와 크기(손배치)는 그대로 두고, 아바타 크기만 원 지름 x AvatarFill로 맞춘다.
+        [MenuItem("Artti/Fix/ProfileCreate - Apply Done Avatar Circle (keep hand placement)")]
+        public static void ApplyAvatarCircle()
+        {
+            if (EditorApplication.isPlaying) { Debug.LogWarning("[ProfileDoneStepBuilder] Play 모드에서는 실행하지 않는다."); return; }
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+            if (scene.path != ScenePaths.ProfileCreate)
+            {
+                if (!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                scene = SceneBuilderUtils.OpenScene(ScenePaths.ProfileCreate);
+            }
+
+            var circle = SceneBuilderUtils.EnsureCircleSprite();
+            int masks = 0;
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                // 완료 단계 루트는 평소 꺼져 있으므로 비활성까지 찾는다
+                foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                {
+                    if (t.name != "DoneStep") continue;
+                    foreach (var c in t.GetComponentsInChildren<RectTransform>(true))
+                    {
+                        if (c.name != "AvatarMask" && c.name != "EditBadge") continue;
+                        if (c.TryGetComponent<Image>(out var img)) img.sprite = circle;
+                        var av = c.name == "AvatarMask" ? c.Find("Avatar") as RectTransform : null;
+                        if (av != null) av.sizeDelta = c.sizeDelta * AvatarFill;
+                        masks++;
+                    }
+                }
+            }
+            if (masks == 0) { Debug.LogError("[ProfileDoneStepBuilder] DoneStep/AvatarMask 없음"); return; }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+            SceneBuilderUtils.SaveActiveScene();
+            Debug.Log($"[ProfileDoneStepBuilder] 완료 화면 아바타 원 적용 ({masks}개 마스크, 아바타 {AvatarFill:0.00}배) - 손배치 유지");
         }
 
         // 생년월일 줄: 41(달력 아이콘이 있는 빈 칸) 위에 날짜 글자를 얹는다. 글자 시작점은 37의 "대한민국"과 맞춘다.

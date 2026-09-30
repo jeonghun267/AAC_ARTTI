@@ -73,6 +73,43 @@ namespace Artti.Editor
             return AssetDatabase.LoadAssetAtPath<Sprite>(GlowSpritePath);
         }
 
+        // [추가] 원형 Mask용 매끈한 원(256px, 가장자리 1px 안티에일리어싱)을 1회 생성해 에셋으로 저장.
+        // 내장 Knob.psd는 해상도가 낮아 크게 쓰면 Mask 경계(알파 > 0)가 각져서, 위는 평평하게 아래는 계단처럼 잘린다.
+        public const string CircleSpritePath = "Assets/_Project/Art/UI/Circle256.png";
+
+        public static Sprite EnsureCircleSprite()
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<Sprite>(CircleSpritePath);
+            if (existing != null) return existing;
+
+            const int size = 256;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            var px = new Color32[size * size];
+            float c = size * 0.5f, r = c - 1f;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(c, c)) - r;
+                    px[y * size + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(Mathf.Clamp01(0.5f - d) * 255f));
+                }
+            }
+            tex.SetPixels32(px);
+            tex.Apply();
+            System.IO.File.WriteAllBytes(CircleSpritePath, tex.EncodeToPNG());
+            Object.DestroyImmediate(tex);
+
+            AssetDatabase.ImportAsset(CircleSpritePath);
+            var ti = (TextureImporter)AssetImporter.GetAtPath(CircleSpritePath);
+            ti.textureType = TextureImporterType.Sprite;
+            ti.spriteImportMode = SpriteImportMode.Single;
+            ti.mipmapEnabled = false;
+            ti.alphaIsTransparency = true;
+            ti.textureCompression = TextureImporterCompression.Uncompressed;
+            ti.SaveAndReimport();
+            return AssetDatabase.LoadAssetAtPath<Sprite>(CircleSpritePath);
+        }
+
         public static TMP_FontAsset GetKoreanFont()
         {
             if (_cachedKoreanFont != null) return _cachedKoreanFont;
