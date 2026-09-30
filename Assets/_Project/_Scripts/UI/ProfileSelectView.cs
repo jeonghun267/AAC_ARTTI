@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Artti.Common;
 
@@ -54,7 +54,7 @@ namespace Artti.UI
             _avatarLib = AvatarLibrary.Load();
 
             if (addCardButton != null) addCardButton.onClick.AddListener(OpenCreate);
-            if (backButton != null) backButton.onClick.AddListener(() => SceneManager.LoadScene(backScene));
+            if (backButton != null) backButton.onClick.AddListener(() => SceneFader.Load(backScene));
             if (nextButton != null) nextButton.onClick.AddListener(OnNext);
             if (settingsButton != null) settingsButton.onClick.AddListener(OnSettings);
             RaiseDragThreshold();
@@ -68,6 +68,17 @@ namespace Artti.UI
             var active = ProfileManagerOrNull()?.ActiveProfile;
             _selectedId = active != null ? active.id : null;
             Refresh();
+            PlayEntrance();
+        }
+
+        // 변경점: 화면 등장 — 카드 줄이 왼쪽("새 사용자")부터 차례로 톡 나타난다(처음 한 번만).
+        private void PlayEntrance()
+        {
+            const float start = 0.12f, step = 0.07f;
+            var ct = this.GetCancellationTokenOnDestroy();
+            if (addCard != null) UIFx.PopScaleIn(addCard, start, 0.34f, 0.85f, ct).Forget();
+            for (int i = 0; i < _cards.Count; i++)
+                _cards[i].PlayIntro(start + Mathf.Min(i + 1, 5) * step, ct);
         }
 
         public void Refresh()
@@ -173,7 +184,7 @@ namespace Artti.UI
                 boot.SwitchProfile(_selectedId);
                 boot.ProfileManager.UpdateLastUsed(_selectedId);
             }
-            if (!string.IsNullOrEmpty(proceedScene)) SceneManager.LoadScene(proceedScene);
+            if (!string.IsNullOrEmpty(proceedScene)) SceneFader.Load(proceedScene);   // 변경점: 페이드 전환
         }
 
         // 프로필 설정: 고른 사용자를 수정 모드로 연다. 사용자가 없으면 새로 만들기.
@@ -181,13 +192,13 @@ namespace Artti.UI
         {
             if (_selectedId == null) { OpenCreate(); return; }
             ProfileCreateView.EditTargetId = _selectedId;
-            SceneManager.LoadScene(createScene);
+            SceneFader.Load(createScene);
         }
 
         private void OpenCreate()
         {
             ProfileCreateView.EditTargetId = null;
-            SceneManager.LoadScene(createScene);
+            SceneFader.Load(createScene);
         }
 
         // 삭제 칩 -> 가운데 모달 (타이핑 확인)
@@ -196,7 +207,7 @@ namespace Artti.UI
             _pendingDeleteId = id;
             if (deleteInput != null) deleteInput.text = "";
             SetDeleteHint(false);
-            if (deletePopup != null) deletePopup.SetActive(true);
+            UIPopupMotion.Open(deletePopup);   // 변경점: 팝업 열기/닫기 연출
         }
 
         // "동의한다" 정확히 입력해야 삭제
@@ -223,7 +234,7 @@ namespace Artti.UI
         private void CloseDelete()
         {
             _pendingDeleteId = null;
-            if (deletePopup != null) deletePopup.SetActive(false);
+            UIPopupMotion.Close(deletePopup);
         }
 
         // 틀렸다는 안내는 입력칸의 placeholder로 띄운다(칸이 비어 있을 때만 보임).

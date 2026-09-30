@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Artti.AAC.Logging;
 using Artti.Common;
@@ -84,7 +83,7 @@ namespace Artti.UI
             if (backBtn != null) backBtn.onClick.AddListener(HandleBack);
             if (moreBtn != null) moreBtn.onClick.AddListener(ShowAllSessions);
             if (allSessionsBackBtn != null) allSessionsBackBtn.onClick.AddListener(ShowList);
-            if (nextScenarioBtn != null) nextScenarioBtn.onClick.AddListener(() => SceneManager.LoadScene("TrainingHubScene"));
+            if (nextScenarioBtn != null) nextScenarioBtn.onClick.AddListener(() => SceneFader.Load("TrainingHubScene"));
             if (recommendBtn != null) recommendBtn.onClick.AddListener(HandleRecommend);
             if (shareBtn != null) shareBtn.onClick.AddListener(HandleShare);
             if (saveImageBtn != null) saveImageBtn.onClick.AddListener(HandleSaveImage);
@@ -141,7 +140,7 @@ namespace Artti.UI
         private void HandleBack()
         {
             if (allSessionsPanel != null && allSessionsPanel.activeSelf) ShowList();
-            else SceneManager.LoadScene("MainScene");
+            else SceneFader.Load("MainScene");
         }
 
         private void ShowList()
@@ -333,12 +332,12 @@ namespace Artti.UI
         {
             if (string.IsNullOrEmpty(sessionId)) return;
             RecordDetailContext.SessionId = sessionId;
-            SceneManager.LoadScene("RecordDetailScene");
+            SceneFader.Load("RecordDetailScene");
         }
 
         private void HandleRecommend()
         {
-            SceneManager.LoadScene("TrainingConvenienceScene");
+            SceneFader.Load("TrainingConvenienceScene");
         }
 
         private void HandleShare()

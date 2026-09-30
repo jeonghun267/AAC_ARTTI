@@ -1,9 +1,12 @@
 using System;
 using System.Collections;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using Artti.Common;
+using Artti.UI;
 
 namespace Artti.Training
 {
@@ -74,10 +77,27 @@ namespace Artti.Training
         private float _dotsTime;
         private bool _thinkingAnim;
 
+        // 변경점: 진행 표시 연출 — 단계가 오르면 목표 글자 자리에 칭찬이 톡 뜨고, 채움 막대가 다음 점까지 차오르며
+        //   지나가는 점이 켜지고 톡 커진 뒤, 잠시 후 새 목표로 바뀐다. 처음 표시·같은 단계·뒤로 가기는 바로 바꾼다.
+        const float FillDelaySeconds = 0.12f;
+        const float FillSeconds = 0.45f;
+        const float PraiseHoldSeconds = 1.1f;
+        static readonly Vector2 LabelAnchorLeft = new Vector2(0f, 0.5f);   // 왼쪽 정렬 글자는 왼쪽 가운데 기준으로 커진다
+        static readonly Vector2 Center = new Vector2(0.5f, 0.5f);
+        static readonly string[] ScoreStarNames = { "ScoreStar_1", "ScoreStar_2", "ScoreStar_3", "ScoreStar_4", "ScoreStar_5" };
+
+        private int _objectiveIndex = -1;
+        private string _objectiveLabel;
+        private CancellationTokenSource _objectiveCts;
+        private Vector2 _labelHome;
+        private CanvasGroup _labelGroup;
+        private bool _completionShown;
+
         private void Awake()
         {
-            if (pauseBtn != null) pauseBtn.onClick.AddListener(() => SetActiveSafe(pauseModal, true));
-            if (pauseCancelBtn != null) pauseCancelBtn.onClick.AddListener(() => SetActiveSafe(pauseModal, false));
+            // 변경점: 팝업은 SetActive 대신 UIPopupMotion으로 열고 닫는다(막 페이드 + 판 톡)
+            if (pauseBtn != null) pauseBtn.onClick.AddListener(() => UIPopupMotion.Open(pauseModal));
+            if (pauseCancelBtn != null) pauseCancelBtn.onClick.AddListener(() => UIPopupMotion.Close(pauseModal));
             if (pauseConfirmBtn != null) pauseConfirmBtn.onClick.AddListener(() => OnExitRequested?.Invoke());
             if (speakerBtn != null) speakerBtn.onClick.AddListener(() => OnReplayRequested?.Invoke());
             if (retryBtn != null) retryBtn.onClick.AddListener(() => OnRetrySession?.Invoke());
@@ -85,8 +105,17 @@ namespace Artti.Training
             if (homeBtn != null) homeBtn.onClick.AddListener(() => OnGoHome?.Invoke());
             if (completionHistoryBtn != null) completionHistoryBtn.onClick.AddListener(() => OnGoReport?.Invoke());
             if (completionTopHomeBtn != null) completionTopHomeBtn.onClick.AddListener(() => OnGoHome?.Invoke());
-            if (completionHelpBtn != null) completionHelpBtn.onClick.AddListener(() => SetActiveSafe(completionHelpPanel, true));
-            if (completionHelpCloseBtn != null) completionHelpCloseBtn.onClick.AddListener(() => SetActiveSafe(completionHelpPanel, false));
+            if (completionHelpBtn != null) completionHelpBtn.onClick.AddListener(() => UIPopupMotion.Open(completionHelpPanel));
+            if (completionHelpCloseBtn != null) completionHelpCloseBtn.onClick.AddListener(() => UIPopupMotion.Close(completionHelpPanel));
+
+            // 변경점: 누르면 살짝 작아졌다 돌아오는 탭 피드백 (점원 말풍선 = 다시 듣기 버튼은 말풍선 연출과 겹쳐 제외)
+            AttachPress(pauseBtn, pauseConfirmBtn, pauseCancelBtn, retryBtn, hubBtn, homeBtn,
+                completionHistoryBtn, completionTopHomeBtn, completionHelpBtn, completionHelpCloseBtn);
+            if (stepLabel != null)
+            {
+                _labelHome = stepLabel.rectTransform.anchoredPosition;
+                _labelGroup = UIFx.Group(stepLabel);
+            }
 
             SetActiveSafe(pauseModal, false);
             SetActiveSafe(completionRoot, false);
@@ -122,35 +151,107 @@ namespace Artti.Training
         // index = 현재 objective 순번 (0부터). 이전 단계 파랑, 현재 주황, 이후 회색
         public void SetObjective(int index, string label)
         {
+            int count = stepDots != null ? stepDots.Length : 0;
+            int clamped = Mathf.Clamp(index, 0, Mathf.Max(0, count - 1));
+            int prev = _objectiveIndex;
+            string prevLabel = _objectiveLabel;
+            _objectiveIndex = clamped;
+            _objectiveLabel = label;
+
+            var ct = UIFx.Restart(ref _objectiveCts, this);
+            if (prev < 0 || clamped <= prev || count == 0)
+            {
+                ApplyObjective(clamped, label);
+                return;
+            }
+            ApplyObjective(prev, prevLabel);   // 앞 연출이 중간에 끊겼어도 이전 단계 모습에서 시작
+            AnimateObjectiveAsync(prev, clamped, label, ct).Forget();
+        }
+
+        // 연출 없이 해당 단계 모습으로 바로 맞춘다
+        private void ApplyObjective(int current, string label)
+        {
             if (stepDots != null)
             {
-                int clamped = Mathf.Clamp(index, 0, Mathf.Max(0, stepDots.Length - 1));
-                for (int i = 0; i < stepDots.Length; i++)
-                {
-                    if (stepDots[i] == null) continue;
-                    if (stepNodeOnSprite != null && stepNodeOffSprite != null)
-                    {
-                        stepDots[i].sprite = i <= clamped ? stepNodeOnSprite : stepNodeOffSprite;
-                        stepDots[i].color = Color.white;
-                    }
-                    else
-                    {
-                        stepDots[i].color = i < clamped ? DotDone : (i == clamped ? DotCurrent : DotPending);
-                    }
-                }
-
-                if (stepCounter != null) stepCounter.text = $"{clamped + 1} / {stepDots.Length} 단계";
-                if (stepFillMask != null && stepFillWidth > 0f)
-                {
-                    // 점들은 0부터 stepFillWidth까지 균등 배치된다. 현재 점의 좌표에 맞춰야
-                    // 채움 끝이 점 사이가 아니라 정확히 현재 단계 체크포인트에서 멈춘다.
-                    float ratio = CalculateStepFillRatio(clamped, stepDots.Length);
-                    var size = stepFillMask.sizeDelta;
-                    size.x = stepFillWidth * ratio;
-                    stepFillMask.sizeDelta = size;
-                }
+                for (int i = 0; i < stepDots.Length; i++) SetDot(i, current);
+                if (stepCounter != null) stepCounter.text = $"{current + 1} / {stepDots.Length} 단계";
+                SetFill(FillWidth(current));
             }
-            if (stepLabel != null) stepLabel.text = label;
+            if (stepLabel != null)
+            {
+                stepLabel.text = label;
+                UIFx.SetScaleAround(stepLabel.rectTransform, _labelHome, LabelAnchorLeft, 1f);
+                if (_labelGroup != null) _labelGroup.alpha = 1f;
+            }
+        }
+
+        private async UniTaskVoid AnimateObjectiveAsync(int prev, int next, string label, CancellationToken ct)
+        {
+            // 1) 칭찬: 목표 글자 자리에 "잘했어요!" 등이 톡 뜬다
+            if (stepLabel != null)
+            {
+                stepLabel.text = PraisePool[UnityEngine.Random.Range(0, PraisePool.Length)];
+                UIFx.BounceAround(stepLabel.rectTransform, _labelHome, LabelAnchorLeft, 0f, 0.32f, 0.8f, ct).Forget();
+            }
+            for (int i = 0; i <= prev; i++) SetDot(i, next);   // 지난 점은 완료 모습으로
+
+            // 2) 채움 막대가 다음 점까지 차오르고, 채움 끝이 지나간 점이 켜지며 톡 커진다
+            float w0 = FillWidth(prev), w1 = FillWidth(next);
+            int lit = prev;
+            bool canceled = await UIFx.Tween(this, FillDelaySeconds, FillSeconds, k =>
+            {
+                float e = UIFx.EaseOutCubic(k);
+                SetFill(Mathf.Lerp(w0, w1, e));
+                int reached = prev + Mathf.FloorToInt((next - prev) * e + 0.001f);
+                while (lit < reached) LightDot(++lit, next, ct);
+            }, ct).SuppressCancellationThrow();
+            if (canceled) return;
+            while (lit < next) LightDot(++lit, next, ct);
+            if (stepCounter != null) stepCounter.text = $"{next + 1} / {stepDots.Length} 단계";
+
+            // 3) 칭찬을 잠시 보여 준 뒤 새 목표로 바꾼다
+            if (stepLabel == null) return;
+            if (await UniTask.Delay(TimeSpan.FromSeconds(PraiseHoldSeconds), DelayType.UnscaledDeltaTime,
+                    PlayerLoopTiming.Update, ct).SuppressCancellationThrow()) return;
+            if (await UIFx.FadeGroup(_labelGroup, 1f, 0f, 0f, 0.12f, ct).SuppressCancellationThrow()) return;
+            stepLabel.text = label;
+            UIFx.FadeGroup(_labelGroup, 0f, 1f, 0f, 0.2f, ct).Forget();
+        }
+
+        private void LightDot(int i, int current, CancellationToken ct)
+        {
+            SetDot(i, current);
+            var rt = stepDots[i] != null ? stepDots[i].rectTransform : null;
+            if (rt != null) UIFx.BounceAround(rt, rt.anchoredPosition, rt.pivot, 0f, 0.35f, 0.55f, ct).Forget();
+        }
+
+        private void SetDot(int i, int current)
+        {
+            var dot = stepDots[i];
+            if (dot == null) return;
+            if (stepNodeOnSprite != null && stepNodeOffSprite != null)
+            {
+                dot.sprite = i <= current ? stepNodeOnSprite : stepNodeOffSprite;
+                dot.color = Color.white;
+            }
+            else
+            {
+                dot.color = i < current ? DotDone : (i == current ? DotCurrent : DotPending);
+            }
+            dot.rectTransform.localScale = Vector3.one;
+        }
+
+        // 점들은 0부터 stepFillWidth까지 균등 배치된다. 현재 점의 좌표에 맞춰야
+        // 채움 끝이 점 사이가 아니라 정확히 현재 단계 체크포인트에서 멈춘다.
+        private float FillWidth(int index) =>
+            stepFillWidth * CalculateStepFillRatio(index, stepDots != null ? stepDots.Length : 0);
+
+        private void SetFill(float width)
+        {
+            if (stepFillMask == null || stepFillWidth <= 0f) return;
+            var size = stepFillMask.sizeDelta;
+            size.x = width;
+            stepFillMask.sizeDelta = size;
         }
 
         private static float CalculateStepFillRatio(int index, int stepCount)
@@ -199,6 +300,55 @@ namespace Artti.Training
             }
             SetActiveSafe(thinkingRoot, false);
             SetActiveSafe(completionRoot, true);
+            PlayCompletionEntrance();
+        }
+
+        // 변경점: 완료 화면 등장 — 한 번만, 1초 안에 차례로: 전체 페이드 -> 배지 톡 -> 제목 내려옴 -> 점원 올라옴
+        //   -> 별 하나씩 -> 색종이 톡톡 -> 아래 버튼 올라옴. 끝난 뒤 반복되는 움직임은 없다.
+        //   완료 화면은 요소들이 한 부모 아래 나란히 있어, 스스로 완결된 요소(배지·별·버튼 등)만 움직이고 나머지는 페이드만 한다.
+        private void PlayCompletionEntrance()
+        {
+            if (completionRoot == null || _completionShown) return;
+            _completionShown = true;
+            var root = completionRoot.transform;
+            var ct = this.GetCancellationTokenOnDestroy();
+
+            UIFx.FadeGroup(UIFx.Group(root), 0f, 1f, 0f, 0.35f, ct).Forget();
+            PopIn(root.Find("CompletionBadge"), 0.15f, 0.45f, ct);
+            MoveIn(root.Find("CompletionTitle"), new Vector2(0f, 24f), 0.25f, 0.4f, ct);
+            MoveIn(root.Find("CompletionClerkClip/CompletionClerk"), new Vector2(0f, -70f), 0.1f, 0.5f, ct);
+            MoveIn(root.Find("SpeechBubble"), new Vector2(0f, -10f), 0.45f, 0.35f, ct);
+            MoveIn(root.Find("Speech"), new Vector2(0f, -10f), 0.45f, 0.35f, ct);   // 말풍선 그림과 같은 값으로 함께 움직인다
+            for (int i = 0; i < ScoreStarNames.Length; i++)
+                PopIn(root.Find(ScoreStarNames[i]), 0.5f + i * 0.08f, 0.3f, ct);
+
+            int confetti = 0;
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var child = root.GetChild(i);
+                if (!child.name.StartsWith("Confetti", StringComparison.Ordinal)) continue;
+                PopIn(child, 0.2f + confetti * 0.06f, 0.35f, ct);
+                confetti++;
+            }
+
+            MoveIn(root.Find("RetryButton"), new Vector2(0f, -36f), 0.7f, 0.4f, ct);
+            MoveIn(root.Find("NextScenarioButton"), new Vector2(0f, -36f), 0.78f, 0.4f, ct);
+            MoveIn(root.Find("HomeButton"), new Vector2(0f, -36f), 0.86f, 0.4f, ct);
+        }
+
+        private static void PopIn(Transform t, float delay, float dur, CancellationToken ct)
+        {
+            if (t is RectTransform rt) UIFx.PopAroundIn(rt, rt.anchoredPosition, Center, delay, dur, 0.4f, ct).Forget();
+        }
+
+        private static void MoveIn(Transform t, Vector2 fromOffset, float delay, float dur, CancellationToken ct)
+        {
+            if (t is RectTransform rt) UIFx.MoveFadeIn(rt, rt.anchoredPosition, fromOffset, delay, dur, ct).Forget();
+        }
+
+        private static void AttachPress(params Button[] buttons)
+        {
+            foreach (var b in buttons) UIPressScale.Attach(b);
         }
 
         // ===== 내부 =====
