@@ -1,48 +1,33 @@
-using System.Collections.Generic;
-using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.UI;
 using Artti.UI;
+using static Artti.Editor.ProfileAvatarStepBuilder;
 
 namespace Artti.Editor
 {
-    // 부팅 로딩 스플래시 (100.png). 가로 1920x1080.
-    //  - SplashBG.png(로딩바 없는 전체 이미지)이 있으면 그걸 그대로 배경으로 쓰고 로딩바만 위에 덧댐.
-    //  - 없으면 폴백으로 오브젝트 배치(AAC 뱃지/기능 아이콘/임시 히어로 Girl,Man).
-    //  - 로딩바는 둥근 사각의 "폭"을 늘리는 방식 → 양끝이 항상 둥글다.
-    // 런타임 진행/이동은 SplashSceneView가 처리.
+    // 부팅 스플래시 (다크 네온 편의점). 가로 1920x1080 Stage 기준, 좌상단 원점(y 아래가 -).
+    // 에셋: Art/UI/Home/Splash/
+    //   42 배경(1672x941)  43 ARTTI 로고(궤도 포함)  44 "더 나은 소통의 시작"  45 "불러오는 중..."
+    //   46 로딩 점(켜짐)  47 로딩 점(꺼짐)
+    // 좌표는 시안(1672x941)에 에셋을 겹쳐 맞춘 값을 1920 폭으로 환산(x1.1483)한 것.
+    // 음악: Assets/_Project/Audio/splash_bgm.(mp3|wav|ogg)가 있으면 AudioSource에 연결한다. 없으면 무음으로 동작.
+    // 런타임 연출(페이드, 점 깜빡임, 음악 줄이기, 다음 씬 이동)은 SplashSceneView가 처리.
     public static class SplashSceneBuilder
     {
         static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
+        const string SplashDir = "Assets/_Project/Art/UI/Home/Splash/";
+        const string BgmBasePath = "Assets/_Project/Audio/splash_bgm";
+        static readonly string[] BgmExts = { ".mp3", ".wav", ".ogg" };
 
-        static readonly Color Bg        = new Color32(228, 233, 248, 255); // 연보라 배경
-        static readonly Color Blue      = new Color32(74, 108, 247, 255);  // AAC/진행바 블루
-        static readonly Color Slate     = new Color32(63, 74, 94, 255);
-        static readonly Color SubGray   = new Color32(110, 118, 140, 255);
-        static readonly Color Track     = new Color32(214, 219, 232, 255); // 진행바 트랙
-        static readonly Color White     = Color.white;
+        const float PillImgW = 2172f, PillImgH = 724f;   // 43~46 원본 크기
+        const float DotImgW = 1254f;                     // 47 원본 크기(정사각)
 
-        const string KoreanFontPath = "Assets/Fonts/NotoSansKR-Medium SDF.asset";
-        const string RoundedPath    = "Assets/_Project/Art/UI/RoundedRect.png";
-        const string HomeDir        = "Assets/_Project/Art/UI/Home/";
-        const string EmojiDir       = "Assets/_Project/openmoji-master/color/svg/";
-        // 100.png 배경(거실 3D, UI 베이크 없음). 있으면 cover로 배경에 깔고 그 위에 조각들을 얹는다.
-        const string SplashBgPath   = "Assets/_Project/Art/UI/Home/SplashBG.png";
-        // 허공에 둥둥 떠다니는 장식 PNG들을 여기에 두면 자동 배치 + 둥둥 모션.
-        const string SplashDecoDir  = "Assets/_Project/Art/UI/Home/SplashDeco";
-        // 센터 상단 AAC 로고 / 센터 캐릭터.
-        const string SplashLogoPath = "Assets/_Project/Art/UI/Home/SplashLogo.png";
-        const string HeroGirlPath   = "Assets/_Project/Art/UI/Home/SplashHeroGirl.png";
-        const string HeroBoyPath    = "Assets/_Project/Art/UI/Home/SplashHeroBoy.png";
-
-        // 로딩바 크기/위치
-        const float BarWidth  = 940f;
-        const float BarHeight = 36f;
-        const float BarY      = -452f;
-        // RoundedRect.png는 border=44px → 둥근 끝(반지름=높이/2)을 얻으려면 PPU배율 = 88/높이.
-        const float RoundBorderPx = 44f;
+        // 로딩 점: 가운데 x 960, 간격 48, y -901. 켜진 점 본체 지름 32, 꺼진 점 23 (시안 실측)
+        const float DotY = -901f, DotGap = 48f, DotOnD = 32f, DotOffD = 23f;
+        const float DotOnBodyPx = 249f, DotOffBodyPx = 456f;
+        static readonly Color DotOffTint = new Color(0.42f, 0.48f, 0.72f, 0.85f);   // 47은 밝은 회색이라 시안처럼 어두운 남색으로 눌러 준다
 
         [MenuItem("Artti/Build SplashScene Hierarchy")]
         public static void BuildMenu() => Build();
@@ -51,7 +36,7 @@ namespace Artti.Editor
         [MenuItem("Artti/Open Splash Only (겹침 해소)")]
         public static void OpenSplashOnly()
         {
-            var scene = EditorSceneManager.OpenScene(ScenePaths.Splash, OpenSceneMode.Single);
+            EditorSceneManager.OpenScene(ScenePaths.Splash, OpenSceneMode.Single);
             Debug.Log($"[SplashSceneBuilder] SplashScene 단독 오픈. 현재 로드된 씬 수 = {UnityEngine.SceneManagement.SceneManager.sceneCount} (1이어야 정상)");
         }
 
@@ -59,304 +44,107 @@ namespace Artti.Editor
         {
             OpenOrCreateScene(ScenePaths.Splash);
             SceneBuilderUtils.ClearRootObjects();
-
             SceneBuilderUtils.CreateEventSystem();
             SceneBuilderUtils.EnsureAudioListener();
-            var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution);
-            var font = LoadFont();
 
-            // 아래 → 위 레이어 순서: 배경 → 떠다니는 카드 → 센터 캐릭터 → 센터 상단 로고 → 로딩바
-            BuildBackground(canvasGo.transform);
-            BuildFloatingDeco(canvasGo.transform);
-            BuildCenterCharacters(canvasGo.transform);
-            BuildLogo(canvasGo.transform, font);
-            BuildLoadingBar(canvasGo, font);
+            // Expand: 20:9 같은 긴 화면에서도 Stage(1920x1080)가 잘리지 않게. 배경은 화면을 꽉 덮는다.
+            var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution, CanvasScaler.ScreenMatchMode.Expand);
+            var canvas = canvasGo.transform;
 
-            SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
-            SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[SplashSceneBuilder] 완료 (조립형: 배경 + 떠다니는 카드 + 센터 캐릭터 + AAC 로고 + 로딩바)");
-        }
+            // ===== 배경 (42) =====
+            var bg = ChildRect("Background", canvas);
+            StretchFull(bg);
+            var bgImg = bg.gameObject.AddComponent<Image>();
+            bgImg.sprite = LoadSprite(SplashDir + "42.png", 2048);
+            bgImg.raycastTarget = false;
+            var fit = bg.gameObject.AddComponent<AspectRatioFitter>();
+            fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            fit.aspectRatio = 1672f / 941f;
 
-        // ===== 배경: 100.png 거실 이미지(있으면) 아니면 연보라 폴백 =====
-        static void BuildBackground(Transform parent)
-        {
-            var sp = System.IO.File.Exists(SplashBgPath) ? LoadPng(SplashBgPath) : null;
-            if (sp != null)
+            var stage = ChildRect("Stage", canvas);
+            stage.anchorMin = stage.anchorMax = stage.pivot = new Vector2(0.5f, 0.5f);
+            stage.sizeDelta = ReferenceResolution;
+
+            // ===== 로고 (43) / 문구 (44) =====
+            var logo = PlaceImage("Logo", stage, SplashDir + "43.png", PillImgW, PillImgH, 898f, new Vector2(969f, -471f));
+            var logoGroup = logo.gameObject.AddComponent<CanvasGroup>();
+            var tagline = PlaceImage("Tagline", stage, SplashDir + "44.png", PillImgW, PillImgH, 511f, new Vector2(959f, -607.5f));
+            var taglineGroup = tagline.gameObject.AddComponent<CanvasGroup>();
+
+            // ===== 로딩: 점 3개 (47 꺼짐 위에 46 켜짐) + "불러오는 중..." (45) =====
+            var loading = ChildRect("Loading", stage);
+            loading.anchorMin = loading.anchorMax = new Vector2(0f, 1f);
+            loading.pivot = new Vector2(0f, 1f);
+            loading.anchoredPosition = Vector2.zero;
+            loading.sizeDelta = ReferenceResolution;
+            var loadingGroup = loading.gameObject.AddComponent<CanvasGroup>();
+
+            var dotOn = new GameObject[3];
+            for (int i = 0; i < 3; i++)
             {
-                // 이미지 비율 ≠ 화면 비율이어도 왜곡 없이 꽉 채움(cover).
-                var rt = MakeRect("Background", parent, Vector2.zero, CoverSize(sp));
-                var img = rt.gameObject.AddComponent<Image>();
-                img.sprite = sp; img.color = White; img.preserveAspect = true; img.raycastTarget = false;
-                return;
+                var c = new Vector2(960f + (i - 1) * DotGap, DotY);
+                var off = PlaceImage("Dot" + i + "Off", loading, SplashDir + "47.png", DotImgW, DotImgW, DotImgW * DotOffD / DotOffBodyPx, c);
+                off.GetComponent<Image>().color = DotOffTint;
+                dotOn[i] = PlaceImage("Dot" + i + "On", loading, SplashDir + "46.png", PillImgW, PillImgH, PillImgW * DotOnD / DotOnBodyPx, c).gameObject;
             }
-            var bg = SceneBuilderUtils.CreatePanel("Background", parent);
-            var bgImg = bg.AddComponent<Image>();
-            bgImg.color = Bg; bgImg.raycastTarget = false;
-            AddGlow(parent, new Vector2(0, 240),  new Vector2(1280, 980), new Color(1f, 1f, 1f, 0.55f));
-            AddGlow(parent, new Vector2(0, -260), new Vector2(1500, 760), new Color(0.72f, 0.78f, 0.98f, 0.30f));
-        }
+            PlaceImage("LoadingText", loading, SplashDir + "45.png", PillImgW, PillImgH, 219.5f, new Vector2(960f, -955f));
 
-        // ===== 센터 캐릭터 (boy + girl) — 거실 배경 위에 얹음(후광 없음: 방을 덮지 않도록) =====
-        // 위치: 사용자 핸드배치(2048x1536 뷰) 환산값.
-        static void BuildCenterCharacters(Transform parent)
-        {
-            AddHero(parent, "Hero_Girl", HeroGirlPath, new Vector2(-175, -141), 470f);
-            AddHero(parent, "Hero_Boy",  HeroBoyPath,  new Vector2(175, -141),  470f);
-        }
+            // ===== 화면 전체 암전 (시작 페이드 인 / 끝 페이드 아웃) =====
+            var fade = ChildRect("Fade", canvas);
+            StretchFull(fade);
+            var fadeImg = fade.gameObject.AddComponent<Image>();
+            fadeImg.color = Color.black;
+            fadeImg.raycastTarget = false;
 
-        // ===== 센터 상단 AAC 로고(크게, 아주 작게 둥둥) + 아래 태그라인 =====
-        static void BuildLogo(Transform parent, TMP_FontAsset font)
-        {
-            var sp = LoadPng(SplashLogoPath);
-            if (sp != null)
-            {
-                float ratio = (sp.rect.width > 0) ? sp.rect.height / sp.rect.width : 1f;
-                float w = 296f; // 사용자 핸드배치: 폭 360 x localScale 0.8232 환산
-                var rt = MakeRect("AacLogo", parent, new Vector2(0, 433f), new Vector2(w, w * ratio));
-                var img = rt.gameObject.AddComponent<Image>();
-                img.sprite = sp; img.preserveAspect = true; img.raycastTarget = false;
-                rt.gameObject.AddComponent<HomeDecorMotion>().ConfigureFloat(new Vector2(0f, 7f), 0.10f, 0f);
-            }
-            // 로고 아래 태그라인(104.png) — 사용자 핸드배치 환산값
-            var tagline = MakeText("Tagline", parent, "대화가 어려울 때, AAC와 함께 소통해요", 38, SubGray, font);
-            AnchorPivot(tagline.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, 213f), new Vector2(1100, 56));
-        }
-
-        // 높이 기준으로 비율 맞춰 캐릭터 배치(왜곡 없음).
-        static void AddHero(Transform parent, string name, string path, Vector2 pos, float targetHeight)
-        {
-            var sp = LoadPng(path);
-            if (sp == null) return;
-            float ratio = (sp.rect.height > 0) ? sp.rect.width / sp.rect.height : 0.6f;
-            var rt = MakeRect(name, parent, pos, new Vector2(targetHeight * ratio, targetHeight));
-            var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = sp; img.preserveAspect = true; img.raycastTarget = false;
-        }
-
-        // ===== 로딩바 (둥근 트랙 + 폭이 늘어나는 둥근 채움) =====
-        static void BuildLoadingBar(GameObject canvasGo, TMP_FontAsset font)
-        {
-            const float fillInset = 4f;                       // 채움을 트랙 안쪽으로 들임
-            float fillH   = BarHeight - fillInset * 2f;
-            float fillMax = BarWidth  - fillInset * 2f;
-
-            var track = MakeRect("LoadingTrack", canvasGo.transform, new Vector2(0, BarY), new Vector2(BarWidth, BarHeight));
-            var trackImg = track.gameObject.AddComponent<Image>();
-            trackImg.sprite = Rounded(); trackImg.type = Image.Type.Sliced;
-            trackImg.pixelsPerUnitMultiplier = (RoundBorderPx * 2f) / BarHeight; // 반지름=높이/2 → 알약형
-            trackImg.color = Track; trackImg.raycastTarget = false;
-
-            // 채움: 트랙 좌측 안쪽에 고정, 폭만 애니메이션 (양끝 둥근 알약)
-            var fill = ChildRect("Fill", track.transform);
-            fill.anchorMin = fill.anchorMax = new Vector2(0, 0.5f);
-            fill.pivot = new Vector2(0, 0.5f);
-            fill.anchoredPosition = new Vector2(fillInset, 0f);
-            fill.sizeDelta = new Vector2(fillMax * 0.6f, fillH); // 에디터 미리보기
-            var fillImg = fill.gameObject.AddComponent<Image>();
-            fillImg.sprite = Rounded(); fillImg.type = Image.Type.Sliced;
-            fillImg.pixelsPerUnitMultiplier = (RoundBorderPx * 2f) / fillH;
-            fillImg.color = Blue; fillImg.raycastTarget = false;
-
-            // "로딩 중입니다..." — 바 위쪽 가운데
-            var loadingText = MakeText("LoadingText", canvasGo.transform, "로딩 중입니다...", 30, SubGray, font);
-            loadingText.alignment = TextAlignmentOptions.Center;
-            AnchorPivot(loadingText.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0f, BarY + 50f), new Vector2(520, 46));
-
-            // 퍼센트 — 바 오른쪽 끝 위
-            var percentText = MakeText("PercentText", canvasGo.transform, "60%", 30, Blue, font);
-            percentText.alignment = TextAlignmentOptions.Right;
-            AnchorPivot(percentText.rectTransform, new Vector2(1, 0.5f), new Vector2(BarWidth * 0.5f, BarY + 50f), new Vector2(180, 46));
+            // ===== 음악 + View 와이어링 =====
+            var bgm = canvasGo.AddComponent<AudioSource>();
+            bgm.playOnAwake = false;
+            bgm.loop = false;
+            bgm.clip = LoadBgm();
 
             var view = canvasGo.AddComponent<SplashSceneView>();
             var so = new SerializedObject(view);
-            so.FindProperty("progressFill").objectReferenceValue = fill;
-            so.FindProperty("fillMaxWidth").floatValue = fillMax;
-            so.FindProperty("percentText").objectReferenceValue = percentText;
-            so.FindProperty("loadingText").objectReferenceValue = loadingText;
+            so.FindProperty("logoGroup").objectReferenceValue = logoGroup;
+            so.FindProperty("logoRect").objectReferenceValue = logo;
+            so.FindProperty("taglineGroup").objectReferenceValue = taglineGroup;
+            so.FindProperty("loadingGroup").objectReferenceValue = loadingGroup;
+            var dots = so.FindProperty("dotOn");
+            dots.arraySize = dotOn.Length;
+            for (int i = 0; i < dotOn.Length; i++) dots.GetArrayElementAtIndex(i).objectReferenceValue = dotOn[i];
+            so.FindProperty("fadeOverlay").objectReferenceValue = fadeImg;
+            so.FindProperty("bgm").objectReferenceValue = bgm;
             so.FindProperty("nextScene").stringValue = "MainScene";
             so.ApplyModifiedProperties();
+
+            SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
+            SceneBuilderUtils.SaveActiveScene();
+            Debug.Log("[SplashSceneBuilder] 완료 (배경 42 + 로고 43 + 문구 44 + 로딩 점 46/47 + 불러오는 중 45, 음악: "
+                      + (bgm.clip != null ? bgm.clip.name : "없음") + ")");
         }
 
-        // ===== 둥둥 떠다니는 장식 (SplashDeco 폴더의 PNG들 자동 배치+모션) =====
-        static void BuildFloatingDeco(Transform parent)
+        // 이미지 전체를 폭 width로 놓고, 이미지 가운데가 center(Stage px)에 오게 한다. 클릭은 받지 않는다.
+        static RectTransform PlaceImage(string name, Transform parent, string path, float imgW, float imgH, float width, Vector2 center)
         {
-            if (!AssetDatabase.IsValidFolder(SplashDecoDir)) return;
-            var guids = AssetDatabase.FindAssets("t:Texture2D", new[] { SplashDecoDir });
-            if (guids == null || guids.Length == 0) return;
-
-            var paths = new List<string>();
-            foreach (var g in guids) paths.Add(AssetDatabase.GUIDToAssetPath(g));
-            paths.Sort(System.StringComparer.Ordinal); // 파일명 순(deco_01..)으로 슬롯 배정
-
-            // 시안(100.png) 기준 슬롯: 좌측 위/중간/아래, 우측 위/중간/아래, 여분
-            Vector2[] slots =
-            {
-                new Vector2(-720, 300), new Vector2(-848, 64), new Vector2(-700, -158),
-                new Vector2(720, 300),  new Vector2(848, 64),  new Vector2(700, -158),
-                new Vector2(-470, 250), new Vector2(470, 250),
-            };
-
-            for (int i = 0; i < paths.Count; i++)
-            {
-                var sp = LoadPng(paths[i]);
-                if (sp == null) continue;
-                Vector2 pos = i < slots.Length ? slots[i]
-                    : new Vector2(((i % 2 == 0) ? -1 : 1) * 560f, 380f - (i * 70f));
-                float ratio = (sp.rect.width > 0) ? sp.rect.height / sp.rect.width : 1f;
-                float w = 150f;
-                var rt = MakeRect("Deco_" + i, parent, pos, new Vector2(w, w * ratio));
-                var img = rt.gameObject.AddComponent<Image>();
-                img.sprite = sp; img.preserveAspect = true; img.raycastTarget = false;
-                // 항목마다 진폭/속도/위상이 달라 따로 둥둥 떠다님
-                var motion = rt.gameObject.AddComponent<HomeDecorMotion>();
-                motion.ConfigureFloat(new Vector2(12f + (i % 3) * 5f, 16f + (i % 2) * 8f), 0.15f + (i % 4) * 0.025f, 5f);
-            }
-        }
-
-        // ===== 빌딩 블록 =====
-        static void MakeIconChip(Transform parent, Vector2 pos, float size, string svgPath, string letter, TMP_FontAsset font)
-        {
-            var shadow = MakeRect("ChipShadow", parent, pos + new Vector2(0, -8), new Vector2(size + 18, size + 18));
-            var shImg = shadow.gameObject.AddComponent<Image>();
-            shImg.sprite = SceneBuilderUtils.EnsureGlowSprite(); shImg.type = Image.Type.Sliced;
-            shImg.color = new Color(0.20f, 0.24f, 0.40f, 0.16f); shImg.raycastTarget = false;
-
-            var chip = MakeRect("IconChip", parent, pos, new Vector2(size, size));
-            var chipImg = chip.gameObject.AddComponent<Image>();
-            chipImg.sprite = Rounded(); chipImg.type = Image.Type.Sliced; chipImg.pixelsPerUnitMultiplier = 0.8f;
-            chipImg.color = new Color(1f, 1f, 1f, 0.96f); chipImg.raycastTarget = false;
-
-            if (!string.IsNullOrEmpty(svgPath))
-            {
-                var icon = ChildRect("Icon", chip.transform);
-                StretchFull(icon, size * 0.22f);
-                var iconImg = icon.gameObject.AddComponent<Image>();
-                iconImg.sprite = LoadSvg(svgPath); iconImg.preserveAspect = true; iconImg.raycastTarget = false;
-            }
-            else
-            {
-                var t = MakeText("Label", chip.transform, letter, Mathf.RoundToInt(size * 0.42f), Blue, font);
-                StretchFull(t.rectTransform, 6);
-            }
-        }
-
-        static void AddCharacter(Transform parent, string name, string pngPath, Vector2 pos, Vector2 size)
-        {
-            var rt = MakeRect(name, parent, pos, size);
+            var rt = ChildRect(name, parent);
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = center;
+            rt.sizeDelta = new Vector2(width, width * imgH / imgW);
             var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = LoadPng(pngPath); img.preserveAspect = true; img.raycastTarget = false;
+            img.sprite = LoadSprite(path, 2048);
+            img.preserveAspect = true;
+            img.raycastTarget = false;
+            return rt;
         }
 
-        static void AddGlow(Transform parent, Vector2 pos, Vector2 size, Color color)
+        static AudioClip LoadBgm()
         {
-            var rt = MakeRect("Glow", parent, pos, size);
-            var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = SceneBuilderUtils.EnsureGlowSprite(); img.type = Image.Type.Sliced;
-            img.color = color; img.raycastTarget = false;
-        }
-
-        // ===== UI 헬퍼 =====
-        static TMP_Text MakeText(string name, Transform parent, string text, int fontSize, Color color, TMP_FontAsset font)
-        {
-            var tmp = SceneBuilderUtils.CreateTMPText(name, parent, text, fontSize);
-            tmp.color = color;
-            tmp.fontStyle = FontStyles.Bold;
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.textWrappingMode = TextWrappingModes.NoWrap;
-            tmp.raycastTarget = false;
-            if (font != null) tmp.font = font;
-            return tmp;
-        }
-
-        static RectTransform MakeRect(string name, Transform parent, Vector2 pos, Vector2 size)
-        {
-            var rect = ChildRect(name, parent);
-            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = pos;
-            rect.sizeDelta = size;
-            return rect;
-        }
-
-        static RectTransform ChildRect(string name, Transform parent)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            return go.AddComponent<RectTransform>();
-        }
-
-        static void Place(RectTransform rect, Vector2 pos, Vector2 size)
-        {
-            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = pos;
-            rect.sizeDelta = size;
-        }
-
-        static void AnchorPivot(RectTransform rect, Vector2 pivot, Vector2 pos, Vector2 size)
-        {
-            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = pivot;
-            rect.anchoredPosition = pos;
-            rect.sizeDelta = size;
-        }
-
-        static void StretchFull(RectTransform rect, float padding)
-        {
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(padding, padding);
-            rect.offsetMax = new Vector2(-padding, -padding);
-        }
-
-        static Sprite Rounded()
-        {
-            var s = AssetDatabase.LoadAssetAtPath<Sprite>(RoundedPath);
-            return s != null ? s : AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
-        }
-
-        // 화면(레퍼런스 해상도)을 왜곡 없이 덮는 크기. 넘치는 축은 화면 밖으로 잘림.
-        static Vector2 CoverSize(Sprite s)
-        {
-            float imgAspect = (s != null && s.rect.height > 0) ? s.rect.width / s.rect.height : 1.5f;
-            float screenAspect = ReferenceResolution.x / ReferenceResolution.y;
-            return imgAspect < screenAspect
-                ? new Vector2(ReferenceResolution.x, ReferenceResolution.x / imgAspect)
-                : new Vector2(ReferenceResolution.y * imgAspect, ReferenceResolution.y);
-        }
-
-        static Sprite LoadSvg(string path)
-        {
-            foreach (var o in AssetDatabase.LoadAllAssetsAtPath(path))
-                if (o is Sprite s) return s;
-            AssetDatabase.ImportAsset(path);
-            foreach (var o in AssetDatabase.LoadAllAssetsAtPath(path))
-                if (o is Sprite s) return s;
-            Debug.LogWarning($"[SplashSceneBuilder] SVG Sprite 없음: {path}");
+            foreach (var ext in BgmExts)
+            {
+                var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(BgmBasePath + ext);
+                if (clip != null) return clip;
+            }
             return null;
-        }
-
-        static Sprite LoadPng(string path)
-        {
-            if (AssetImporter.GetAtPath(path) is TextureImporter ti)
-            {
-                bool dirty = false;
-                if (ti.textureType != TextureImporterType.Sprite) { ti.textureType = TextureImporterType.Sprite; dirty = true; }
-                if (ti.spriteImportMode != SpriteImportMode.Single) { ti.spriteImportMode = SpriteImportMode.Single; dirty = true; }
-                if (!ti.alphaIsTransparency) { ti.alphaIsTransparency = true; dirty = true; }
-                if (ti.maxTextureSize < 2048) { ti.maxTextureSize = 2048; dirty = true; }
-                if (dirty) ti.SaveAndReimport();
-            }
-            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            if (sprite == null) Debug.LogWarning($"[SplashSceneBuilder] 이미지 없음: {path}");
-            return sprite;
-        }
-
-        static TMP_FontAsset LoadFont()
-        {
-            var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(KoreanFontPath);
-            if (font == null) font = SceneBuilderUtils.GetKoreanFont();
-            return font;
         }
 
         static void OpenOrCreateScene(string path)
