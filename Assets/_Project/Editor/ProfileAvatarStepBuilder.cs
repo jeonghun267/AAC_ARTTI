@@ -11,7 +11,8 @@ namespace Artti.Editor
     // 에셋: Art/UI/Home/profiles/10~28.png
     //   10 배경(1448x1086)  11~15 분류 탭(전체/여성/남성/중성/스타일)  16 랜덤으로 선택하기  17 다음  18 닫기(X)
     //   19~27 아바타 9종(1254x1254, 19만 1086x1448)  28 선택 카드 완성본(19번 캐릭터가 박혀 있어 미사용)
-    // 시안에 있지만 이미지가 아직 없는 것(패널 창, 단계 표시, 칸 테두리, 선택 체크)은 코드로 그린다.
+    //   30~32 단계 원(1/2/3)  33 완료 체크  34 연결선
+    // 시안에 있지만 이미지가 아직 없는 것(패널 창, 칸 테두리)은 코드로 그린다.
     //
     // 배치: 1920x1080 Stage를 화면 중앙에 두고 Stage 좌상단 기준(y 아래가 -)으로 놓는다.
     // 시안은 태블릿(약 1.12:1)이라 가로 16:9에 맞춰 다시 배치했다. 그리드는 5x2로 넓혀 9종이 한 화면에 다 들어간다.
@@ -164,34 +165,59 @@ namespace Artti.Editor
             return root;
         }
 
-        // 단계 표시: 원 3개(가운데 x 760/960/1160) + 연결선 + 아래 라벨
-        static void BuildSteps(Transform parent, TMP_FontAsset font, int activeIndex)
+        // 단계 표시: 원 3개(가운데 x 760/960/1160) + 연결선(34) + 아래 라벨.
+        // 이미지는 모두 켜진 상태라 단계 상태는 이렇게 나눈다.
+        //   지난 단계 = 체크(33), 지금 단계 = 번호(30~32), 남은 단계 = 번호를 흐리게.
+        //   연결선은 지난 단계 뒤쪽만 켜고 나머지는 흐리게.
+        // 원 이미지마다 글로우 여백이 달라 본체(알파>200 실측) 지름을 StepD로 맞춘다.
+        const float StepD = 50f, StepDimAlpha = 0.4f;
+        static readonly string[] StepFiles = { "30", "31", "32" };
+        static readonly Rect[] StepBodies =
+        {
+            Rect.MinMaxRect(258, 272, 994, 999),    // 30 (1)
+            Rect.MinMaxRect(309, 307, 948, 944),    // 31 (2)
+            Rect.MinMaxRect(249, 256, 1004, 1003),  // 32 (3)
+        };
+        static readonly Rect DoneBody = Rect.MinMaxRect(258, 257, 997, 987);   // 33 (체크)
+        static readonly Rect LineBody = Rect.MinMaxRect(215, 336, 1958, 386);  // 34 (2172x724)
+
+        internal static void BuildSteps(Transform parent, TMP_FontAsset font, int activeIndex)
         {
             string[] labels = { "아바타 선택", "프로필 설정", "완료" };
-            const float y = -96f, d = 52f;
+            const float y = -96f, gap = 200f, x0 = 760f;
             for (int i = 0; i < 2; i++)
             {
-                var line = ChildRect("StepLine" + i, parent);
-                line.anchorMin = line.anchorMax = new Vector2(0f, 1f);
-                line.pivot = new Vector2(0.5f, 0.5f);
-                line.anchoredPosition = new Vector2(860f + i * 200f, y);
-                line.sizeDelta = new Vector2(200f - d - 8f, 3f);
-                var li = line.gameObject.AddComponent<Image>();
-                li.color = new Color(0.5f, 0.6f, 0.9f, 0.5f);
-                li.raycastTarget = false;
+                // 원 가장자리 사이(간격 - 지름 - 여유 16)를 본체 길이로
+                float len = gap - StepD - 16f;
+                PlaceImage("StepLine" + i, parent, Dir + "34.png", LineBody, PillW, PillH,
+                    new Vector2(x0 + gap / 2f + i * gap, y), len, i < activeIndex ? 1f : StepDimAlpha);
             }
             for (int i = 0; i < 3; i++)
             {
-                bool on = i == activeIndex;
-                var c = new Vector2(760f + i * 200f, y);
-                if (on) Circle("StepGlow" + i, parent, c, d + 16f, new Color(0.40f, 0.60f, 1f, 0.35f));
-                Circle("StepRing" + i, parent, c, d, on ? Accent : new Color(0.6f, 0.7f, 1f, 0.6f));
-                if (!on) Circle("StepInner" + i, parent, c, d - 5f, PanelFill);
-                AddText(parent, "StepNum" + i, (i + 1).ToString(), font, 26, on ? new Color(0.06f, 0.10f, 0.28f, 1f) : TextSub, true,
-                    new Vector2(c.x - d / 2f, c.y + d / 2f), new Vector2(d, d), TextAlignmentOptions.Center);
+                var c = new Vector2(x0 + i * gap, y);
+                bool done = i < activeIndex, on = i == activeIndex;
+                if (done) PlaceImage("Step" + i, parent, Dir + "33.png", DoneBody, 1254f, 1254f, c, StepD, 1f);
+                else PlaceImage("Step" + i, parent, Dir + StepFiles[i] + ".png", StepBodies[i], 1254f, 1254f, c, StepD, on ? 1f : StepDimAlpha);
                 AddText(parent, "StepLabel" + i, labels[i], font, 20, on ? TextWhite : TextDim, on,
                     new Vector2(c.x - 100f, y - 34f), new Vector2(200f, 30f), TextAlignmentOptions.Center);
             }
+        }
+
+        // 이미지 속 본체(body, 픽셀)가 center/bodyWidth에 오도록 이미지 전체를 놓는다 (클릭 없음)
+        static void PlaceImage(string name, Transform parent, string path, Rect body, float imgW, float imgH,
+            Vector2 center, float bodyWidth, float alpha)
+        {
+            float scale = bodyWidth / body.width;
+            var rt = ChildRect(name, parent);
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(imgW * scale, imgH * scale);
+            rt.anchoredPosition = center + new Vector2((imgW / 2f - body.center.x) * scale, (body.center.y - imgH / 2f) * scale);
+            var img = rt.gameObject.AddComponent<Image>();
+            img.sprite = LoadSprite(path, 512);
+            img.preserveAspect = true;
+            img.color = new Color(1f, 1f, 1f, alpha);
+            img.raycastTarget = false;
         }
 
         // 한 칸: SelectedBorder(선택 시, 칸보다 사방 5 크게) + Bg + Avatar. 루트가 클릭을 받는다.
@@ -300,19 +326,6 @@ namespace Artti.Editor
             img.color = color;
             img.raycastTarget = false;
             return rt;
-        }
-
-        static void Circle(string name, Transform parent, Vector2 center, float d, Color color)
-        {
-            var rt = ChildRect(name, parent);
-            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = center;
-            rt.sizeDelta = new Vector2(d, d);
-            var img = rt.gameObject.AddComponent<Image>();
-            img.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
-            img.color = color;
-            img.raycastTarget = false;
         }
 
         // pos/size는 부모 좌상단 기준(y 아래가 -)
