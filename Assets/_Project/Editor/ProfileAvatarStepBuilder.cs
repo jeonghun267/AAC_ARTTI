@@ -338,6 +338,9 @@ namespace Artti.Editor
 
         internal static Sprite LoadSprite(string path, int maxSize)
         {
+            // 새로 받은 파일이 아직 임포트되지 않았으면 먼저 임포트한다(Auto Refresh를 끈 환경 대비)
+            if (AssetImporter.GetAtPath(path) == null)
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
             if (AssetImporter.GetAtPath(path) is TextureImporter ti)
             {
                 bool dirty = false;
@@ -349,6 +352,12 @@ namespace Artti.Editor
                 if (dirty) ti.SaveAndReimport();
             }
             var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (sprite == null)
+            {
+                // 스프라이트로 바꾼 설정이 아직 반영되지 않은 경우 한 번 더 강제 임포트
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+                sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            }
             if (sprite == null) Debug.LogWarning($"[ProfileAvatarStepBuilder] 이미지 없음: {path}");
             return sprite;
         }
