@@ -78,7 +78,7 @@ public class KakaoLocalSearcher : MonoBehaviour
                         appCategory,
                         GetDescription(appCategory),
                         GetImageName(appCategory),
-                        "좌표검색"
+                        nearest.place_name
                     );
                     Debug.Log($"[KakaoAPI] 후보 발견: {nearest.place_name} | {appCategory} | {dist}m");
                 }

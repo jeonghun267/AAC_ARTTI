@@ -35,6 +35,9 @@ public class OcrTestController : MonoBehaviour
     [Header("카카오 API 검색 컴포넌트")]
     [SerializeField] private KakaoLocalSearcher kakaoSearcher;
 
+    [Header("HelpDetailPanel - 최신 메뉴")]
+    [SerializeField] private LatestMenuController latestMenuController;
+
     // 카테고리별 배지 색상 (한글 키)
     private readonly System.Collections.Generic.Dictionary<string, Color> _categoryColors =
         new System.Collections.Generic.Dictionary<string, Color>
@@ -287,8 +290,23 @@ public class OcrTestController : MonoBehaviour
 
     private void ShowResultPanel(KeywordMatch match, string imagePath)
     {
-        // 판별된 장소를 카드 생성으로 전달 (좌표/OCR 경로가 모두 여기로 모임)
-        PlaceContext.Set(match.Category);
+        // Kakao 경로는 최종 place_name, OCR 경로는 최종 매칭 키워드를 사용한다.
+        string finalPlaceName = match.MatchedKeyword ?? string.Empty;
+        Debug.Log($"[LatestMenu DEBUG] finalPlaceName = '{finalPlaceName}'");
+        Debug.Log($"[LatestMenu DEBUG] Category = '{match.Category}'");
+        Debug.Log($"[LatestMenu DEBUG] MatchedKeyword = '{match.MatchedKeyword}'");
+
+        // 판별된 장소를 카드 생성과 최신 메뉴 표시로 전달 (좌표/OCR 경로가 모두 여기로 모임)
+        PlaceContext.Set(match.Category, finalPlaceName);
+        if (latestMenuController == null)
+        {
+            Debug.LogError("[LatestMenu DEBUG] latestMenuController 참조가 null입니다.");
+        }
+        else
+        {
+            Debug.Log($"[LatestMenu DEBUG] UpdateForPlace 호출: '{finalPlaceName}'");
+            latestMenuController.UpdateForPlace(finalPlaceName);
+        }
 
         LoadCapturedImage(imagePath);
 
@@ -324,6 +342,10 @@ public class OcrTestController : MonoBehaviour
     // 카테고리 매칭에 실패했을 때도 촬영 사진과 인식 결과를 보여주며 결과 화면으로 전환
     private void ShowResultFallback(string imagePath, string ocrText)
     {
+        PlaceContext.Clear();
+        if (latestMenuController != null)
+            latestMenuController.UpdateForPlace(string.Empty);
+
         LoadCapturedImage(imagePath);
 
         bool noText = string.IsNullOrWhiteSpace(ocrText);
