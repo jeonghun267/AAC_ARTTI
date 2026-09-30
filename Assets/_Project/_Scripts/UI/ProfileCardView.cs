@@ -4,26 +4,26 @@ using UnityEngine.UI;
 
 namespace Artti.UI
 {
-    // 사용자 카드 한 장. 빌더가 만든 프리팹의 컴포넌트.
+    // 사용자 카드 한 장(세로형 다크 네온). 빌더가 만든 프리팹의 컴포넌트.
+    // 선택되면 테두리 빛 + 우상단 체크 + 삭제 칩이 켜지고 살짝 커진다.
     public class ProfileCardView : MonoBehaviour
     {
+        const float SelectedScale = 1.08f;
+
         public TMP_Text nameText;
-        public TMP_Text dateText;
-        public TMP_Text modeText;         // 가장 많이 사용한 모드
+        public TMP_Text introText;        // 한마디 소개(없으면 마지막 사용일)
         public Image avatarImage;
-        public Image starBadge;           // 아바타 좌상단 별 배지 (장식)
-        public GameObject defaultPill;    // "기본 프로필" 칩 (활성 프로필에만)
-        public GameObject selectedBorder; // primary 굵은 테두리
-        public GameObject checkMark;      // primary 체크 (좌측 상단)
-        public Button selectButton;       // 카드 본문 선택
-        public Button editButton;         // 수정
-        public Button deleteButton;       // 삭제
+        public GameObject selectedBorder; // 선택 테두리 빛
+        public GameObject checkMark;      // 우상단 체크
+        public Button selectButton;       // 카드 전체 = 선택
+        public Button deleteButton;       // 삭제 칩 (선택된 카드에만)
 
         public void SetSelected(bool on)
         {
             if (selectedBorder != null) selectedBorder.SetActive(on);
             if (checkMark != null) checkMark.SetActive(on);
-            if (defaultPill != null) defaultPill.SetActive(on);
+            if (deleteButton != null) deleteButton.gameObject.SetActive(on);
+            transform.localScale = Vector3.one * (on ? SelectedScale : 1f);
         }
     }
 }
