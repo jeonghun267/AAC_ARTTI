@@ -1,6 +1,7 @@
 using System.Collections.Generic;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Artti.Common;
 
@@ -38,6 +39,14 @@ namespace Artti.UI
         private AvatarTile _selected;
         private AvatarTile _initial;
         private readonly List<AvatarTile> _visible = new List<AvatarTile>();
+
+        // 변경점: 화면 효과 — 분류 탭을 바꾸면 보이는 칸이 차례로 톡 나타나고(격자 자식이라 크기·알파만),
+        //   아바타를 고르면 왼쪽 큰 카드의 아바타가 아래쪽 기준으로 톡 커진다.
+        const float TileStep = 0.03f;
+        const int TileStepCap = 10;   // 칸이 많아도 등장이 0.3초 안에 끝나게
+        private CancellationTokenSource _tilesCts;
+        private CancellationTokenSource _previewCts;
+        private Vector2 _previewHome;
 
         public void Setup(ProfileCreateView formView, RectTransform tiles, Button[] tabButtons, Image preview,
             Button random, Button next, Button close)
@@ -89,7 +98,8 @@ namespace Artti.UI
             }
             if (randomButton != null) randomButton.onClick.AddListener(SelectRandom);
             if (nextButton != null) nextButton.onClick.AddListener(Next);
-            if (closeButton != null) closeButton.onClick.AddListener(() => SceneManager.LoadScene(closeScene));
+            if (closeButton != null) closeButton.onClick.AddListener(() => SceneFader.Load(closeScene));   // 변경점: 페이드 전환
+            if (previewImage != null) _previewHome = previewImage.rectTransform.anchoredPosition;
 
             SelectTab(0);
             Select(_initial);
@@ -117,15 +127,30 @@ namespace Artti.UI
                 }
                 if (tabs[i] != null) tabs[i].transform.localScale = Vector3.one * (on ? TabSelectedScale : 1f);
             }
+            RevealVisibleTiles();
+        }
+
+        private void RevealVisibleTiles()
+        {
+            var ct = UIFx.Restart(ref _tilesCts, this);
+            for (int i = 0; i < _visible.Count; i++)
+                UIFx.PopScaleIn((RectTransform)_visible[i].transform, Mathf.Min(i, TileStepCap) * TileStep, 0.24f, 0.86f, ct).Forget();
         }
 
         private void Select(AvatarTile tile)
         {
             if (tile == null) return;
+            bool changed = tile != _selected;
             _selected = tile;
             foreach (var t in _tiles)
                 if (t.selectedMark != null) t.selectedMark.SetActive(t == tile);
             if (previewImage != null && tile.sprite != null) previewImage.sprite = tile.sprite;
+            if (changed && previewImage != null)
+            {
+                var ct = UIFx.Restart(ref _previewCts, this);
+                var rt = previewImage.rectTransform;
+                UIFx.BounceAround(rt, _previewHome, rt.pivot, 0f, 0.3f, 0.9f, ct).Forget();
+            }
         }
 
         // 지금 보이는 칸 중에서 현재 선택이 아닌 것 하나를 고른다.
@@ -142,7 +167,7 @@ namespace Artti.UI
         private void Next()
         {
             if (_selected != null && form != null) form.SetAvatar(_selected.avatarId, _selected.sprite);
-            gameObject.SetActive(false);
+            UIPopupMotion.Close(gameObject);   // 변경점: 1단계가 스며 사라지며 2단계 폼이 드러난다
         }
     }
 }

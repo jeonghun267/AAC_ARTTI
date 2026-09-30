@@ -1,7 +1,7 @@
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Artti.Common;
 
@@ -59,6 +59,8 @@ namespace Artti.UI
 
         private string _avatarId;
         private Sprite _avatarSprite;
+        private System.Threading.CancellationTokenSource _doneCts;
+        private Vector2? _doneStartHome;
 
         public void SetAvatar(string avatarId, Sprite sprite)
         {
@@ -75,17 +77,18 @@ namespace Artti.UI
             PopulateDropdown(dayDropdown, "일", BuildRange(1, 31, "일"));
             ApplyEditMode(); // 수정 모드면 기존 값 채우기
 
+            // 변경점: 씬 전환은 페이드, 단계(1·3단계 전체 화면 패널)와 팝업은 UIPopupMotion으로 부드럽게 열고 닫는다
             if (createButton != null) createButton.onClick.AddListener(OnSubmit);
-            if (backButton != null) backButton.onClick.AddListener(() => SceneManager.LoadScene(backScene));
+            if (backButton != null) backButton.onClick.AddListener(() => SceneFader.Load(backScene));
             if (changeAvatarButton != null && avatarStep != null)
-                changeAvatarButton.onClick.AddListener(() => avatarStep.SetActive(true));
+                changeAvatarButton.onClick.AddListener(() => UIPopupMotion.Open(avatarStep));
 
             if (confirmYesButton != null) confirmYesButton.onClick.AddListener(OnConfirmCreate);
             if (confirmNoButton != null) confirmNoButton.onClick.AddListener(CloseConfirm);
             if (confirmCloseButton != null) confirmCloseButton.onClick.AddListener(CloseConfirm);
 
-            if (doneStartButton != null) doneStartButton.onClick.AddListener(() => SceneManager.LoadScene(startScene));
-            if (doneCloseButton != null) doneCloseButton.onClick.AddListener(() => SceneManager.LoadScene(backScene));
+            if (doneStartButton != null) doneStartButton.onClick.AddListener(() => SceneFader.Load(startScene));
+            if (doneCloseButton != null) doneCloseButton.onClick.AddListener(() => SceneFader.Load(backScene));
             if (doneEditButton != null) doneEditButton.onClick.AddListener(EditFromDone);
             if (doneStep != null) doneStep.SetActive(false);
 
@@ -101,10 +104,10 @@ namespace Artti.UI
         {
             if (nameInput == null || string.IsNullOrWhiteSpace(nameInput.text))
             {
-                if (validationPopup != null) validationPopup.SetActive(true);
+                UIPopupMotion.Open(validationPopup);
                 return;
             }
-            if (confirmPopup != null) confirmPopup.SetActive(true);
+            if (confirmPopup != null) UIPopupMotion.Open(confirmPopup);
             else OnConfirmCreate();
         }
 
@@ -156,7 +159,7 @@ namespace Artti.UI
 
             CloseConfirm();
             if (doneStep != null) ShowDone(nick, year, month, day);
-            else SceneManager.LoadScene(nextScene);
+            else SceneFader.Load(nextScene);
         }
 
         private void ShowDone(string nick, int year, int month, int day)
@@ -164,14 +167,30 @@ namespace Artti.UI
             if (doneName != null) doneName.text = nick;
             if (doneAvatar != null && _avatarSprite != null) doneAvatar.sprite = _avatarSprite;
             if (doneBirth != null) doneBirth.text = FormatBirth(year, month, day);
-            doneStep.SetActive(true);
+            UIPopupMotion.Open(doneStep);
+            PlayDoneEntrance();
+        }
+
+        // 변경점: 3단계(완료) 등장 — 화면이 스며 나온 뒤 원 안 아바타가 톡 커지고, 이름과 시작하기 버튼이 뒤따른다.
+        private void PlayDoneEntrance()
+        {
+            var ct = UIFx.Restart(ref _doneCts, this);
+            if (doneAvatar != null && doneAvatar.rectTransform.parent is RectTransform avatarCircle)
+                UIFx.BounceAround(avatarCircle, avatarCircle.anchoredPosition, avatarCircle.pivot, 0.12f, 0.45f, 0.6f, ct).Forget();
+            if (doneName != null)
+                UIFx.FadeGroup(UIFx.Group(doneName), 0f, 1f, 0.3f, 0.3f, ct).Forget();
+            if (doneStartButton != null && doneStartButton.transform is RectTransform start)
+            {
+                if (_doneStartHome == null) _doneStartHome = start.anchoredPosition;   // 다시 열 때 움직이던 자리를 집으로 잡지 않게
+                UIFx.MoveFadeIn(start, _doneStartHome.Value, new Vector2(0f, -30f), 0.4f, 0.4f, ct).Forget();
+            }
         }
 
         // 3단계 편집 배지: 완료 화면을 닫고 1단계(아바타)부터 다시. 입력한 값은 2단계에 그대로 남아 있다.
         private void EditFromDone()
         {
-            doneStep.SetActive(false);
-            if (avatarStep != null) avatarStep.SetActive(true);
+            UIPopupMotion.Close(doneStep);
+            UIPopupMotion.Open(avatarStep);
         }
 
         // 입력한 만큼만 보인다: 2001. 05. 20 / 2001. 05 / 2001년 / 05. 20 / 미입력
@@ -210,8 +229,8 @@ namespace Artti.UI
             dd.RefreshShownValue();
         }
 
-        private void CloseConfirm() { if (confirmPopup != null) confirmPopup.SetActive(false); }
-        private void CloseValidation() { if (validationPopup != null) validationPopup.SetActive(false); }
+        private void CloseConfirm() => UIPopupMotion.Close(confirmPopup);
+        private void CloseValidation() => UIPopupMotion.Close(validationPopup);
 
         private List<string> BuildYears()
         {

@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.SceneManagement;
 using TMPro;
 using Artti.Common;
 
@@ -24,10 +23,11 @@ namespace Artti.UI
 
         private void Start()
         {
-            trainingModeBtn.onClick.AddListener(() => SceneManager.LoadScene("TrainingHubScene"));
-            arFieldModeBtn.onClick.AddListener(() => SceneManager.LoadScene("ARFieldScene"));
+            // 변경점: 씬 전환 페이드. 현장모드(ARFieldScene)는 SceneFader가 기존처럼 바로 전환한다.
+            trainingModeBtn.onClick.AddListener(() => SceneFader.Load("TrainingHubScene"));
+            arFieldModeBtn.onClick.AddListener(() => SceneFader.Load("ARFieldScene"));
             // 레포트는 모달이 아닌 전용 씬으로 진입 (401/402 시안)
-            if (reportBtn != null) reportBtn.onClick.AddListener(() => SceneManager.LoadScene("ReportScene"));
+            if (reportBtn != null) reportBtn.onClick.AddListener(() => SceneFader.Load("ReportScene"));
 
             UpdateGreeting();
         }

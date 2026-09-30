@@ -2,7 +2,6 @@ using System.Threading;
 using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Artti.AAC.Logging;
 using Artti.Common;
@@ -331,7 +330,7 @@ namespace Artti.UI
             root.anchorMin = Vector2.zero; root.anchorMax = Vector2.one;
             root.offsetMin = Vector2.zero; root.offsetMax = Vector2.zero;
             _clarityPopup.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.45f);
-            AddClick(_clarityPopup, () => _clarityPopup.SetActive(false));
+            AddClick(_clarityPopup, () => UIPopupMotion.Close(_clarityPopup));   // 변경점: 팝업 열기/닫기 연출
 
             var panel = new GameObject("Panel", typeof(RectTransform));
             var pr = (RectTransform)panel.transform;
@@ -358,7 +357,7 @@ namespace Artti.UI
             if (_clarityPopup == null || _clarityPopupText == null) return;
             _clarityPopupText.text = BuildClarityDetailText(_report);
             _clarityPopup.transform.SetAsLastSibling();
-            _clarityPopup.SetActive(true);
+            UIPopupMotion.Open(_clarityPopup);
         }
 
         private static string BuildClarityDetailText(ReportRecordDetail r)
@@ -563,16 +562,16 @@ namespace Artti.UI
 
         // ===== 네비게이션 =====
 
-        private void GoReport() => SceneManager.LoadScene("ReportScene");
+        private void GoReport() => SceneFader.Load("ReportScene");
 
         private void HandleRetry()
         {
             if (_report == null) { GoReport(); return; }
-            SceneManager.LoadScene(TrainingConvenienceScene);
+            SceneFader.Load(TrainingConvenienceScene);
         }
 
         // 시나리오가 편의점 하나뿐이라 "다음 시나리오"도 편의점 훈련으로 연결
-        private void HandleNext() => SceneManager.LoadScene(TrainingConvenienceScene);
+        private void HandleNext() => SceneFader.Load(TrainingConvenienceScene);
 
         private void HandleShare()
         {

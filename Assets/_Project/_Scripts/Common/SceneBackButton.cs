@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace Artti.Common
 {
@@ -12,7 +11,7 @@ namespace Artti.Common
         public void GoBack()
         {
             if (!string.IsNullOrEmpty(targetScene))
-                SceneManager.LoadScene(targetScene);
+                SceneFader.Load(targetScene);   // 변경점: 페이드 전환
         }
     }
 }

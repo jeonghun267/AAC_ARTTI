@@ -1,8 +1,8 @@
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using Artti.Common;
 
 namespace Artti.UI
 {
@@ -61,8 +61,9 @@ namespace Artti.UI
             }
             Apply(totalSeconds);
 
+            // 변경점: 스플래시는 이미 검은 화면으로 끝나므로 덮는 단계 없이 넘어가고, 다음 씬만 서서히 밝힌다.
             if (!string.IsNullOrEmpty(nextScene))
-                SceneManager.LoadScene(nextScene);
+                SceneFader.LoadFromBlack(nextScene);
         }
 
         private void Apply(float t)

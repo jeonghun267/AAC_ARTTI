@@ -333,12 +333,13 @@ namespace Artti.Training
         {
             if (hud == null) return;
             // 일시정지 종료 — 중단 기록은 OnDestroy의 SessionAbandoned 경로가 처리
-            hud.OnExitRequested += () => SceneManager.LoadScene("TrainingHubScene");
+            // 변경점: 씬 전환은 페이드(SceneFader)로
+            hud.OnExitRequested += () => SceneFader.Load("TrainingHubScene");
             hud.OnReplayRequested += ReplayNpcLine;
-            hud.OnRetrySession += () => SceneManager.LoadScene(SceneManager.GetActiveScene().name);
-            hud.OnGoHub += () => SceneManager.LoadScene("TrainingHubScene");
-            hud.OnGoHome += () => SceneManager.LoadScene("MainScene");
-            hud.OnGoReport += () => SceneManager.LoadScene("ReportScene");
+            hud.OnRetrySession += () => SceneFader.Load(SceneManager.GetActiveScene().name);
+            hud.OnGoHub += () => SceneFader.Load("TrainingHubScene");
+            hud.OnGoHome += () => SceneFader.Load("MainScene");
+            hud.OnGoReport += () => SceneFader.Load("ReportScene");
             hud.SetObjective(0, StepperLabel("greeting"));
         }
 
@@ -363,6 +364,13 @@ namespace Artti.Training
             if (_npcTtsService != null)
                 TrackSpeech(_npcTtsService.SpeakAsync(line, SpeechToken)).Forget();
             _eventLogger?.LogNpcTurn(line, tool);
+        }
+
+        // 변경점: "생각하는 중"(LLM 대기) 표시는 HUD(옛 시안)와 점원 말풍선(대시보드) 양쪽에 보낸다.
+        private void ShowThinking(bool on)
+        {
+            hud?.ShowThinking(on);
+            uiView.ShowNpcThinking(on);
         }
 
         private void ReplayNpcLine()
@@ -823,7 +831,7 @@ namespace Artti.Training
             }
 
             // LLM 처리 동안 "생각하는 중" 인디케이터 (응답 지연/무응답 fallback 패턴 공통)
-            hud?.ShowThinking(true);
+            ShowThinking(true);
             // 변경점(Unit 2): 하드코딩 "System Prompt" → 시나리오 페르소나 주입.
             //   userPrompt에 현재 목표/시도 맥락 추가. (대화 이력·슬롯은 Unit 4에서 보강)
             var userPrompt =
@@ -831,7 +839,7 @@ namespace Artti.Training
                 $"[attempt: {_dialogueManager.AttemptCount}, scaffold_level: {(int)_dialogueManager.CurrentScaffoldLevel}]\n" +
                 $"User selected card '{card.id}' ({card.phrase?.text}) and said: \"{sttResult.text}\"";
             var turn = await _geminiService.RequestNextTurnAsync(_systemPrompt, userPrompt, _cts.Token);
-            hud?.ShowThinking(false);
+            ShowThinking(false);
 
             // Gemini 실패/키없음 → fallback 응답으로 대체
             if (turn == null)
@@ -971,7 +979,7 @@ namespace Artti.Training
                 using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
                 {
                     timeout.CancelAfterSlim(System.TimeSpan.FromSeconds(ConversationJudgeTimeoutSeconds), DelayType.Realtime);
-                    hud?.ShowThinking(true);
+                    ShowThinking(true);
                     try
                     {
                         int index = await _geminiService.RequestPhraseMatchAsync(recognized, candidates, timeout.Token);
@@ -987,7 +995,7 @@ namespace Artti.Training
                     }
                     finally
                     {
-                        hud?.ShowThinking(false);
+                        ShowThinking(false);
                     }
                 }
             }
@@ -1041,10 +1049,10 @@ namespace Artti.Training
                     }
 
                     hud?.SetUserUtterance(stt.text);
-                    hud?.ShowThinking(true);
+                    ShowThinking(true);
                     var reply = await _geminiService.RequestFreeTalkAsync(
                         _freeTalkSystemPrompt, BuildFreeTalkUserPrompt(stt.text), ct);
-                    hud?.ShowThinking(false);
+                    ShowThinking(false);
                     if (!_freeTalkActive) break;
 
                     bool failed = string.IsNullOrWhiteSpace(reply);
@@ -1057,7 +1065,7 @@ namespace Artti.Training
             finally
             {
                 _freeTalkBusy = false;
-                hud?.ShowThinking(false);
+                ShowThinking(false);
                 uiView.ShowMicIndicator(false);
             }
         }
@@ -1244,10 +1252,10 @@ namespace Artti.Training
             }
             else
             {
-                hud?.ShowThinking(true);
+                ShowThinking(true);
                 turn = await _geminiService.RequestNextTurnAsync(
                     _systemPrompt, BuildUserPrompt(card, sttText, sourceContext), _cts.Token);
-                hud?.ShowThinking(false);
+                ShowThinking(false);
             }
 
             // Gemini 실패/키없음 → fallback 발화 + 룰 기반 풀로 카드 유지(대화 끊기지 않게)

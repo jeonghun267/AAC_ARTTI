@@ -1,5 +1,5 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
+using Artti.Common;
 
 namespace Artti.UI
 {
@@ -10,7 +10,7 @@ namespace Artti.UI
 
         public void OpenReport()
         {
-            SceneManager.LoadScene(reportScene);
+            SceneFader.Load(reportScene);   // 변경점: 페이드 전환
         }
 
         public void Quit()
