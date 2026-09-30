@@ -8,7 +8,7 @@ namespace Artti.UI
 {
     // 프로필 등록 1단계: 아바타 선택.
     // 분류 탭(전체/여성/남성/중성/스타일)으로 그리드를 거르고, 고른 아바타를 왼쪽 큰 카드에 보여 준다.
-    // 다음 -> 고른 아바타를 ProfileCreateView에 넘기고 이 패널을 닫아 2단계(이름/생년월) 폼을 보인다.
+    // 다음 -> 고른 아바타를 ProfileCreateView에 넘기고 이 패널을 닫아 2단계(프로필 설정) 폼을 보인다.
     public class ProfileAvatarStepView : MonoBehaviour
     {
         [SerializeField] private ProfileCreateView form;
@@ -141,7 +141,7 @@ namespace Artti.UI
 
         private void Next()
         {
-            if (_selected != null && form != null) form.SetAvatar(_selected.avatarId);
+            if (_selected != null && form != null) form.SetAvatar(_selected.avatarId, _selected.sprite);
             gameObject.SetActive(false);
         }
     }

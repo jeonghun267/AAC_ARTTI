@@ -5,38 +5,33 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Artti.UI;
+using static Artti.Editor.ProfileAvatarStepBuilder;
 
 namespace Artti.Editor
 {
-    // 프로필 생성 폼 씬. 가로 1920x1080, 흰 배경.
-    // 이름 입력(네이티브 키보드) + 생년/월 드롭다운 + 대표 아바타(동물 얼굴 10종) 선택.
+    // 프로필 등록 씬 (다크 네온). 두 단계를 한 씬에 겹쳐 둔다.
+    //   1단계 아바타 선택: ProfileAvatarStepBuilder가 만든 패널. 처음에 켜져 있고 '다음'을 누르면 닫힌다.
+    //   2단계 프로필 설정: 이 빌더가 만든다. 이름(필수) / 생년월일(선택) / 한마디 소개(선택).
+    // 2단계 배경은 시안 한 장(profiles/step2_bg.png, 1463x1075)에 입력 칸과 글자가 그려져 있고,
+    // 그 위에 투명한 입력 필드/드롭다운을 칸 자리에 맞춰 얹는다. 좌표는 전부 시안 px(좌상단 기준).
+    // 3단계(완료)는 에셋을 받으면 추가한다. 지금은 2단계 '다음'에서 저장 후 ProfileSelectScene으로 간다.
     public static class ProfileCreateSceneBuilder
     {
         static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
-
-        static readonly Color Slate    = new Color32(63, 74, 94, 255);
-        static readonly Color BtnBlue  = new Color32(42, 109, 224, 255);
-        static readonly Color FieldBg  = new Color32(238, 240, 244, 255);
-        static readonly Color White    = Color.white;
-
-        // 새 글래스 디자인 (_createfull.png)
-        static readonly Color Sky         = new Color32(232, 230, 248, 255); // 전체 하늘 (연라벤더)
-        static readonly Color TitlePurple = new Color32(122, 92, 210, 255);  // 타이틀 보라
-        static readonly Color SubPurple   = new Color32(150, 140, 198, 255); // 부제 연보라
-
-        // 글래스 카드 (사용자 손배치 값 - 403기준 스케일 흡수)
-        const float CardW = 1427f;
-        const float CardH = 1291f;
-
         const string KoreanFontPath = "Assets/Fonts/NotoSansKR-Medium SDF.asset";
-        const string RoundedPath = "Assets/_Project/Art/UI/RoundedRect.png";
+        const string Step2Path = Dir + "step2_bg.png";
 
-        // 동물 얼굴 아바타 10종 (OpenMoji hex)
-        static readonly string[] AvatarHex =
-        {
-            "1F436", "1F431", "1F42D", "1F439", "1F430",
-            "1F98A", "1F43B", "1F43C", "1F428", "1F981"
-        };
+        // 시안 크기와 Stage 배치: 세로 1080에 맞추고 가로 가운데 정렬 (좌우 225는 10.png 배경이 채운다)
+        const float ImgW = 1463f, ImgH = 1075f;
+        const float Sc = 1080f / ImgH;                  // 1.00465
+        const float OffX = (1920f - ImgW * Sc) / 2f;    // 225.1
+        static Vector2 P(float x, float y) => new Vector2(OffX + x * Sc, -y * Sc);   // 시안 px -> Stage 좌상단 기준
+        static Vector2 L(float w, float h) => new Vector2(w * Sc, h * Sc);
+
+        static readonly Color FieldText   = new Color(0.96f, 0.97f, 1.00f, 1.00f);
+        static readonly Color Placeholder = new Color(0.62f, 0.68f, 0.88f, 0.70f);
+        static readonly Color ListBg      = new Color(0.07f, 0.11f, 0.26f, 0.98f);
+        static readonly Color ListItem    = new Color(0.14f, 0.21f, 0.45f, 1.00f);
 
         [MenuItem("Artti/Build ProfileCreateScene Hierarchy")]
         public static void BuildMenu() => Build();
@@ -45,433 +40,284 @@ namespace Artti.Editor
         {
             OpenOrCreateScene(ScenePaths.ProfileCreate);
             SceneBuilderUtils.ClearRootObjects();
-
             SceneBuilderUtils.CreateEventSystem();
             SceneBuilderUtils.EnsureAudioListener();
-            // Expand: 16:9보다 긴 기기(20:9)에서 세로가 잘리지 않게. 16:9에서는 기존과 같다.
+
+            // Expand: 16:9보다 긴 기기(20:9)에서 세로가 잘리지 않게. 16:9에서는 1920x1080 그대로.
             var canvasGo = SceneBuilderUtils.CreateCanvas("[Canvas]", ReferenceResolution, CanvasScaler.ScreenMatchMode.Expand);
             var canvas = canvasGo.transform;
-
             var font = LoadFont();
             var res = BuildTmpResources();
 
-            // === 배경 레이어 (뒤 -> 앞) ===
-            // 1) 하늘 (연라벤더 전체 채움)
-            var sky = SceneBuilderUtils.CreatePanel("Sky", canvas);
-            sky.AddComponent<Image>().color = Sky;
+            // ===== 2단계: 프로필 설정 =====
+            var step = ChildRect("ProfileStep", canvas);
+            StretchFull(step);
+            var bg = ChildRect("Background", step);
+            StretchFull(bg);
+            var bgImg = bg.gameObject.AddComponent<Image>();
+            bgImg.sprite = LoadSprite(Dir + "10.png", 2048);
+            bgImg.raycastTarget = false;
+            var fit = bg.gameObject.AddComponent<AspectRatioFitter>();
+            fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            fit.aspectRatio = 1448f / 1086f;
 
-            // 1-2) 파스텔 글로우 (카드 둘레 하늘을 따뜻하게 - 은은한 호흡)
-            BuildPastelGlow(canvas);
+            var stage = ChildRect("Stage", step);
+            stage.anchorMin = stage.anchorMax = stage.pivot = new Vector2(0.5f, 0.5f);
+            stage.sizeDelta = ReferenceResolution;
 
-            // 2) 구름 (글래스 카드 뒤에서 한 방향으로 흐름)
-            BuildClouds(canvas);
+            var sheet = ChildRect("Step2Sheet", stage);
+            sheet.anchorMin = sheet.anchorMax = sheet.pivot = new Vector2(0.5f, 0.5f);
+            sheet.sizeDelta = L(ImgW, ImgH);
+            var sheetImg = sheet.gameObject.AddComponent<Image>();
+            sheetImg.sprite = LoadSprite(Step2Path, 2048);
+            sheetImg.preserveAspect = true;
+            sheetImg.raycastTarget = false;
 
-            // 3) 바깥 라벤더 카드 (가운데 글래스 없는 배경)
-            var card = MakeRect("GlassCard", canvas, Vector2.zero, new Vector2(CardW, CardH));
-            var cardImg = card.gameObject.AddComponent<Image>();
-            cardImg.sprite = LoadProfileSprite("ProfileBackNoGlass.png");
-            cardImg.preserveAspect = false; // 가로로 늘려 채움
-            cardImg.raycastTarget = false;
+            // 시안 좌우 경계가 배경과 딱 끊겨 보이지 않게 양옆을 어둡게 덮고 경계 120px에 걸쳐 흐리게 풀어 준다.
+            // 넓은 화면(20:9)에서도 양끝까지 덮이도록 Stage 밖으로 길게 늘인다.
+            SideShade(stage, left: true);
+            SideShade(stage, left: false);
 
-            // 3-2) 안쪽 프로스트 글래스 패널 (폼을 담는 영역). 사용자 손배치 (스케일 1.2651x/1.4605y 흡수)
-            AddDecor("InnerGlass", canvas, LoadProfileSprite("CenterGlassPanel.png"),
-                new Vector2(0, -91), new Vector2(1290, 1057), false);
+            // 왼쪽 카드(시안 30~595, 300~995): 1단계에서 고른 아바타. 아래 인용문(y 860~) 위까지만 채운다.
+            var avatarRt = ChildRect("SelectedAvatar", stage);
+            avatarRt.anchorMin = avatarRt.anchorMax = new Vector2(0f, 1f);
+            avatarRt.pivot = new Vector2(0.5f, 0f);
+            avatarRt.anchoredPosition = P(312.5f, 850f);
+            avatarRt.sizeDelta = L(520f, 530f);
+            var avatarImg = avatarRt.gameObject.AddComponent<Image>();
+            avatarImg.sprite = LoadSprite(Dir + "19.png", 1024);
+            avatarImg.preserveAspect = true;
+            avatarImg.raycastTarget = false;
+            // 카드 전체를 누르면 1단계로 돌아가 다시 고른다
+            var changeAvatar = HitButton("ChangeAvatarBtn", stage, P(312.5f, 647.5f), L(565f, 695f));
 
-            // === 헤더 ===
-            // 뒤로 가기 (← 프로필 선택. 생성은 선택 화면에서 들어옴)
-            SceneBuilderUtils.CreateBackButton("ProfileSelectScene", canvas, "← 뒤로");
+            // 닫기(X, 시안 1403,48에 그려져 있음)
+            var closeBtn = HitButton("CloseBtn", stage, P(1403f, 48f), L(84f, 84f));
 
-            var title = MakeText("Title", canvas, "프로필 만들기", 60, TitlePurple, font);
-            Place(title.rectTransform, new Vector2(-50, 549), new Vector2(560, 90));
+            // 입력 칸 (시안에 그려진 칸 자리)
+            var nameInput = DarkInput("NameInput", stage, res, font, "이름을 입력하세요", P(1068.5f, 417f), L(671f, 60f), multiline: false);
+            var yearDd  = DarkDropdown("YearDropdown",  stage, res, font, P(834f, 566f),  L(206f, 60f));
+            var monthDd = DarkDropdown("MonthDropdown", stage, res, font, P(1071f, 566f), L(206f, 60f));
+            var dayDd   = DarkDropdown("DayDropdown",   stage, res, font, P(1306f, 566f), L(202f, 60f));
+            var introInput = DarkInput("IntroInput", stage, res, font, "나를 한마디로 소개해 보세요", P(1069f, 751.5f), L(676f, 123f), multiline: true);
 
-            // 부제 (스케일 0.867 -> 폰트 28->24)
-            var subtitle = MakeText("Subtitle", canvas, "나만의 프로필을 만들어요!", 24, SubPurple, font);
-            Place(subtitle.rectTransform, new Vector2(-46, 469), new Vector2(560, 50));
+            // 다음 (폼 패널 오른쪽 아래, 본체 높이 76)
+            const float nextH = 76f;
+            float nextW = nextH * NextBody.width / NextBody.height;
+            var nextBtn = MakeImageButton("NextBtn", stage, Dir + "17.png", NextBody, PillW, PillH,
+                P(1435f, 975f) - new Vector2(nextW / 2f, 0f), nextW);
 
-            // 상단 캐릭터 (말풍선+책). 사용자 손배치 (스케일 1.4419 흡수)
-            AddDecor("Character", canvas, LoadProfileSprite("CharacterBook.png"),
-                new Vector2(565, 496), new Vector2(257, 211));
+            // ===== 유효성 팝업 (이름을 입력해 주세요) =====
+            var validation = MakePopup("ValidationPopup", canvas, font, "이름을 입력해 주세요", out var valOk, out var valClose);
 
-            // === 폼 (아이콘 + 라벨 + 입력). 사용자 손배치 값 ===
-            const float IconX = -494f;
-            var iconSize = new Vector2(80, 74);
-
-            // 이름
-            AddDecor("Icon_Name", canvas, LoadProfileSprite("icon_name.png"), new Vector2(IconX, 302), iconSize);
-            MakeLabelAt("Label_Name", canvas, "이름", font, -434, 302, 36, 140);
-            var input = MakeInput("NameInput", canvas, res, font, "이름을 입력하세요",
-                new Vector2(26, 302), new Vector2(740, 78));
-
-            // 생년 / 월
-            AddDecor("Icon_Birth", canvas, LoadProfileSprite("icon_birth.png"), new Vector2(IconX, 175), iconSize);
-            MakeLabelAt("Label_Birth", canvas, "생년 / 월", font, -434, 175, 36, 200);
-            var yearDd = MakeDropdown("YearDropdown", canvas, res, font,
-                new Vector2(-114, 175), new Vector2(320, 78));
-            var monthDd = MakeDropdown("MonthDropdown", canvas, res, font,
-                new Vector2(241, 175), new Vector2(310, 78));
-
-            // 대표 이미지
-            AddDecor("Icon_Avatar", canvas, LoadProfileSprite("icon_avatar.png"), new Vector2(IconX, 46), iconSize);
-            MakeLabelAt("Label_Avatar", canvas, "대표 이미지 선택", font, -434, 49, 36, 360);
-            // 그리드는 값 미제공 -> 아바타 라벨 아래로 추정 배치
-            var gridRect = MakeRect("AvatarGrid", canvas, new Vector2(0, -158), new Vector2(850, 280));
-            SceneBuilderUtils.AddGridLayout(gridRect.gameObject, new Vector2(120, 120), new Vector2(52, 40), 5,
-                new RectOffset(0, 0, 0, 0));
-            for (int i = 0; i < AvatarHex.Length; i++)
-                MakeAvatarItem(AvatarHex[i], gridRect.transform);
-
-            // 만들기 버튼. 사용자 손배치 (스케일 1.1945 흡수)
-            var createBtn = MakeImageButton("CreateButton", canvas, LoadProfileSprite("BtnCreate.png"),
-                new Vector2(0, -480), new Vector2(669, 155));
-
-            // 4) 나뭇잎 (맨 앞 측면 하늘에서 떨어짐)
-            BuildLeaves(canvas);
-
-            // 생성 확인 팝업 (프로필을 생성할까요?)
-            var confirmPopup = MakePopup("ConfirmPopup", canvasGo.transform, new Vector2(760, 360), out var confirmCard);
-            var confirmTitle = MakeText("Title", confirmCard, "프로필을 생성할까요?", 48, Slate, font);
-            Place(confirmTitle.rectTransform, new Vector2(0, 75), new Vector2(680, 90));
-            var confirmNo = MakeButton("CancelButton", confirmCard, "취소", 40,
-                new Vector2(-150, -85), new Vector2(220, 100), FieldBg, Slate, font);
-            var confirmYes = MakeButton("ConfirmButton", confirmCard, "확인", 40,
-                new Vector2(150, -85), new Vector2(220, 100), BtnBlue, White, font);
-            var confirmX = MakeIconButton("Close", confirmCard, "×", new Vector2(330, 130), new Vector2(64, 64), font);
-
-            // 유효성 팝업 (입력 정보를 확인해주세요!)
-            var validationPopup = MakePopup("ValidationPopup", canvasGo.transform, new Vector2(760, 320), out var valCard);
-            var valTitle = MakeText("Title", valCard, "입력 정보를 확인해주세요!", 46, Slate, font);
-            Place(valTitle.rectTransform, new Vector2(0, 55), new Vector2(700, 90));
-            var valOk = MakeButton("OkButton", valCard, "확인", 40,
-                new Vector2(0, -75), new Vector2(240, 100), BtnBlue, White, font);
-            var valX = MakeIconButton("Close", valCard, "×", new Vector2(330, 110), new Vector2(64, 64), font);
-
-            confirmPopup.SetActive(false);
-            validationPopup.SetActive(false);
-
-            // View 와이어링
+            // ===== View 와이어링 =====
             var view = canvasGo.AddComponent<ProfileCreateView>();
+
+            // ===== 1단계: 아바타 선택 (맨 위에 덮는다) =====
+            var avatarStep = ProfileAvatarStepBuilder.Build(canvas, view, font);
+
             var so = new SerializedObject(view);
-            so.FindProperty("titleText").objectReferenceValue = title;
-            so.FindProperty("confirmTitleText").objectReferenceValue = confirmTitle;
-            so.FindProperty("nameInput").objectReferenceValue = input;
+            so.FindProperty("nameInput").objectReferenceValue = nameInput;
             so.FindProperty("yearDropdown").objectReferenceValue = yearDd;
             so.FindProperty("monthDropdown").objectReferenceValue = monthDd;
-            so.FindProperty("avatarGrid").objectReferenceValue = gridRect;
-            so.FindProperty("createButton").objectReferenceValue = createBtn;
-            so.FindProperty("confirmPopup").objectReferenceValue = confirmPopup;
-            so.FindProperty("confirmYesButton").objectReferenceValue = confirmYes;
-            so.FindProperty("confirmNoButton").objectReferenceValue = confirmNo;
-            so.FindProperty("confirmCloseButton").objectReferenceValue = confirmX;
-            so.FindProperty("validationPopup").objectReferenceValue = validationPopup;
+            so.FindProperty("dayDropdown").objectReferenceValue = dayDd;
+            so.FindProperty("introInput").objectReferenceValue = introInput;
+            so.FindProperty("createButton").objectReferenceValue = nextBtn;
+            so.FindProperty("backButton").objectReferenceValue = closeBtn;
+            so.FindProperty("previewAvatar").objectReferenceValue = avatarImg;
+            so.FindProperty("changeAvatarButton").objectReferenceValue = changeAvatar;
+            so.FindProperty("avatarStep").objectReferenceValue = avatarStep.gameObject;
+            so.FindProperty("validationPopup").objectReferenceValue = validation;
             so.FindProperty("validationOkButton").objectReferenceValue = valOk;
-            so.FindProperty("validationCloseButton").objectReferenceValue = valX;
+            so.FindProperty("validationCloseButton").objectReferenceValue = valClose;
             so.ApplyModifiedProperties();
 
-            // 1단계: 아바타 선택(다크 네온 시안). 폼 위를 덮고 있다가 '다음'을 누르면 닫혀 아래 폼(2단계)이 보인다.
-            // 폼의 기존 동물 아바타 그리드는 1단계가 대신하므로 숨긴다(수정 모드 호환을 위해 오브젝트는 남긴다).
-            foreach (var n in new[] { "Icon_Avatar", "Label_Avatar", "AvatarGrid" })
-            {
-                var t = canvas.Find(n);
-                if (t != null) t.gameObject.SetActive(false);
-            }
-            ProfileAvatarStepBuilder.Build(canvas, view, font);
+            // 팝업은 1단계보다 위에 그려지도록 맨 뒤로
+            validation.transform.SetAsLastSibling();
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[ProfileCreateSceneBuilder] 완료 (1단계 아바타 선택 + 2단계 폼)");
+            Debug.Log("[ProfileCreateSceneBuilder] 완료 (1단계 아바타 선택 + 2단계 프로필 설정)");
         }
 
-        // 전체화면 stretch 컨테이너 (구름/나뭇잎 레이어용)
-        static RectTransform FullContainer(string name, Transform parent)
+        static readonly Color ShadeColor = new Color(0.03f, 0.05f, 0.14f, 0.8f);
+
+        // 한쪽 옆 가림: 단색(화면 끝 ~ 시안 경계-20) + 페이드(경계-20 ~ 경계+100)
+        static void SideShade(Transform stage, bool left)
         {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.offsetMin = Vector2.zero;
-            rt.offsetMax = Vector2.zero;
-            return rt;
+            const float far = 1000f, fadeW = 120f, inset = 20f, h = 1680f;
+            float edge = left ? OffX : 1920f - OffX;
+            float solidW = far + OffX - inset;
+
+            var solid = ChildRect(left ? "ShadeL" : "ShadeR", stage);
+            solid.anchorMin = solid.anchorMax = new Vector2(0f, 1f);
+            solid.pivot = new Vector2(left ? 1f : 0f, 0.5f);
+            solid.anchoredPosition = new Vector2(left ? edge - inset : edge + inset, -540f);
+            solid.sizeDelta = new Vector2(solidW, h);
+            var sImg = solid.gameObject.AddComponent<Image>();
+            sImg.color = ShadeColor;
+            sImg.raycastTarget = false;
+
+            var fade = ChildRect(left ? "FadeL" : "FadeR", stage);
+            fade.anchorMin = fade.anchorMax = new Vector2(0f, 1f);
+            fade.pivot = new Vector2(0f, 0.5f);
+            fade.anchoredPosition = new Vector2(left ? edge - inset : edge + inset, -540f);
+            fade.sizeDelta = new Vector2(fadeW, h);
+            fade.localScale = new Vector3(left ? 1f : -1f, 1f, 1f);   // 스프라이트는 왼쪽이 진하고 오른쪽으로 사라진다
+            var fImg = fade.gameObject.AddComponent<Image>();
+            fImg.sprite = LoadSprite(Dir + "edge_fade.png", 256);
+            fImg.color = ShadeColor;
+            fImg.raycastTarget = false;
         }
 
-        // 장식 이미지 (레이캐스트 X). preserveAspect 기본 true, 글래스 패널은 false로 채움
-        static Image AddDecor(string name, Transform parent, Sprite sprite, Vector2 pos, Vector2 size,
-            bool preserveAspect = true)
+        // 투명 클릭 영역 (가운데 기준)
+        static Button HitButton(string name, Transform parent, Vector2 center, Vector2 size)
         {
-            var rect = MakeRect(name, parent, pos, size);
-            var img = rect.gameObject.AddComponent<Image>();
-            img.sprite = sprite;
-            img.preserveAspect = preserveAspect;
-            img.raycastTarget = false;
-            return img;
-        }
-
-        // 좌측 정렬 라벨 (leftX 가 글자 왼쪽 끝)
-        static TMP_Text MakeLabelAt(string name, Transform parent, string text, TMP_FontAsset font,
-            float leftX, float y, int fontSize, float width)
-        {
-            var t = MakeText(name, parent, text, fontSize, Slate, font);
-            t.alignment = TextAlignmentOptions.Left;
-            var rect = t.rectTransform;
-            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0f, 0.5f);
-            rect.anchoredPosition = new Vector2(leftX, y);
-            rect.sizeDelta = new Vector2(width, 50);
-            return t;
-        }
-
-        // 이미지 버튼 (스프라이트 그대로, 비율 유지)
-        static Button MakeImageButton(string name, Transform parent, Sprite sprite, Vector2 pos, Vector2 size)
-        {
-            var rect = MakeRect(name, parent, pos, size);
-            var img = rect.gameObject.AddComponent<Image>();
-            img.sprite = sprite;
-            img.preserveAspect = true;
-            var btn = rect.gameObject.AddComponent<Button>();
+            var rt = ChildRect(name, parent);
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = center;
+            rt.sizeDelta = size;
+            var img = rt.gameObject.AddComponent<Image>();
+            img.color = new Color(1f, 1f, 1f, 0f);
+            var btn = rt.gameObject.AddComponent<Button>();
             btn.targetGraphic = img;
+            btn.transition = Selectable.Transition.None;
             return btn;
         }
 
-        // 파스텔 글로우 레이어: 카드 둘레 하늘에 따뜻한 파스텔 빛덩이. PastelGlow 와이어링
-        static void BuildPastelGlow(Transform canvas)
-        {
-            var container = FullContainer("PastelGlow", canvas);
-            var glow = SceneBuilderUtils.EnsureGlowSprite();
-            // 카드 반폭 713 바깥 둘레에 배치 (복숭아/핑크/라벤더/골드/민트)
-            var defs = new (Vector2 pos, float size, Color color)[]
-            {
-                (new Vector2(-770f, 380f), 520f, new Color(1.00f, 0.85f, 0.72f, 0.18f)),
-                (new Vector2(790f, 400f), 480f, new Color(1.00f, 0.78f, 0.86f, 0.18f)),
-                (new Vector2(-800f, -360f), 560f, new Color(0.90f, 0.80f, 1.00f, 0.18f)),
-                (new Vector2(810f, -380f), 500f, new Color(1.00f, 0.92f, 0.74f, 0.18f)),
-                (new Vector2(-860f, 20f), 420f, new Color(0.82f, 0.96f, 0.90f, 0.15f)),
-                (new Vector2(860f, 40f), 440f, new Color(1.00f, 0.84f, 0.78f, 0.16f)),
-            };
-            var list = new System.Collections.Generic.List<Graphic>();
-            foreach (var d in defs)
-            {
-                var rt = MakeRect("Glow", container, d.pos, new Vector2(d.size, d.size));
-                var img = rt.gameObject.AddComponent<Image>();
-                img.sprite = glow;
-                img.type = Image.Type.Simple;
-                img.raycastTarget = false;
-                img.color = d.color;
-                list.Add(img);
-            }
-            var pg = container.gameObject.AddComponent<PastelGlow>();
-            var so = new SerializedObject(pg);
-            var arr = so.FindProperty("orbs");
-            arr.arraySize = list.Count;
-            for (int i = 0; i < list.Count; i++)
-                arr.GetArrayElementAtIndex(i).objectReferenceValue = list[i];
-            so.ApplyModifiedProperties();
-        }
-
-        // 구름 레이어: 글래스 뒤에서 한 방향으로 흐름. CloudDrift 와이어링
-        static void BuildClouds(Transform canvas)
-        {
-            var container = FullContainer("Clouds", canvas);
-            var sprite = LoadProfileSprite("cloud_transparent.png");
-            float ratio = 336f / 688f;
-            var defs = new (Vector2 pos, float w)[]
-            {
-                (new Vector2(-840f, -460f), 420f),
-                (new Vector2(820f, -490f), 440f),
-                (new Vector2(-300f, 320f), 280f),
-                (new Vector2(220f, -120f), 260f),
-            };
-            var list = new System.Collections.Generic.List<RectTransform>();
-            foreach (var d in defs)
-            {
-                var rt = MakeRect("Cloud", container, d.pos, new Vector2(d.w, d.w * ratio));
-                var img = rt.gameObject.AddComponent<Image>();
-                img.sprite = sprite;
-                img.preserveAspect = true;
-                img.raycastTarget = false;
-                img.color = new Color(1f, 1f, 1f, 0.92f);
-                list.Add(rt);
-            }
-            var drift = container.gameObject.AddComponent<CloudDrift>();
-            var so = new SerializedObject(drift);
-            so.FindProperty("speed").floatValue = 34f; // 더 빠르게
-            var arr = so.FindProperty("clouds");
-            arr.arraySize = list.Count;
-            for (int i = 0; i < list.Count; i++)
-                arr.GetArrayElementAtIndex(i).objectReferenceValue = list[i];
-            so.ApplyModifiedProperties();
-        }
-
-        // 나뭇잎 레이어: 측면 하늘에서 U자로 떨어짐. LeafFall 와이어링
-        static void BuildLeaves(Transform canvas)
-        {
-            var container = FullContainer("Leaves", canvas);
-            var sprite = LoadProfileSprite("leaf_transparent.png");
-            float ratio = 86f / 78f;
-            // x = 좌우 측면 하늘 (넓어진 카드 폭 ±713 바깥, 좁은 띠라 흔들림 줄임)
-            var defs = new (float x, float w)[]
-            {
-                (-780f, 70f), (-820f, 58f), (-880f, 64f), (-800f, 52f),
-                (780f, 66f), (820f, 58f), (880f, 72f), (800f, 54f),
-            };
-            var list = new System.Collections.Generic.List<Image>();
-            foreach (var d in defs)
-            {
-                var rt = MakeRect("Leaf", container, new Vector2(d.x, 0f), new Vector2(d.w, d.w * ratio));
-                var img = rt.gameObject.AddComponent<Image>();
-                img.sprite = sprite;
-                img.preserveAspect = true;
-                img.raycastTarget = false;
-                list.Add(img);
-            }
-            var fall = container.gameObject.AddComponent<LeafFall>();
-            var so = new SerializedObject(fall);
-            so.FindProperty("swayAmplitude").floatValue = 50f; // 좁은 측면 띠라 흔들림 축소
-            var arr = so.FindProperty("leaves");
-            arr.arraySize = list.Count;
-            for (int i = 0; i < list.Count; i++)
-                arr.GetArrayElementAtIndex(i).objectReferenceValue = list[i];
-            so.ApplyModifiedProperties();
-        }
-
-        static TMP_InputField MakeInput(string name, Transform parent, TMP_DefaultControls.Resources res,
-            TMP_FontAsset font, string placeholder, Vector2 pos, Vector2 size)
+        // 시안에 칸이 그려져 있어 배경은 투명. 글자만 흰색으로 얹는다.
+        static TMP_InputField DarkInput(string name, Transform parent, TMP_DefaultControls.Resources res, TMP_FontAsset font,
+            string placeholder, Vector2 center, Vector2 size, bool multiline)
         {
             var go = TMP_DefaultControls.CreateInputField(res);
             go.name = name;
             go.transform.SetParent(parent, false);
-            var rect = go.GetComponent<RectTransform>();
-            Anchor(rect, pos, size);
-
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = center;
+            rt.sizeDelta = size;
             var img = go.GetComponent<Image>();
-            if (img != null) { img.sprite = Rounded(); img.type = Image.Type.Sliced; img.color = FieldBg; }
+            if (img != null) img.color = new Color(1f, 1f, 1f, 0f);
 
             var input = go.GetComponent<TMP_InputField>();
-            input.lineType = TMP_InputField.LineType.SingleLine;
-            input.textComponent.fontSize = 44;
-            input.textComponent.color = Slate;
-            if (input.placeholder is TMP_Text ph) { ph.text = placeholder; ph.fontSize = 44; }
+            input.lineType = multiline ? TMP_InputField.LineType.MultiLineNewline : TMP_InputField.LineType.SingleLine;
+            input.characterLimit = multiline ? 60 : 12;
+            input.caretColor = FieldText;
+            input.customCaretColor = true;
+            input.selectionColor = new Color(0.5f, 0.72f, 1f, 0.4f);
+            var area = input.textViewport;
+            if (area != null) { area.offsetMin = new Vector2(22f, 8f); area.offsetMax = new Vector2(-22f, -8f); }
+            var align = multiline ? TextAlignmentOptions.TopLeft : TextAlignmentOptions.Left;
+            input.textComponent.fontSize = 30;
+            input.textComponent.color = FieldText;
+            input.textComponent.alignment = align;
+            if (input.placeholder is TMP_Text ph)
+            {
+                ph.text = placeholder;
+                ph.fontSize = 28;
+                ph.color = Placeholder;
+                ph.fontStyle = FontStyles.Normal;
+                ph.alignment = align;
+            }
             ApplyFont(go, font);
             return input;
         }
 
-        static TMP_Dropdown MakeDropdown(string name, Transform parent, TMP_DefaultControls.Resources res,
-            TMP_FontAsset font, Vector2 pos, Vector2 size)
+        // 칸과 펼침 화살표는 시안에 그려져 있어 배경/화살표를 숨기고 글자만 보인다. 펼친 목록은 어두운 톤.
+        static TMP_Dropdown DarkDropdown(string name, Transform parent, TMP_DefaultControls.Resources res, TMP_FontAsset font,
+            Vector2 center, Vector2 size)
         {
             var go = TMP_DefaultControls.CreateDropdown(res);
             go.name = name;
             go.transform.SetParent(parent, false);
-            var rect = go.GetComponent<RectTransform>();
-            Anchor(rect, pos, size);
-
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = center;
+            rt.sizeDelta = size;
             var img = go.GetComponent<Image>();
-            if (img != null) { img.sprite = Rounded(); img.type = Image.Type.Sliced; img.color = FieldBg; }
+            if (img != null) img.color = new Color(1f, 1f, 1f, 0f);
+            var arrow = go.transform.Find("Arrow");
+            if (arrow != null) arrow.gameObject.SetActive(false);
 
             var dd = go.GetComponent<TMP_Dropdown>();
-            if (dd.captionText != null) { dd.captionText.fontSize = 40; dd.captionText.color = Slate; }
-            StyleDropdownList(dd, itemHeight: 96, listHeight: 520);
+            if (dd.captionText != null)
+            {
+                dd.captionText.fontSize = 28;
+                dd.captionText.color = FieldText;
+                dd.captionText.alignment = TextAlignmentOptions.Left;
+                var cr = dd.captionText.rectTransform;
+                cr.offsetMin = new Vector2(24f, 0f);
+                cr.offsetMax = new Vector2(-56f, 0f);   // 오른쪽 화살표 자리 비움
+            }
+
+            var template = dd.template;
+            if (template != null)
+            {
+                template.sizeDelta = new Vector2(template.sizeDelta.x, 420f);
+                var tImg = template.GetComponent<Image>();
+                if (tImg != null) { tImg.sprite = Rounded(); tImg.type = Image.Type.Sliced; tImg.color = ListBg; }
+                var item = template.Find("Viewport/Content/Item") as RectTransform;
+                if (item != null) item.sizeDelta = new Vector2(item.sizeDelta.x, 64f);
+                var itemBg = template.Find("Viewport/Content/Item/Item Background")?.GetComponent<Image>();
+                if (itemBg != null) itemBg.color = ListItem;
+                var check = template.Find("Viewport/Content/Item/Item Checkmark")?.GetComponent<Image>();
+                if (check != null) check.color = Accent;
+                var bar = template.Find("Scrollbar")?.GetComponent<Image>();
+                if (bar != null) bar.color = new Color(0.10f, 0.15f, 0.32f, 1f);
+                var handle = template.Find("Scrollbar/Sliding Area/Handle")?.GetComponent<Image>();
+                if (handle != null) handle.color = new Color(0.45f, 0.60f, 0.95f, 0.8f);
+            }
+            if (dd.itemText != null)
+            {
+                dd.itemText.fontSize = 28;
+                dd.itemText.color = FieldText;
+                dd.itemText.alignment = TextAlignmentOptions.Left;
+                var lr = dd.itemText.rectTransform;
+                lr.offsetMin = new Vector2(44f, 0f);
+                lr.offsetMax = new Vector2(-20f, 0f);
+            }
             ApplyFont(go, font);
             return dd;
         }
 
-        // 드롭다운 펼친 목록: 항목 높이/목록 박스 키우고 라벨 좌측 여백 (글자 겹침 방지)
-        static void StyleDropdownList(TMP_Dropdown dd, int itemHeight, int listHeight)
+        // 가운데 모달: 반투명 오버레이 + 어두운 카드 + 문구 + 확인 + X
+        static GameObject MakePopup(string name, Transform parent, TMP_FontAsset font, string message, out Button ok, out Button close)
         {
-            var template = dd.template;
-            if (template != null)
-                template.sizeDelta = new Vector2(template.sizeDelta.x, listHeight);
+            var overlay = ChildRect(name, parent);
+            StretchFull(overlay);
+            overlay.gameObject.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
 
-            var item = template != null ? template.Find("Viewport/Content/Item") as RectTransform : null;
-            if (item != null)
-                item.sizeDelta = new Vector2(item.sizeDelta.x, itemHeight);
+            var center = ChildRect("Center", overlay);
+            center.anchorMin = center.anchorMax = center.pivot = new Vector2(0.5f, 0.5f);
+            center.sizeDelta = new Vector2(720f, 320f);
+            RoundedBox("Line", center, new Vector2(360f, -160f), new Vector2(726f, 326f), Accent);
+            RoundedBox("Card", center, new Vector2(360f, -160f), new Vector2(720f, 320f), ListBg);
+            AddText(center, "Message", message, font, 38, FieldText, true, new Vector2(0f, -70f), new Vector2(720f, 60f), TextAlignmentOptions.Center);
 
-            if (dd.itemText != null)
-            {
-                dd.itemText.fontSize = 36;
-                dd.itemText.color = Slate;
-                dd.itemText.alignment = TextAlignmentOptions.Left;
-                var lr = dd.itemText.rectTransform;
-                lr.offsetMin = new Vector2(44, 0);
-                lr.offsetMax = new Vector2(-30, 0);
-            }
-        }
+            var okRt = RoundedBox("OkButton", center, new Vector2(360f, -225f), new Vector2(240f, 84f), new Color(0.35f, 0.55f, 1f, 1f));
+            okRt.GetComponent<Image>().raycastTarget = true;
+            ok = okRt.gameObject.AddComponent<Button>();
+            ok.targetGraphic = okRt.GetComponent<Image>();
+            var okText = AddText(okRt, "Text", "확인", font, 32, FieldText, true, Vector2.zero, Vector2.zero, TextAlignmentOptions.Center);
+            StretchFull(okText.rectTransform);
 
-        // 아바타 한 칸: SelectedBorder(선택 시) + Icon(이모지) + Button + AvatarItem
-        static void MakeAvatarItem(string hex, Transform parent)
-        {
-            var item = MakeRect($"Avatar_{hex}", parent, Vector2.zero, new Vector2(140, 140));
+            var xRt = ChildRect("Close", center);
+            xRt.anchorMin = xRt.anchorMax = new Vector2(0f, 1f);
+            xRt.pivot = new Vector2(0.5f, 0.5f);
+            xRt.anchoredPosition = new Vector2(676f, -44f);
+            xRt.sizeDelta = new Vector2(72f, 72f);
+            var xImg = xRt.gameObject.AddComponent<Image>();
+            xImg.color = new Color(1f, 1f, 1f, 0f);
+            close = xRt.gameObject.AddComponent<Button>();
+            close.targetGraphic = xImg;
+            var xText = AddText(xRt, "Text", "×", font, 44, FieldText, false, Vector2.zero, Vector2.zero, TextAlignmentOptions.Center);
+            StretchFull(xText.rectTransform);
 
-            var border = MakeRect("Selected", item.transform, Vector2.zero, new Vector2(146, 146));
-            var borderImg = border.gameObject.AddComponent<Image>();
-            borderImg.sprite = Rounded();
-            borderImg.type = Image.Type.Sliced;
-            borderImg.color = BtnBlue;
-            border.gameObject.SetActive(false);
-
-            var icon = MakeRect("Icon", item.transform, Vector2.zero, new Vector2(140, 140));
-            var iconImg = icon.gameObject.AddComponent<Image>();
-            iconImg.sprite = LoadAvatar(hex);
-            iconImg.preserveAspect = true;
-
-            var btn = item.gameObject.AddComponent<Button>();
-            btn.targetGraphic = iconImg;
-
-            var ai = item.gameObject.AddComponent<AvatarItem>();
-            ai.avatarId = hex;
-            ai.button = btn;
-            ai.selectedMark = border.gameObject;
-        }
-
-        static Button MakeButton(string name, Transform parent, string label, int fontSize,
-            Vector2 pos, Vector2 size, Color bg, Color textColor, TMP_FontAsset font)
-        {
-            var rect = MakeRect(name, parent, pos, size);
-            var img = rect.gameObject.AddComponent<Image>();
-            img.sprite = Rounded();
-            img.type = Image.Type.Sliced;
-            img.color = bg;
-            var btn = rect.gameObject.AddComponent<Button>();
-            btn.targetGraphic = img;
-            var t = MakeText("Text", rect, label, fontSize, textColor, font);
-            SceneBuilderUtils.FillStretch(t.rectTransform, 8);
-            return btn;
-        }
-
-        // 모달 팝업: 전체화면 반투명 오버레이 + 둥근 흰 카드
-        static GameObject MakePopup(string name, Transform parent, Vector2 cardSize, out RectTransform card)
-        {
-            var overlay = SceneBuilderUtils.CreatePanel(name, parent);
-            overlay.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.5f);
-            card = MakeRect("Card", overlay.transform, Vector2.zero, cardSize);
-            var img = card.gameObject.AddComponent<Image>();
-            img.sprite = Rounded();
-            img.type = Image.Type.Sliced;
-            img.color = White;
-            return overlay;
-        }
-
-        // 아이콘 버튼 (투명 배경 + 글리프). X 닫기 버튼용.
-        static Button MakeIconButton(string name, Transform parent, string glyph, Vector2 pos, Vector2 size, TMP_FontAsset font)
-        {
-            var rect = MakeRect(name, parent, pos, size);
-            var img = rect.gameObject.AddComponent<Image>();
-            img.color = new Color(0f, 0f, 0f, 0f); // 투명 (레이캐스트만)
-            var btn = rect.gameObject.AddComponent<Button>();
-            btn.targetGraphic = img;
-            var t = MakeText("Text", rect, glyph, 44, Slate, font);
-            SceneBuilderUtils.FillStretch(t.rectTransform, 6);
-            return btn;
-        }
-
-        static TMP_Text MakeText(string name, Transform parent, string text, int fontSize, Color color, TMP_FontAsset font)
-        {
-            var tmp = SceneBuilderUtils.CreateTMPText(name, parent, text, fontSize);
-            tmp.color = color;
-            tmp.fontStyle = FontStyles.Bold;
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.textWrappingMode = TextWrappingModes.NoWrap;
-            tmp.raycastTarget = false;
-            if (font != null) tmp.font = font;
-            return tmp;
+            overlay.gameObject.SetActive(false);
+            return overlay.gameObject;
         }
 
         static void ApplyFont(GameObject go, TMP_FontAsset font)
@@ -479,25 +325,6 @@ namespace Artti.Editor
             if (font == null) return;
             foreach (var t in go.GetComponentsInChildren<TMP_Text>(true)) t.font = font;
         }
-
-        static RectTransform MakeRect(string name, Transform parent, Vector2 pos, Vector2 size)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            var rect = go.AddComponent<RectTransform>();
-            Anchor(rect, pos, size);
-            return rect;
-        }
-
-        static void Anchor(RectTransform rect, Vector2 pos, Vector2 size)
-        {
-            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = pos;
-            rect.sizeDelta = size;
-        }
-
-        static void Place(RectTransform rect, Vector2 pos, Vector2 size) => Anchor(rect, pos, size);
 
         static TMP_DefaultControls.Resources BuildTmpResources()
         {
@@ -513,54 +340,7 @@ namespace Artti.Editor
             };
         }
 
-        // Art/UI/Profile/ PNG → Sprite (미임포트면 강제 임포트)
-        static Sprite LoadProfileSprite(string file)
-        {
-            string p = "Assets/_Project/Art/UI/Profile/" + file;
-            if (AssetImporter.GetAtPath(p) == null)
-                AssetDatabase.ImportAsset(p, ImportAssetOptions.ForceSynchronousImport);
-            EnsureSprite(p);
-            return AssetDatabase.LoadAssetAtPath<Sprite>(p);
-        }
-
-        static void EnsureSprite(string p)
-        {
-            if (AssetImporter.GetAtPath(p) is TextureImporter ti &&
-                (ti.textureType != TextureImporterType.Sprite || ti.spriteImportMode != SpriteImportMode.Single))
-            {
-                ti.textureType = TextureImporterType.Sprite;
-                ti.spriteImportMode = SpriteImportMode.Single;
-                ti.SaveAndReimport();
-            }
-        }
-
         static Sprite Builtin(string path) => AssetDatabase.GetBuiltinExtraResource<Sprite>(path);
-
-        static Sprite Rounded()
-        {
-            var s = AssetDatabase.LoadAssetAtPath<Sprite>(RoundedPath);
-            return s != null ? s : Builtin("UI/Skin/UISprite.psd");
-        }
-
-        static Sprite LoadAvatar(string hex)
-        {
-            string p = $"Assets/_Project/Art/Avatars/{hex}.png";
-            var importer = AssetImporter.GetAtPath(p) as TextureImporter;
-            if (importer == null)
-            {
-                AssetDatabase.ImportAsset(p, ImportAssetOptions.ForceSynchronousImport);
-                importer = AssetImporter.GetAtPath(p) as TextureImporter;
-            }
-            if (importer != null &&
-                (importer.textureType != TextureImporterType.Sprite ||
-                 importer.spriteImportMode != SpriteImportMode.Single))
-            {
-                importer.textureType = TextureImporterType.Sprite;
-                importer.spriteImportMode = SpriteImportMode.Single; // Multiple → Single (슬라이스 없으면 null이 됨)
-                importer.SaveAndReimport();
-            }
-            return AssetDatabase.LoadAssetAtPath<Sprite>(p);
-        }
 
         static TMP_FontAsset LoadFont()
         {

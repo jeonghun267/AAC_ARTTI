@@ -17,11 +17,11 @@ namespace Artti.Editor
     // 시안은 태블릿(약 1.12:1)이라 가로 16:9에 맞춰 다시 배치했다. 그리드는 5x2로 넓혀 9종이 한 화면에 다 들어간다.
     public static class ProfileAvatarStepBuilder
     {
-        const string Dir = "Assets/_Project/Art/UI/Home/profiles/";
+        internal const string Dir = "Assets/_Project/Art/UI/Home/profiles/";
         const string RoundedPath = "Assets/_Project/Art/UI/RoundedRect.png";
 
         // 이미지 속 불투명 본체 영역(알파>200 실측, 픽셀)
-        const float PillW = 2172f, PillH = 724f;
+        internal const float PillW = 2172f, PillH = 724f;
         static readonly Rect[] TabBodies =
         {
             Rect.MinMaxRect(757, 242, 1413, 482),   // 11 전체
@@ -31,7 +31,7 @@ namespace Artti.Editor
             Rect.MinMaxRect(647, 219, 1525, 499),   // 15 스타일
         };
         static readonly Rect RandomBody = Rect.MinMaxRect(166, 202, 2006, 533);
-        static readonly Rect NextBody   = Rect.MinMaxRect(126, 126, 2046, 569);
+        internal static readonly Rect NextBody = Rect.MinMaxRect(126, 126, 2046, 569);
         static readonly Rect CloseBody  = Rect.MinMaxRect(423, 421, 832, 824);   // 1254x1254
 
         // 아바타 목록. 첫 칸이 기본 선택. 분류는 탭 필터용이라 필요하면 여기서만 고치면 된다.
@@ -52,7 +52,7 @@ namespace Artti.Editor
         static readonly Color PanelFill   = new Color(0.05f, 0.08f, 0.20f, 0.86f);
         static readonly Color PanelLine   = new Color(0.35f, 0.55f, 1.00f, 0.55f);
         static readonly Color TileFill    = new Color(0.13f, 0.18f, 0.36f, 0.92f);
-        static readonly Color Accent      = new Color(0.50f, 0.72f, 1.00f, 1.00f);
+        internal static readonly Color Accent = new Color(0.50f, 0.72f, 1.00f, 1.00f);
         static readonly Color TextWhite   = new Color(0.96f, 0.97f, 1.00f, 1.00f);
         static readonly Color TextSub     = new Color(0.78f, 0.84f, 1.00f, 0.90f);
         static readonly Color TextDim     = new Color(0.62f, 0.68f, 0.88f, 0.75f);
@@ -254,10 +254,10 @@ namespace Artti.Editor
             AssetDatabase.SaveAssets();
         }
 
-        // ===== 공통 헬퍼 =====
+        // ===== 공통 헬퍼 (ProfileCreateSceneBuilder도 사용) =====
 
         // 이미지 속 본체(body, 픽셀)가 bodyCenter/bodyWidth에 오도록 놓는다. 루트 = 본체 크기 클릭 영역, Visual = 여백 포함 이미지.
-        static Button MakeImageButton(string name, Transform parent, string path, Rect body, float imgW, float imgH,
+        internal static Button MakeImageButton(string name, Transform parent, string path, Rect body, float imgW, float imgH,
             Vector2 bodyCenter, float bodyWidth)
         {
             float scale = bodyWidth / body.width;
@@ -288,7 +288,7 @@ namespace Artti.Editor
         }
 
         // 가운데 기준 둥근 사각형 (Stage 좌상단 기준 center)
-        static RectTransform RoundedBox(string name, Transform parent, Vector2 center, Vector2 size, Color color)
+        internal static RectTransform RoundedBox(string name, Transform parent, Vector2 center, Vector2 size, Color color)
         {
             var rt = ChildRect(name, parent);
             rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
@@ -316,7 +316,7 @@ namespace Artti.Editor
         }
 
         // pos/size는 부모 좌상단 기준(y 아래가 -)
-        static TMP_Text AddText(Transform parent, string name, string text, TMP_FontAsset font, float size, Color color,
+        internal static TMP_Text AddText(Transform parent, string name, string text, TMP_FontAsset font, float size, Color color,
             bool bold, Vector2 pos, Vector2 boxSize, TextAlignmentOptions align = TextAlignmentOptions.TopLeft)
         {
             var rt = ChildRect(name, parent);
@@ -336,7 +336,7 @@ namespace Artti.Editor
             return t;
         }
 
-        static Sprite LoadSprite(string path, int maxSize)
+        internal static Sprite LoadSprite(string path, int maxSize)
         {
             if (AssetImporter.GetAtPath(path) is TextureImporter ti)
             {
@@ -353,20 +353,20 @@ namespace Artti.Editor
             return sprite;
         }
 
-        static Sprite Rounded()
+        internal static Sprite Rounded()
         {
             var s = AssetDatabase.LoadAssetAtPath<Sprite>(RoundedPath);
             return s != null ? s : AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
         }
 
-        static RectTransform ChildRect(string name, Transform parent)
+        internal static RectTransform ChildRect(string name, Transform parent)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             return go.AddComponent<RectTransform>();
         }
 
-        static void StretchFull(RectTransform rect)
+        internal static void StretchFull(RectTransform rect)
         {
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
