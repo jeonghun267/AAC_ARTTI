@@ -68,42 +68,11 @@ namespace Artti.Editor
 
         public static RectTransform Build(Transform canvas, ProfileCreateView form, TMP_FontAsset font)
         {
-            // ===== 루트 (캔버스 전체) + 배경 =====
-            var root = ChildRect("AvatarStep", canvas);
-            StretchFull(root);
-            var bg = ChildRect("Background", root);
-            StretchFull(bg);
-            var bgImg = bg.gameObject.AddComponent<Image>();
-            bgImg.sprite = LoadSprite(Dir + "10.png", 2048);
-            bgImg.raycastTarget = true;   // 아래 폼(2단계)으로 터치가 새지 않게 막는다
-            var fit = bg.gameObject.AddComponent<AspectRatioFitter>();
-            fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
-            fit.aspectRatio = 1448f / 1086f;
-
-            var stage = ChildRect("Stage", root);
-            stage.anchorMin = stage.anchorMax = stage.pivot = new Vector2(0.5f, 0.5f);
-            stage.sizeDelta = new Vector2(1920f, 1080f);
-
-            // ===== 패널 창 (x 40~1880, y 24~1056) =====
-            RoundedBox("PanelLine", stage, new Vector2(960f, -540f), new Vector2(1846f, 1038f), PanelLine);
-            RoundedBox("Panel", stage, new Vector2(960f, -540f), new Vector2(1840f, 1032f), PanelFill);
-
-            // ===== 헤더: 로고 / 단계 표시 / 닫기 =====
-            var logo = AddText(stage, "Logo", "ARTTI", font, 46, TextWhite, true, new Vector2(100f, -52f), new Vector2(300f, 64f));
-            logo.characterSpacing = 4f;
-            var logoSub = AddText(stage, "LogoSub", "AR CONVENIENCE STORE", font, 16, TextDim, false, new Vector2(102f, -112f), new Vector2(360f, 26f));
-            logoSub.characterSpacing = 6f;
-
-            BuildSteps(stage, font, activeIndex: 0);
-
-            var closeBtn = MakeImageButton("CloseBtn", stage, Dir + "18.png", CloseBody, 1254f, 1254f,
-                new Vector2(1812f, -96f), 64f);
+            var stage = BuildFrame(canvas, "AvatarStep", font, 0, out var closeBtn);
+            var root = (RectTransform)stage.parent;
 
             // ===== 제목 =====
-            AddText(stage, "Title", "프로필을 선택하세요", font, 54, TextWhite, true,
-                new Vector2(460f, -174f), new Vector2(1000f, 72f), TextAlignmentOptions.Center);
-            AddText(stage, "Subtitle", "나를 가장 잘 표현하는 아바타를 선택해보세요.", font, 28, TextSub, false,
-                new Vector2(460f, -252f), new Vector2(1000f, 42f), TextAlignmentOptions.Center);
+            AddHeading(stage, font, "프로필을 선택하세요", "나를 가장 잘 표현하는 아바타를 선택해보세요.");
 
             // ===== 분류 탭 (본체 높이 58, 간격 22, 가운데 정렬) =====
             const float tabH = 58f, tabGap = 22f, tabY = -350f;
@@ -120,24 +89,8 @@ namespace Artti.Editor
             }
 
             // ===== 왼쪽: 선택한 아바타 큰 카드 (x 90~520, y 400~1000) =====
-            var cardCenter = new Vector2(305f, -700f);
-            RoundedBox("PreviewGlow", stage, cardCenter, new Vector2(446f, 616f), new Color(0.35f, 0.55f, 1f, 0.35f));
-            RoundedBox("PreviewLine", stage, cardCenter, new Vector2(438f, 608f), Accent);
-            var card = RoundedBox("PreviewCard", stage, cardCenter, new Vector2(430f, 600f), new Color(0.12f, 0.25f, 0.62f, 0.95f));
-            var avatarRt = ChildRect("Avatar", card);
-            avatarRt.anchorMin = avatarRt.anchorMax = avatarRt.pivot = new Vector2(0.5f, 0f);
-            avatarRt.anchoredPosition = new Vector2(0f, 6f);
-            avatarRt.sizeDelta = new Vector2(414f, 560f);
-            var preview = avatarRt.gameObject.AddComponent<Image>();
-            preview.sprite = LoadSprite(Dir + Avatars[0].file + ".png", 1024);
-            preview.preserveAspect = true;
-            preview.raycastTarget = false;
-            var quoteBand = RoundedBox("QuoteBand", card, Vector2.zero, new Vector2(410f, 118f), new Color(0.04f, 0.07f, 0.20f, 0.78f));
-            quoteBand.anchorMin = quoteBand.anchorMax = quoteBand.pivot = new Vector2(0.5f, 0f);
-            quoteBand.anchoredPosition = new Vector2(0f, 10f);
-            var quote = AddText(quoteBand, "Quote", "“ 당신만의 새로운 이야기가\n시작됩니다. ”", font, 24, TextWhite, false,
-                Vector2.zero, Vector2.zero, TextAlignmentOptions.Center);
-            StretchFull(quote.rectTransform);
+            var preview = AvatarCard(stage, new Vector2(305f, -700f), new Vector2(430f, 600f),
+                "“ 당신만의 새로운 이야기가\n시작됩니다. ”", font);
 
             // ===== 오른쪽: 아바타 그리드 (5x2, 칸 200, 간격 18) =====
             var grid = ChildRect("AvatarGrid", stage);
@@ -311,6 +264,76 @@ namespace Artti.Editor
             btn.transition = Selectable.Transition.None;
             root.gameObject.AddComponent<HomeButtonGlow>().Setup(null, visual);
             return btn;
+        }
+
+        // 1~3단계 공통 틀: 배경(10) + 패널 창(x 40~1880, y 24~1056) + 로고 + 단계 표시 + 닫기(18).
+        // 반환값은 1920x1080 Stage(좌상단 기준, y 아래가 -). 루트는 stage.parent.
+        internal static RectTransform BuildFrame(Transform canvas, string rootName, TMP_FontAsset font, int stepIndex, out Button close)
+        {
+            var root = ChildRect(rootName, canvas);
+            StretchFull(root);
+            var bg = ChildRect("Background", root);
+            StretchFull(bg);
+            var bgImg = bg.gameObject.AddComponent<Image>();
+            bgImg.sprite = LoadSprite(Dir + "10.png", 2048);
+            bgImg.raycastTarget = true;   // 아래 단계로 터치가 새지 않게 막는다
+            var fit = bg.gameObject.AddComponent<AspectRatioFitter>();
+            fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            fit.aspectRatio = 1448f / 1086f;
+
+            var stage = ChildRect("Stage", root);
+            stage.anchorMin = stage.anchorMax = stage.pivot = new Vector2(0.5f, 0.5f);
+            stage.sizeDelta = new Vector2(1920f, 1080f);
+
+            RoundedBox("PanelLine", stage, new Vector2(960f, -540f), new Vector2(1846f, 1038f), PanelLine);
+            RoundedBox("Panel", stage, new Vector2(960f, -540f), new Vector2(1840f, 1032f), PanelFill);
+
+            var logo = AddText(stage, "Logo", "ARTTI", font, 46, TextWhite, true, new Vector2(100f, -52f), new Vector2(300f, 64f));
+            logo.characterSpacing = 4f;
+            var logoSub = AddText(stage, "LogoSub", "AR CONVENIENCE STORE", font, 16, TextDim, false, new Vector2(102f, -112f), new Vector2(360f, 26f));
+            logoSub.characterSpacing = 6f;
+
+            BuildSteps(stage, font, stepIndex);
+
+            close = MakeImageButton("CloseBtn", stage, Dir + "18.png", CloseBody, 1254f, 1254f, new Vector2(1812f, -96f), 64f);
+            return stage;
+        }
+
+        // 제목 + 부제 (1·2단계 공통 위치). 제목 글자를 돌려준다(수정 모드에서 바꿔 쓰기용).
+        internal static TMP_Text AddHeading(Transform stage, TMP_FontAsset font, string title, string subtitle)
+        {
+            var t = AddText(stage, "Title", title, font, 54, TextWhite, true,
+                new Vector2(460f, -174f), new Vector2(1000f, 72f), TextAlignmentOptions.Center);
+            AddText(stage, "Subtitle", subtitle, font, 28, TextSub, false,
+                new Vector2(460f, -252f), new Vector2(1000f, 42f), TextAlignmentOptions.Center);
+            return t;
+        }
+
+        // 고른 아바타를 크게 보여 주는 카드(1·2단계 공통). 아바타는 카드 높이의 90%로 키우고
+        // 카드의 둥근 모양으로 잘라(Mask) 좌우 어깨가 카드 밖으로 나가지 않게 한다. 아래에 인용문 띠.
+        internal static Image AvatarCard(Transform parent, Vector2 center, Vector2 size, string quote, TMP_FontAsset font)
+        {
+            RoundedBox("PreviewGlow", parent, center, size + new Vector2(16f, 16f), new Color(0.35f, 0.55f, 1f, 0.35f));
+            RoundedBox("PreviewLine", parent, center, size + new Vector2(8f, 8f), Accent);
+            var card = RoundedBox("PreviewCard", parent, center, size, new Color(0.12f, 0.25f, 0.62f, 0.95f));
+            card.gameObject.AddComponent<Mask>().showMaskGraphic = true;
+
+            float side = size.y * 0.9f;
+            var avatarRt = ChildRect("Avatar", card);
+            avatarRt.anchorMin = avatarRt.anchorMax = avatarRt.pivot = new Vector2(0.5f, 0f);
+            avatarRt.anchoredPosition = new Vector2(0f, size.y * 0.04f);
+            avatarRt.sizeDelta = new Vector2(side, side);
+            var avatar = avatarRt.gameObject.AddComponent<Image>();
+            avatar.sprite = LoadSprite(Dir + Avatars[0].file + ".png", 1024);
+            avatar.preserveAspect = true;
+            avatar.raycastTarget = false;
+
+            var quoteBand = RoundedBox("QuoteBand", card, Vector2.zero, new Vector2(size.x - 20f, 118f), new Color(0.04f, 0.07f, 0.20f, 0.78f));
+            quoteBand.anchorMin = quoteBand.anchorMax = quoteBand.pivot = new Vector2(0.5f, 0f);
+            quoteBand.anchoredPosition = new Vector2(0f, 10f);
+            var q = AddText(quoteBand, "Quote", quote, font, 24, TextWhite, false, Vector2.zero, Vector2.zero, TextAlignmentOptions.Center);
+            StretchFull(q.rectTransform);
+            return avatar;
         }
 
         // 가운데 기준 둥근 사각형 (Stage 좌상단 기준 center)

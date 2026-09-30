@@ -28,8 +28,8 @@ namespace Artti.Editor
         // 35 카드: 본체 (63,192)-(1023,1286) px. 원 테두리 중심 (540,546), 안쪽 반지름 약 262, 편집 배지 중심 (742,740)
         static readonly Rect CardBody = Rect.MinMaxRect(63, 192, 1023, 1286);
         const float CardImgW = 1086f, CardImgH = 1448f;
-        const float CardBodyH = 640f;
-        static readonly Vector2 CardCenter = new Vector2(590f, -630f);
+        const float CardBodyH = 730f;                                     // 내용 영역 y 295~1025를 꽉 채운다
+        static readonly Vector2 CardCenter = new Vector2(590f, -660f);
         static float CardScale => CardBodyH / CardBody.height;
         // 카드 이미지 px -> Stage (본체 중심이 CardCenter에 온다)
         static Vector2 CardPx(float x, float y) =>
@@ -42,44 +42,19 @@ namespace Artti.Editor
         static readonly Rect TipBody    = Rect.MinMaxRect(153, 129, 2020, 605);   // 39
         static readonly Rect StartBody  = Rect.MinMaxRect(159, 191, 2015, 524);   // 40
 
-        // 오른쪽 열: 폭 620, 줄 높이는 이미지 비율(약 126), 간격 20
-        const float ColX = 1301f, ColW = 620f, Gap = 20f, Top = 310f;
+        // 오른쪽 열: 폭 640, 줄 높이는 이미지 비율(약 130), 간격 16. 카드(폭 약 641)와 100 띄워 둘을 가운데 정렬
+        const float ColX = 1331f, ColW = 640f, Gap = 16f, Top = 295f;
 
-        static readonly Color PanelFill = new Color(0.05f, 0.08f, 0.20f, 0.86f);
-        static readonly Color PanelLine = new Color(0.35f, 0.55f, 1.00f, 0.55f);
         static readonly Color TextWhite = new Color(0.96f, 0.97f, 1.00f, 1.00f);
-        static readonly Color TextDim   = new Color(0.62f, 0.68f, 0.88f, 0.75f);
 
         public static Refs Build(Transform canvas, TMP_FontAsset font)
         {
             var r = new Refs();
 
-            // ===== 루트 + 배경 + 패널 (1단계와 같은 틀) =====
-            var root = ChildRect("DoneStep", canvas);
-            StretchFull(root);
+            // ===== 1단계와 같은 틀 (배경 + 패널 + 로고 + 단계 표시 + 닫기) =====
+            var stage = BuildFrame(canvas, "DoneStep", font, 2, out r.close);
+            var root = (RectTransform)stage.parent;
             r.root = root;
-            var bg = ChildRect("Background", root);
-            StretchFull(bg);
-            var bgImg = bg.gameObject.AddComponent<Image>();
-            bgImg.sprite = LoadSprite(Dir + "10.png", 2048);
-            bgImg.raycastTarget = true;   // 아래 2단계로 터치가 새지 않게
-            var fit = bg.gameObject.AddComponent<AspectRatioFitter>();
-            fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
-            fit.aspectRatio = 1448f / 1086f;
-
-            var stage = ChildRect("Stage", root);
-            stage.anchorMin = stage.anchorMax = stage.pivot = new Vector2(0.5f, 0.5f);
-            stage.sizeDelta = new Vector2(1920f, 1080f);
-            RoundedBox("PanelLine", stage, new Vector2(960f, -540f), new Vector2(1846f, 1038f), PanelLine);
-            RoundedBox("Panel", stage, new Vector2(960f, -540f), new Vector2(1840f, 1032f), PanelFill);
-
-            var logo = AddText(stage, "Logo", "ARTTI", font, 46, TextWhite, true, new Vector2(100f, -52f), new Vector2(300f, 64f));
-            logo.characterSpacing = 4f;
-            var logoSub = AddText(stage, "LogoSub", "AR CONVENIENCE STORE", font, 16, TextDim, false, new Vector2(102f, -112f), new Vector2(360f, 26f));
-            logoSub.characterSpacing = 6f;
-            BuildSteps(stage, font, activeIndex: 2);
-            r.close = MakeImageButton("CloseBtn", stage, Dir + "18.png", Rect.MinMaxRect(423, 421, 832, 824), 1254f, 1254f,
-                new Vector2(1812f, -96f), 64f);
 
             // ===== 제목 (36) =====
             Place("Title", stage, Dir + "36.png", TitleBody, PillW, PillH, new Vector2(960f, -230f), 620f);   // 단계 라벨(y -138)과 겹치지 않게 폭 620
@@ -150,11 +125,11 @@ namespace Artti.Editor
             float tipH = ColW * TipBody.height / TipBody.width;
             y -= rowH / 2f + Gap + tipH / 2f;
             Place("Tip", stage, Dir + "39.png", TipBody, PillW, PillH, new Vector2(ColX, y), ColW);
-            const float startW = 400f;
-            float startH = startW * StartBody.height / StartBody.width;
-            y -= tipH / 2f + 24f + startH / 2f;
+            // 시작하기: 시안처럼 열 폭 그대로 크게
+            float startH = ColW * StartBody.height / StartBody.width;
+            y -= tipH / 2f + 20f + startH / 2f;
             r.start = MakeImageButton("StartBtn", stage, Dir + "40.png", StartBody, PillW, PillH,
-                new Vector2(ColX + ColW / 2f - startW / 2f, y), startW);
+                new Vector2(ColX, y), ColW);
 
             root.gameObject.SetActive(false);
             return r;
