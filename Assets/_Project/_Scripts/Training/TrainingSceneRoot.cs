@@ -29,6 +29,10 @@ namespace Artti.Training
         [Header("Clerk 애니메이션 (옵션 — 미와이어링 시 무동작)")]
         [SerializeField] private ClerkView clerkView;
 
+        // 변경점: 모드별 점원 배역 (대화 모드 = 남자 점원). 연결되어 있으면 Awake에서 clerkView·npcSpeechSource를 바꿔 끼운다.
+        [Header("모드별 점원 배역 (옵션 — 미연결 시 clerkView 그대로)")]
+        [SerializeField] private ClerkCast clerkCast;
+
         [Header("NPC 음성 (옵션 — 미연결 시 기존 TTS 소스 사용)")]
         [SerializeField] private AudioSource npcSpeechSource;
         public AudioSource NpcSpeechSource => npcSpeechSource != null ? npcSpeechSource : GetComponent<AudioSource>();
@@ -94,6 +98,15 @@ namespace Artti.Training
             // Android 단말이 ko-KR TTS 언어 데이터를 지원 안 해서 TTS만 Cloud로 유지.
             var geminiKey = ApiKeyLoader.Get(ApiKeyLoader.GeminiApi);
             var ttsKey    = ApiKeyLoader.GetOrFallback(ApiKeyLoader.GoogleTtsApi, ApiKeyLoader.GeminiApi);
+
+            // 변경점: 모드에 맞는 점원만 켜고, 그 점원의 뷰·음성 채널로 NPC 발화와 스피커 표시를 연결한다.
+            if (clerkCast != null)
+            {
+                var actor = clerkCast.Activate(_mode);
+                if (actor.view != null) clerkView = actor.view;
+                if (actor.speech != null) npcSpeechSource = actor.speech;
+                hud?.SetSpeakerSource(npcSpeechSource);
+            }
 
             _cardSpeechSource = GetComponent<AudioSource>();
             _ttsService = new CloudTtsService(ttsKey, _cardSpeechSource);

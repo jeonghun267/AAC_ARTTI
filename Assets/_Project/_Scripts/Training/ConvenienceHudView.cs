@@ -95,6 +95,12 @@ namespace Artti.Training
             SetActiveSafe(userBubble, false);
         }
 
+        // 변경점: 모드별 점원 배역에 따라 스피커 표시가 볼 NPC 음성 채널을 바꾼다.
+        public void SetSpeakerSource(AudioSource source)
+        {
+            if (source != null) ttsSource = source;
+        }
+
         private void Update()
         {
             // 스피커 아이콘: TTS 재생 중 색상 변경 (재청취는 여러 번 가능)

@@ -35,6 +35,14 @@ namespace Artti.EditorTools
         public static readonly Vector3 CameraLookLocal = new Vector3(0f, 1.40f, 0f);
         public const float CameraFieldOfView = 40f;
 
+        // 변경점: 대화 모드 남자 점원. 같은 무대 원점에 비활성으로 두고 ClerkCast가 모드에 맞춰 켠다.
+        //   대기 자세 머리 꼭대기(머리카락 포함)가 v4 1.895m, 남자 1.884m로 거의 같아 v4와 같은 카메라를 쓴다
+        //   (ArttiMaleClerkCheck 측정값). 모드별 값은 ClerkCast에 따로 저장되어 필요하면 한쪽만 조정할 수 있다.
+        public const string MaleInstanceName = "ARTTI_Male";
+        public static readonly Vector3 MaleCameraLocalPosition = new Vector3(0f, 1.40f, 2.20f);
+        public static readonly Vector3 MaleCameraLookLocal = new Vector3(0f, 1.40f, 0f);
+        public const float MaleCameraFieldOfView = 40f;
+
         public struct Result
         {
             public GameObject stage;
@@ -213,6 +221,12 @@ namespace Artti.EditorTools
                 hudSo.ApplyModifiedPropertiesWithoutUndo();
             }
 
+            // 변경점: 대화 모드 남자 점원도 같은 무대에 넣는다 (프리팹이 없으면 v4만 둔다).
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(ArttiMaleClerkSetup.PrefabPath) != null)
+            {
+                ApplyConversationClerk(stage, cam, sceneRoot);
+            }
+
             result.stage = stage;
             result.instance = instance;
             result.camera = cam;
@@ -220,6 +234,106 @@ namespace Artti.EditorTools
             result.clerkView = clerkView;
             result.lipSync = lipSync;
             return result;
+        }
+
+        // 변경점: 기존 무대는 건드리지 않고 대화 모드 남자 점원과 ClerkCast만 (다시) 넣는다.
+        //   Clerk3D 슬롯·v4 점원·카메라 기본값은 그대로 두므로 손으로 옮긴 UI 배치가 있어도 유지된다.
+        [MenuItem("Artti/Integrate Male Clerk for Conversation Mode (TrainingConvenienceScene)")]
+        public static void IntegrateMaleMenu()
+        {
+            SceneBuilderUtils.OpenScene(ScenePaths.TrainingConvenience);
+            var stage = GameObject.Find(StageName);
+            var sceneRoot = Object.FindFirstObjectByType<TrainingSceneRoot>(FindObjectsInactive.Include);
+            Transform camT = stage == null ? null : stage.transform.Find(CameraName);
+            if (stage == null || sceneRoot == null || camT == null)
+            {
+                Debug.LogError("[ArttiClerkSceneIntegration] " + StageName + " / " + CameraName + " / TrainingSceneRoot not found — run 'Integrate Stationary v4 Clerk' first");
+                return;
+            }
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(ArttiMaleClerkSetup.PrefabPath) == null)
+            {
+                Debug.LogError("[ArttiClerkSceneIntegration] male clerk prefab missing — run 'Artti/Male Clerk/Build Prefab' first");
+                return;
+            }
+            if (ApplyConversationClerk(stage, camT.GetComponent<Camera>(), sceneRoot) == null)
+            {
+                return;
+            }
+            SceneBuilderUtils.SaveActiveScene();
+            Debug.Log("[ArttiClerkSceneIntegration] 완료 — " + StageName + "/" + MaleInstanceName + " (대화 모드, 비활성 대기) + ClerkCast 추가, TrainingSceneRoot.clerkCast 연결. 씬 저장됨.");
+        }
+
+        public static ClerkCast ApplyConversationClerk(GameObject stage, Camera cam, TrainingSceneRoot sceneRoot)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(ArttiMaleClerkSetup.PrefabPath);
+            Transform accuracyT = stage.transform.Find(InstanceName);
+            ClerkView accuracyView = accuracyT == null ? null : accuracyT.GetComponent<ClerkView>();
+            AudioSource accuracySpeech = accuracyT == null ? null : accuracyT.GetComponent<AudioSource>();
+            if (prefab == null || accuracyView == null || accuracySpeech == null || cam == null)
+            {
+                Debug.LogError("[ArttiClerkSceneIntegration] conversation clerk skipped — prefab " + (prefab != null) +
+                               ", accuracy clerk " + (accuracyView != null && accuracySpeech != null) + ", camera " + (cam != null));
+                return null;
+            }
+
+            // idempotent: remove a previous male clerk / cast
+            Transform oldMale = stage.transform.Find(MaleInstanceName);
+            if (oldMale != null)
+            {
+                Object.DestroyImmediate(oldMale.gameObject);
+            }
+            var oldCast = stage.GetComponent<ClerkCast>();
+            if (oldCast != null)
+            {
+                Object.DestroyImmediate(oldCast);
+            }
+
+            var male = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            male.name = MaleInstanceName;
+            male.transform.SetParent(stage.transform, false);
+            male.transform.localPosition = Vector3.zero;
+            male.transform.localRotation = Quaternion.identity;
+            var animator = male.GetComponent<Animator>();
+            animator.applyRootMotion = false;
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            animator.updateMode = AnimatorUpdateMode.Normal;
+
+            var maleView = male.AddComponent<ClerkView>();
+            var cvSo = new SerializedObject(maleView);
+            cvSo.FindProperty("animator").objectReferenceValue = animator;
+            cvSo.FindProperty("showDebugButtons").boolValue = false;
+            cvSo.ApplyModifiedPropertiesWithoutUndo();
+            var maleSpeech = male.GetComponent<AudioSource>();
+            maleSpeech.playOnAwake = false;
+            maleSpeech.spatialBlend = 0f;
+            male.GetComponent<ArttiAudioLipSync>().speechSource = maleSpeech;
+            // 씬 기본값은 정확도 모드 점원. 대화 모드로 들어오면 ClerkCast가 켠다.
+            male.SetActive(false);
+
+            var cast = stage.AddComponent<ClerkCast>();
+            var castSo = new SerializedObject(cast);
+            castSo.FindProperty("clerkCamera").objectReferenceValue = cam;
+            SetActor(castSo.FindProperty("accuracyClerk"), accuracyT.gameObject, accuracyView, accuracySpeech,
+                CameraLocalPosition, CameraLookLocal, CameraFieldOfView);
+            SetActor(castSo.FindProperty("conversationClerk"), male, maleView, maleSpeech,
+                MaleCameraLocalPosition, MaleCameraLookLocal, MaleCameraFieldOfView);
+            castSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var rootSo = new SerializedObject(sceneRoot);
+            rootSo.FindProperty("clerkCast").objectReferenceValue = cast;
+            rootSo.ApplyModifiedPropertiesWithoutUndo();
+            return cast;
+        }
+
+        static void SetActor(SerializedProperty actor, GameObject root, ClerkView view, AudioSource speech,
+                             Vector3 cameraLocal, Vector3 lookLocal, float fieldOfView)
+        {
+            actor.FindPropertyRelative("root").objectReferenceValue = root;
+            actor.FindPropertyRelative("view").objectReferenceValue = view;
+            actor.FindPropertyRelative("speech").objectReferenceValue = speech;
+            actor.FindPropertyRelative("cameraLocalPosition").vector3Value = cameraLocal;
+            actor.FindPropertyRelative("cameraLookLocal").vector3Value = lookLocal;
+            actor.FindPropertyRelative("fieldOfView").floatValue = fieldOfView;
         }
     }
 }

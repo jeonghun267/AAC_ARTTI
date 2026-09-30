@@ -134,7 +134,8 @@ namespace Artti.Editor
             Debug.Log($"[DeviceLayoutCapture] 삭제 팝업 캡처 -> {OutDir}");
         }
 
-        static void CaptureActiveScene(int w, int h, string file)
+        // 변경점: 점원 검증(ArttiMaleClerkCheck)이 점원 RT를 그린 뒤 같은 방식으로 화면 전체를 찍도록 internal로 연다.
+        internal static void CaptureActiveScene(int w, int h, string file)
         {
             var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
             rt.Create();
