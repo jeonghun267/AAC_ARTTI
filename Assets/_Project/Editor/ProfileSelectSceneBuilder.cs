@@ -24,10 +24,12 @@ namespace Artti.Editor
         const string CardPrefabPath = "Assets/_Project/Prefabs/Profile/ProfileCard.prefab";
         const string SelDir = "Assets/_Project/Art/UI/Profile_C/";
 
-        // 카드: 180x300, 간격 10 (피치 190), 한 화면 5장. 첫 카드 가운데 x 708.5, 줄 가운데 y -631
+        // 카드: 180x300, 간격 10 (피치 190), 한 화면 3장(뷰포트 600). 줄 가운데 = 그림 속 패널(x 712~1332) 가운데 x 1022, y -631.
+        // 카드가 3장보다 적으면 View가 가운데 정렬(새 사용자 카드가 가운데에서 시작해 왼쪽으로), 넘치면 끌어서 넘긴다.
         const float CardW = 180f, CardH = 300f, CardGap = 10f, RowPad = 20f;
-        const int VisibleCards = 5;
-        static readonly Vector2 RowCenter = new Vector2(1088f, -631f);
+        const int VisibleCards = 3;
+        static readonly Vector2 RowCenter = new Vector2(1022f, -631f);
+        static float RowW => CardW * VisibleCards + CardGap * (VisibleCards - 1) + RowPad * 2f;
         const float RowH = 400f;   // 선택 카드가 1.08배로 커져도 잘리지 않게 여유
         static readonly Rect FrameBody = Rect.MinMaxRect(129, 217, 842, 1401);   // 49 본체(알파>200)
         const float FrameImgW = 971f, FrameImgH = 1619f;
@@ -51,9 +53,9 @@ namespace Artti.Editor
         const float PopupBtnH = 156f, PopupBtnGap = 70f, PopupBtnY = 692f;                // 52 px. 입력칸 아래 42 띄워 두 버튼을 같은 높이로
         static readonly Color HintColor = new Color(1.00f, 0.72f, 0.74f, 0.95f);
 
-        // 카드 좌상단 삭제 칩(54를 작게). 누르는 영역은 보이는 칩보다 넉넉히.
+        // 카드 삭제 칩(54를 작게): 캐릭터/이름 아래, 틀 아래쪽 받침 타원(y 258~292) 가운데. 누르는 영역은 보이는 칩보다 넉넉히.
         const float ChipBodyW = 100f;
-        static readonly Vector2 ChipCenter = new Vector2(58f, -26f), ChipHit = new Vector2(108f, 50f);
+        static readonly Vector2 ChipCenter = new Vector2(CardW / 2f, -276f), ChipHit = new Vector2(124f, 40f);
 
         static readonly Color White     = new Color(0.96f, 0.97f, 1.00f, 1.00f);
         static readonly Color TextSoft  = new Color(0.76f, 0.82f, 0.98f, 0.92f);
@@ -98,7 +100,7 @@ namespace Artti.Editor
                 new Vector2(186f, -377f), 244f);
 
             // ===== 가운데: 카드 줄 (뷰포트 마스크 + 가로 레이아웃) =====
-            float rowW = CardW * VisibleCards + CardGap * (VisibleCards - 1) + RowPad * 2f;
+            float rowW = RowW;
             var viewport = ChildRect("CardViewport", stage);
             viewport.anchorMin = viewport.anchorMax = new Vector2(0f, 1f);
             viewport.pivot = new Vector2(0.5f, 0.5f);
@@ -232,7 +234,8 @@ namespace Artti.Editor
 
         // 손배치가 있는 씬에 빌더 변경분만 다시 적용한다. 손배치한 위치/크기는 그대로 둔다.
         //   배경(48 꽉 채움) + Stage가 배경을 따라 늘어나게 / 사용자 선택(51, 지금 자리 유지) / 우상단 문구+닫기를 화면 모서리 기준으로 /
-        //   카드 줄을 끌어서 넘기기로(< > 삭제, 새 사용자 카드 맨 앞) / 삭제 확인 팝업(52~55) / 카드 프리팹 삭제 칩(54)
+        //   카드 줄을 끌어서 넘기기로(< > 삭제, 새 사용자 카드 맨 앞, 한 화면 3장, 패널 가운데) / 삭제 확인 팝업(52~55) /
+        //   카드 프리팹 삭제 칩(54, 캐릭터 아래 받침)
         [MenuItem("Artti/Fix/ProfileSelect - Apply Updates (keep hand placement)")]
         public static void ApplyUpdates()
         {
@@ -293,6 +296,12 @@ namespace Artti.Editor
 
             // 카드 줄: 끌어서 넘기기 + 새 사용자 카드 맨 앞, < > 삭제
             var viewport = stage.Find("CardViewport") as RectTransform;
+            if (viewport != null)
+            {
+                // 한 화면 3장 + 그림 속 패널 가운데(요청으로 손배치 값 대신 빌더 값)
+                viewport.anchoredPosition = RowCenter;
+                viewport.sizeDelta = new Vector2(RowW, viewport.sizeDelta.y);
+            }
             var content = viewport != null ? viewport.Find("Content") as RectTransform : null;
             if (content != null)
             {

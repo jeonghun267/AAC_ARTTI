@@ -102,20 +102,23 @@ namespace Artti.Editor
             Directory.CreateDirectory(OutDir);
             try
             {
-                foreach (var state in new[] { "empty", "typing", "hint", "card" })
+                // card0/1/3: 사용자 카드 0/1/3장(첫 장 선택). View.Refresh로 줄 정렬(적으면 가운데, 넘치면 왼쪽부터)까지 확인
+                foreach (var state in new[] { "empty", "typing", "hint", "card0", "card1", "card3" })
                 {
                     EditorSceneManager.OpenScene(ScenePaths.ProfileSelect, OpenSceneMode.Single);
+                    bool cardState = state.StartsWith("card");
                     foreach (var root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
                     {
                         foreach (var t in root.GetComponentsInChildren<Transform>(true))
                         {
-                            if (t.name == "Content" && state == "card")
+                            if (t.name == "Content" && cardState)
                             {
                                 var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/Profile/ProfileCard.prefab");
-                                var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, t);
-                                go.GetComponent<Artti.UI.ProfileCardView>().SetSelected(true);
+                                int count = state[state.Length - 1] - '0';
+                                for (int i = 0; i < count; i++)
+                                    ((GameObject)PrefabUtility.InstantiatePrefab(prefab, t)).GetComponent<Artti.UI.ProfileCardView>().SetSelected(i == 0);
                             }
-                            if (t.name != "DeleteConfirmPopup" || state == "card") continue;
+                            if (t.name != "DeleteConfirmPopup" || cardState) continue;
                             t.gameObject.SetActive(true);
                             var input = t.GetComponentInChildren<TMPro.TMP_InputField>(true);
                             var cover = t.Find("Panel/FieldCover");
@@ -124,6 +127,8 @@ namespace Artti.Editor
                             if (cover != null) cover.gameObject.SetActive(state != "empty");
                         }
                     }
+                    if (cardState)
+                        foreach (var v in Object.FindObjectsByType<Artti.UI.ProfileSelectView>(FindObjectsSortMode.None)) v.Refresh();
                     CaptureActiveScene(2560, 1600, Path.Combine(OutDir, $"tab_DeletePopup_{state}.png"));
                 }
             }

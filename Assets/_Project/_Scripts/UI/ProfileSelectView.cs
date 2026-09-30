@@ -10,7 +10,7 @@ using Artti.Common;
 
 namespace Artti.UI
 {
-    // 사용자 선택 화면: 가로 카드 줄(옆으로 끌어서 넘김) + 맨 앞(왼쪽) "새 사용자" 카드.
+    // 사용자 선택 화면: 가로 카드 줄(한 화면 3장. 적으면 가운데 정렬, 넘치면 옆으로 끌어서 넘김) + 맨 앞(왼쪽) "새 사용자" 카드.
     // 카드 탭 = 선택(강조). 다음 = 선택한 사용자로 시작. 프로필 설정 = 선택한 사용자 수정(없으면 새로 만들기).
     public class ProfileSelectView : MonoBehaviour
     {
@@ -77,7 +77,13 @@ namespace Artti.UI
             var active = pm != null ? pm.ActiveProfile : null;
 
             if (cardContainer == null || cardPrefab == null) return;
-            foreach (var c in _cards) if (c != null) Destroy(c.gameObject);
+            // Destroy는 프레임 끝에 지워져, 바로 아래 줄 폭 계산(LayoutRow)에 남지 않도록 먼저 끈다
+            foreach (var c in _cards)
+            {
+                if (c == null) continue;
+                c.gameObject.SetActive(false);
+                Destroy(c.gameObject);
+            }
             _cards.Clear();
             _cardIds.Clear();
 
@@ -118,7 +124,7 @@ namespace Artti.UI
             if (addCard != null) addCard.SetAsFirstSibling();
 
             ApplySelection();
-            ResetScroll();
+            LayoutRow();
         }
 
         private void Select(string id)
@@ -133,12 +139,20 @@ namespace Artti.UI
             if (nextButton != null) nextButton.interactable = _selectedId != null;
         }
 
-        // 줄을 맨 왼쪽(새 사용자 카드가 보이는 자리)으로 되돌린다. 콘텐츠는 왼쪽 기준(pivot x 0)이라 x 0이 맨 왼쪽.
-        private void ResetScroll()
+        // 카드가 한 화면(3장)보다 적으면 가운데 정렬하고 끌기를 끈다. 새 사용자 카드가 가운데에서 시작해 카드가 늘수록
+        // 왼쪽으로 간다. 넘치면 맨 왼쪽(새 사용자 카드)부터 보이고 옆으로 끌어서 넘긴다.
+        // 콘텐츠는 뷰포트 왼쪽 기준(pivot x 0)이라 x가 곧 왼쪽 여백.
+        private void LayoutRow()
         {
             if (cardScroll != null) cardScroll.StopMovement();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(cardContainer);
+            var viewport = cardContainer.parent as RectTransform;
+            float viewW = viewport != null ? viewport.rect.width : 0f;
+            float contentW = cardContainer.rect.width;
+            bool overflow = contentW > viewW + 1f;
+            if (cardScroll != null) cardScroll.horizontal = overflow;
             var p = cardContainer.anchoredPosition;
-            p.x = 0f;
+            p.x = overflow ? 0f : (viewW - contentW) * 0.5f;
             cardContainer.anchoredPosition = p;
         }
 
