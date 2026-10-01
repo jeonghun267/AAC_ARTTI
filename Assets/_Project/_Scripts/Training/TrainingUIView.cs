@@ -43,6 +43,10 @@ namespace Artti.Training
         [SerializeField] private TMP_Text sttResultText;      // 인식된 텍스트
         [SerializeField] private RectTransform sttPulseCircle;// 펄스 애니메이션 대상
 
+        // 변경점: 점원 말풍선이 톡 커질 때 기준점(말풍선 사각형 안 0~1, 꼬리 끝). 말풍선 그림을 바꾸면 함께 바꾼다.
+        [Header("점원 말풍선 꼬리 위치")]
+        [SerializeField] private Vector2 bubbleTailPoint = new Vector2(0.11f, 0f);
+
         [Header("Legacy mic indicator (옵션)")]
         [SerializeField] private GameObject micIndicator;
         [SerializeField] private Image micFillImage;
@@ -60,7 +64,6 @@ namespace Artti.Training
         // - 점원 말풍선: 새 대사마다 꼬리(왼쪽 아래) 쪽에서 톡 커지고 글자가 스며 나온다
         // - 대답을 기다리는 동안 말풍선에 "생각하는 중..." (점 1~3개 반복)
         // - 듣는 중 표시: 톡 나타나고, 빨간 점이 천천히 숨 쉬듯 깜빡인다(초당 1회 미만, 번쩍임 없음)
-        static readonly Vector2 BubbleTail = new Vector2(0.11f, 0f);
         static readonly string[] ThinkingTexts = { "생각하는 중.", "생각하는 중..", "생각하는 중..." };
         const float ThinkingStepsPerSecond = 2.5f;
         const float LiveDotHz = 0.8f;
@@ -260,14 +263,14 @@ namespace Artti.Training
         private void PlayBubblePop()
         {
             var ct = UIFx.Restart(ref _bubbleCts, this);
-            if (_bubble != null) UIFx.BounceAround(_bubble, _bubbleHome, BubbleTail, 0f, 0.3f, 0.92f, ct).Forget();
+            if (_bubble != null) UIFx.BounceAround(_bubble, _bubbleHome, bubbleTailPoint, 0f, 0.3f, 0.92f, ct).Forget();
             UIFx.FadeGroup(_npcTextGroup, 0f, 1f, 0.04f, 0.22f, ct).Forget();
         }
 
         private void FadeInNpcText()
         {
             var ct = UIFx.Restart(ref _bubbleCts, this);
-            if (_bubble != null) UIFx.SetScaleAround(_bubble, _bubbleHome, BubbleTail, 1f);
+            if (_bubble != null) UIFx.SetScaleAround(_bubble, _bubbleHome, bubbleTailPoint, 1f);
             UIFx.FadeGroup(_npcTextGroup, 0f, 1f, 0f, 0.2f, ct).Forget();
         }
 

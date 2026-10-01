@@ -321,6 +321,7 @@ namespace Artti.Training
             {
                 dashboardView.OnProductSelected += HandleDashboardProductSelected;
                 dashboardView.OnQuickPhraseSelected += HandleDashboardQuickPhraseSelected;
+                dashboardView.OnTypedUtterance += HandleTypedUtterance;
             }
 
             _eventLogger?.LogScenarioEntered(_mode);
@@ -354,6 +355,7 @@ namespace Artti.Training
             hud.OnGoHub += () => SceneFader.Load("TrainingHubScene");
             hud.OnGoHome += () => SceneFader.Load("MainScene");
             hud.OnGoReport += () => SceneFader.Load("ReportScene");
+            hud.OnGoFieldMode += () => SceneFader.Load("ARFieldScene");
             hud.SetObjective(0, StepperLabel("greeting"));
         }
 
@@ -723,6 +725,7 @@ namespace Artti.Training
             {
                 dashboardView.OnProductSelected -= HandleDashboardProductSelected;
                 dashboardView.OnQuickPhraseSelected -= HandleDashboardQuickPhraseSelected;
+                dashboardView.OnTypedUtterance -= HandleTypedUtterance;
             }
             // 완료 없이 씬 이탈 → 중단 처리 (마지막 objective 기록). 레포트의 미완료/연습 필요 집계에 사용
             if (!_sessionCompleted)
@@ -1116,6 +1119,19 @@ namespace Artti.Training
                 "quick_phrase",
                 "대화 힌트",
                 phrase,
+                false,
+                captureItem ? "물" : null).Forget();
+        }
+
+        // 변경점(TrainingCon 시안): 키보드로 쓴 문장도 대화 힌트를 누른 것과 같은 한 턴으로 보낸다.
+        private void HandleTypedUtterance(string text)
+        {
+            bool captureItem = IsConvenienceItemSelectionStep()
+                               && string.Equals(text?.Trim().TrimEnd('?', '!', '.', '…'), "물 주세요", System.StringComparison.Ordinal);
+            RunDashboardTurn(
+                "keyboard_input",
+                "키보드 입력",
+                text,
                 false,
                 captureItem ? "물" : null).Forget();
         }

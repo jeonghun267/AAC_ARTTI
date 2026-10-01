@@ -21,12 +21,23 @@ namespace Artti.Training
         [SerializeField] private float stepFillWidth;
         [SerializeField] private Sprite stepNodeOnSprite;
         [SerializeField] private Sprite stepNodeOffSprite;
+        // 변경점(TrainingCon 시안): 미션 링(Filled Radial360)과 "2/5" 글자 형식. 링이 없으면 무동작.
+        [SerializeField] private Image stepRing;
+        [SerializeField] private string stepCounterFormat = "{0} / {1} 단계";
 
         [Header("일시정지")]
         [SerializeField] private Button pauseBtn;
         [SerializeField] private GameObject pauseModal;
         [SerializeField] private Button pauseConfirmBtn; // 종료
         [SerializeField] private Button pauseCancelBtn;  // 취소
+
+        // 변경점(TrainingCon 시안): 나가기 / 현장모드 — 같은 확인 창을 문구만 바꿔 쓴다.
+        [Header("나가기 확인 (옵션)")]
+        [SerializeField] private Button exitBtn;
+        [SerializeField] private Button fieldModeBtn;
+        [SerializeField] private TMP_Text pauseTitleText;
+        [SerializeField] private TMP_Text pauseMessageText;
+        [SerializeField] private TMP_Text pauseConfirmLabel;
 
         [Header("NPC 스피커 (재청취)")]
         [SerializeField] private Button speakerBtn;
@@ -64,6 +75,10 @@ namespace Artti.Training
         public event Action OnGoHub;
         public event Action OnGoHome;
         public event Action OnGoReport;
+        public event Action OnGoFieldMode;
+
+        private enum ExitTarget { Hub, FieldMode }
+        private ExitTarget _exitTarget = ExitTarget.Hub;
 
         private static readonly Color DotDone      = new Color32(26, 86, 219, 255);
         private static readonly Color DotCurrent   = new Color32(255, 138, 61, 255); // accent 주황
@@ -96,9 +111,11 @@ namespace Artti.Training
         private void Awake()
         {
             // 변경점: 팝업은 SetActive 대신 UIPopupMotion으로 열고 닫는다(막 페이드 + 판 톡)
-            if (pauseBtn != null) pauseBtn.onClick.AddListener(() => UIPopupMotion.Open(pauseModal));
+            if (pauseBtn != null) pauseBtn.onClick.AddListener(() => OpenExitConfirm(ExitTarget.Hub));
+            if (exitBtn != null) exitBtn.onClick.AddListener(() => OpenExitConfirm(ExitTarget.Hub));
+            if (fieldModeBtn != null) fieldModeBtn.onClick.AddListener(() => OpenExitConfirm(ExitTarget.FieldMode));
             if (pauseCancelBtn != null) pauseCancelBtn.onClick.AddListener(() => UIPopupMotion.Close(pauseModal));
-            if (pauseConfirmBtn != null) pauseConfirmBtn.onClick.AddListener(() => OnExitRequested?.Invoke());
+            if (pauseConfirmBtn != null) pauseConfirmBtn.onClick.AddListener(ConfirmExit);
             if (speakerBtn != null) speakerBtn.onClick.AddListener(() => OnReplayRequested?.Invoke());
             if (retryBtn != null) retryBtn.onClick.AddListener(() => OnRetrySession?.Invoke());
             if (hubBtn != null) hubBtn.onClick.AddListener(() => OnGoHub?.Invoke());
@@ -110,7 +127,8 @@ namespace Artti.Training
 
             // 변경점: 누르면 살짝 작아졌다 돌아오는 탭 피드백 (점원 말풍선 = 다시 듣기 버튼은 말풍선 연출과 겹쳐 제외)
             AttachPress(pauseBtn, pauseConfirmBtn, pauseCancelBtn, retryBtn, hubBtn, homeBtn,
-                completionHistoryBtn, completionTopHomeBtn, completionHelpBtn, completionHelpCloseBtn);
+                completionHistoryBtn, completionTopHomeBtn, completionHelpBtn, completionHelpCloseBtn,
+                exitBtn, fieldModeBtn);
             if (stepLabel != null)
             {
                 _labelHome = stepLabel.rectTransform.anchoredPosition;
@@ -174,8 +192,9 @@ namespace Artti.Training
             if (stepDots != null)
             {
                 for (int i = 0; i < stepDots.Length; i++) SetDot(i, current);
-                if (stepCounter != null) stepCounter.text = $"{current + 1} / {stepDots.Length} 단계";
+                if (stepCounter != null) stepCounter.text = FormatCounter(current);
                 SetFill(FillWidth(current));
+                SetRing(RingFill(current));
             }
             if (stepLabel != null)
             {
@@ -202,12 +221,13 @@ namespace Artti.Training
             {
                 float e = UIFx.EaseOutCubic(k);
                 SetFill(Mathf.Lerp(w0, w1, e));
+                SetRing(Mathf.Lerp(RingFill(prev), RingFill(next), e));
                 int reached = prev + Mathf.FloorToInt((next - prev) * e + 0.001f);
                 while (lit < reached) LightDot(++lit, next, ct);
             }, ct).SuppressCancellationThrow();
             if (canceled) return;
             while (lit < next) LightDot(++lit, next, ct);
-            if (stepCounter != null) stepCounter.text = $"{next + 1} / {stepDots.Length} 단계";
+            if (stepCounter != null) stepCounter.text = FormatCounter(next);
 
             // 3) 칭찬을 잠시 보여 준 뒤 새 목표로 바꾼다
             if (stepLabel == null) return;
@@ -252,6 +272,57 @@ namespace Artti.Training
             var size = stepFillMask.sizeDelta;
             size.x = width;
             stepFillMask.sizeDelta = size;
+        }
+
+        // 변경점(TrainingCon 시안): 링은 "몇 번째 단계인가"를 채운다(2/5 = 40%).
+        private float RingFill(int index)
+        {
+            int count = stepDots != null ? stepDots.Length : 0;
+            return count > 0 ? Mathf.Clamp01((index + 1f) / count) : 0f;
+        }
+
+        private void SetRing(float fill)
+        {
+            if (stepRing != null) stepRing.fillAmount = fill;
+        }
+
+        private string FormatCounter(int index) =>
+            string.Format(string.IsNullOrEmpty(stepCounterFormat) ? "{0} / {1} 단계" : stepCounterFormat,
+                index + 1, stepDots != null ? stepDots.Length : 0);
+
+        // ===== 나가기 확인 (TrainingCon 시안) =====
+
+        private void OpenExitConfirm(ExitTarget target)
+        {
+            _exitTarget = target;
+            switch (target)
+            {
+                case ExitTarget.FieldMode:
+                    SetText(pauseTitleText, "현장모드");
+                    SetText(pauseMessageText, "훈련을 그만하고 현장모드로 갈까요?\n카메라로 가게 간판을 비춰 볼 수 있어요.");
+                    SetText(pauseConfirmLabel, "현장모드로");
+                    break;
+                default:
+                    SetText(pauseTitleText, "나가기");
+                    SetText(pauseMessageText, "훈련을 그만하고 시나리오 선택으로 돌아갈까요?");
+                    SetText(pauseConfirmLabel, "훈련 종료");
+                    break;
+            }
+            UIPopupMotion.Open(pauseModal);
+        }
+
+        private void ConfirmExit()
+        {
+            switch (_exitTarget)
+            {
+                case ExitTarget.FieldMode: OnGoFieldMode?.Invoke(); break;
+                default: OnExitRequested?.Invoke(); break;
+            }
+        }
+
+        private static void SetText(TMP_Text label, string text)
+        {
+            if (label != null) label.text = text;
         }
 
         private static float CalculateStepFillRatio(int index, int stepCount)
@@ -348,6 +419,7 @@ namespace Artti.Training
 
         private static void AttachPress(params Button[] buttons)
         {
+            if (buttons == null) return;
             foreach (var b in buttons) UIPressScale.Attach(b);
         }
 
