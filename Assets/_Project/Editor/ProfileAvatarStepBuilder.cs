@@ -9,9 +9,10 @@ namespace Artti.Editor
 {
     // 프로필 등록 1단계(아바타 선택) — 다크 네온 시안. ProfileCreateSceneBuilder가 폼 위에 덮어 만든다.
     // 에셋: Art/UI/Home/profiles/10~28.png
-    //   10 배경(1448x1086)  11~15 분류 탭(전체/여성/남성/중성/스타일)  16 랜덤으로 선택하기  17 다음  18 닫기(X)
+    //   10 배경(1448x1086)  12 여성 / 13 남성 분류 탭  16 랜덤으로 선택하기  17 다음  18 닫기(X)
+    //   (11 전체 / 14 중성 / 15 스타일 탭은 2026-10-01부터 쓰지 않는다. 탭은 여성/남성 두 개)
     //   19~27 아바타 9종(1254x1254, 19만 1086x1448)  28 선택 카드 완성본(19번 캐릭터가 박혀 있어 미사용)
-    //   30~32 단계 원(1/2/3)  33 완료 체크  34 연결선
+    //   30~32 단계 원(1/2/3)  33 완료 체크  34 연결선  80 인용문 띠(따옴표가 그려진 네온 테두리, 1·2단계 큰 카드 아래)
     // 시안에 있지만 이미지가 아직 없는 것(패널 창, 칸 테두리)은 코드로 그린다.
     //
     // 배치: 1920x1080 Stage를 화면 중앙에 두고 Stage 좌상단 기준(y 아래가 -)으로 놓는다.
@@ -23,31 +24,40 @@ namespace Artti.Editor
 
         // 이미지 속 불투명 본체 영역(알파>200 실측, 픽셀)
         internal const float PillW = 2172f, PillH = 724f;
+        // 분류 탭: 여성, 남성 순서 (ProfileAvatarStepView.TabFilter와 같은 순서)
+        static readonly string[] TabFiles = { "12", "13" };
+        static readonly string[] TabNames = { "TabFemale", "TabMale" };
         static readonly Rect[] TabBodies =
         {
-            Rect.MinMaxRect(757, 242, 1413, 482),   // 11 전체
             Rect.MinMaxRect(629, 221, 1544, 500),   // 12 여성
             Rect.MinMaxRect(670, 232, 1502, 491),   // 13 남성
-            Rect.MinMaxRect(684, 235, 1488, 490),   // 14 중성
-            Rect.MinMaxRect(647, 219, 1525, 499),   // 15 스타일
         };
+        const float TabH = 58f, TabGap = 22f, TabY = -350f;
         static readonly Rect RandomBody = Rect.MinMaxRect(166, 202, 2006, 533);
         internal static readonly Rect NextBody = Rect.MinMaxRect(126, 126, 2046, 569);
         static readonly Rect CloseBody  = Rect.MinMaxRect(423, 421, 832, 824);   // 1254x1254
 
-        // 아바타 목록. 첫 칸이 기본 선택. 분류는 탭 필터용이라 필요하면 여기서만 고치면 된다.
+        // 인용문 띠 80.png (2155x730). 본체(알파>200)와, 글자가 들어갈 따옴표 사이 가로 범위(본체 폭 비율).
+        //   왼쪽 위 따옴표 x 219~335, 오른쪽 아래 따옴표 x 1825~1940 -> 본체 기준 0.133 / 0.869. 몇 % 여유를 둔다.
+        const string QuoteFramePath = Dir + "80.png";
+        static readonly Vector2 QuoteFrameSize = new Vector2(2155f, 730f);
+        static readonly Rect QuoteFrameBody = Rect.MinMaxRect(65, 108, 2090, 599);
+        const float QuoteTextX0 = 0.15f, QuoteTextX1 = 0.85f;
+        const float QuoteBandBottom = 12f;   // 카드 아랫변에서 띠 본체까지 (빛 번짐이 카드 마스크에 덜 잘리게)
+
+        // 아바타 목록. 첫 칸이 기본 선택. 분류는 탭 필터용(여성/남성 중 하나)이라 필요하면 여기서만 고치면 된다.
         struct AvatarEntry { public string file; public AvatarTile.Category cat; }
         static readonly AvatarEntry[] Avatars =
         {
-            new AvatarEntry { file = "19", cat = AvatarTile.Category.Female },                                  // 점원 (웨이브 머리)
-            new AvatarEntry { file = "21", cat = AvatarTile.Category.Male },                                    // 검은 머리 후드
-            new AvatarEntry { file = "20", cat = AvatarTile.Category.Female },                                  // 단발
-            new AvatarEntry { file = "24", cat = AvatarTile.Category.Male | AvatarTile.Category.Style },         // 안경
-            new AvatarEntry { file = "22", cat = AvatarTile.Category.Male | AvatarTile.Category.Style },         // 모자
-            new AvatarEntry { file = "23", cat = AvatarTile.Category.Neutral | AvatarTile.Category.Style },      // 은발
-            new AvatarEntry { file = "27", cat = AvatarTile.Category.Female },                                  // 올림머리
-            new AvatarEntry { file = "25", cat = AvatarTile.Category.Male | AvatarTile.Category.Neutral },       // 검은 머리 티셔츠
-            new AvatarEntry { file = "26", cat = AvatarTile.Category.Female | AvatarTile.Category.Style },       // 헤드폰
+            new AvatarEntry { file = "19", cat = AvatarTile.Category.Female },   // 점원 (웨이브 머리)
+            new AvatarEntry { file = "21", cat = AvatarTile.Category.Male },     // 검은 머리 후드
+            new AvatarEntry { file = "20", cat = AvatarTile.Category.Female },   // 단발
+            new AvatarEntry { file = "24", cat = AvatarTile.Category.Male },     // 안경
+            new AvatarEntry { file = "22", cat = AvatarTile.Category.Male },     // 모자
+            new AvatarEntry { file = "23", cat = AvatarTile.Category.Male },     // 은발
+            new AvatarEntry { file = "27", cat = AvatarTile.Category.Female },   // 올림머리
+            new AvatarEntry { file = "25", cat = AvatarTile.Category.Male },     // 검은 머리 티셔츠
+            new AvatarEntry { file = "26", cat = AvatarTile.Category.Female },   // 헤드폰
         };
 
         static readonly Color PanelFill   = new Color(0.05f, 0.08f, 0.20f, 0.86f);
@@ -74,23 +84,17 @@ namespace Artti.Editor
             // ===== 제목 =====
             AddHeading(stage, font, "프로필을 선택하세요", "나를 가장 잘 표현하는 아바타를 선택해보세요.");
 
-            // ===== 분류 탭 (본체 높이 58, 간격 22, 가운데 정렬) =====
-            const float tabH = 58f, tabGap = 22f, tabY = -350f;
-            var tabW = new float[TabBodies.Length];
-            float total = tabGap * (TabBodies.Length - 1);
-            for (int i = 0; i < TabBodies.Length; i++) { tabW[i] = tabH * TabBodies[i].width / TabBodies[i].height; total += tabW[i]; }
+            // ===== 분류 탭: 여성 / 남성 (본체 높이 58, 간격 22, 가운데 정렬) =====
             var tabs = new Button[TabBodies.Length];
-            float x = 960f - total / 2f;
             for (int i = 0; i < TabBodies.Length; i++)
             {
-                tabs[i] = MakeImageButton("Tab" + i, stage, Dir + (11 + i) + ".png", TabBodies[i], PillW, PillH,
-                    new Vector2(x + tabW[i] / 2f, tabY), tabW[i]);
-                x += tabW[i] + tabGap;
+                TabSlot(i, out var center, out var width);
+                tabs[i] = MakeImageButton(TabNames[i], stage, Dir + TabFiles[i] + ".png", TabBodies[i], PillW, PillH, center, width);
             }
 
             // ===== 왼쪽: 선택한 아바타 큰 카드 (x 90~520, y 400~1000) =====
             var preview = AvatarCard(stage, new Vector2(305f, -700f), new Vector2(430f, 600f),
-                "“ 당신만의 새로운 이야기가\n시작됩니다. ”", font);
+                "당신만의 새로운 이야기가\n시작됩니다.", font);
 
             // ===== 오른쪽: 아바타 그리드 (5x2, 칸 200, 간격 18) =====
             var grid = ChildRect("AvatarGrid", stage);
@@ -116,6 +120,73 @@ namespace Artti.Editor
 
             AddToAvatarLibrary();
             return root;
+        }
+
+        // i번째 탭 본체의 가운데와 폭 (탭 전체를 Stage 가운데 x 960에 맞춘다)
+        static void TabSlot(int index, out Vector2 center, out float width)
+        {
+            float total = TabGap * (TabBodies.Length - 1);
+            for (int i = 0; i < TabBodies.Length; i++) total += TabH * TabBodies[i].width / TabBodies[i].height;
+            float x = 960f - total / 2f;
+            for (int i = 0; i < index; i++) x += TabH * TabBodies[i].width / TabBodies[i].height + TabGap;
+            width = TabH * TabBodies[index].width / TabBodies[index].height;
+            center = new Vector2(x + width / 2f, TabY);
+        }
+
+        // 손배치가 있는 ProfileCreateScene에 분류 탭 변경만 적용한다: 전체/중성/스타일 탭을 지우고 여성/남성 두 개를 가운데로 모은다.
+        // 아바타 칸의 분류도 Avatars 목록(여성/남성)대로 다시 넣는다. 다른 손배치 값은 그대로 둔다.
+        [MenuItem("Artti/Fix/ProfileCreate - Avatar Tabs Female + Male Only (keep hand placement)")]
+        public static void ApplyGenderTabs()
+        {
+            if (EditorApplication.isPlaying) { Debug.LogWarning("[ProfileAvatarStepBuilder] Play 모드에서는 실행하지 않는다."); return; }
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+            if (scene.path != ScenePaths.ProfileCreate)
+            {
+                if (!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                scene = SceneBuilderUtils.OpenScene(ScenePaths.ProfileCreate);
+            }
+
+            ProfileAvatarStepView view = null;
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                view = root.GetComponentInChildren<ProfileAvatarStepView>(true);
+                if (view != null) break;
+            }
+            var stage = view != null ? view.transform.Find("Stage") : null;
+            if (stage == null) { Debug.LogError("[ProfileAvatarStepBuilder] AvatarStep/Stage 없음"); return; }
+
+            // 예전 탭 이름: Tab0 전체, Tab1 여성, Tab2 남성, Tab3 중성, Tab4 스타일
+            string[] oldNames = { "Tab1", "Tab2" };
+            var tabs = new Button[TabBodies.Length];
+            for (int i = 0; i < TabBodies.Length; i++)
+            {
+                var t = stage.Find(TabNames[i]);
+                if (t == null) t = stage.Find(oldNames[i]);
+                if (t == null || !t.TryGetComponent(out tabs[i])) { Debug.LogError($"[ProfileAvatarStepBuilder] {TabNames[i]} 없음"); return; }
+                t.name = TabNames[i];
+                TabSlot(i, out var center, out _);
+                ((RectTransform)t).anchoredPosition = center;
+            }
+            foreach (var name in new[] { "Tab0", "Tab3", "Tab4" })
+            {
+                var old = stage.Find(name);
+                if (old != null) Object.DestroyImmediate(old.gameObject);
+            }
+
+            var so = new SerializedObject(view);
+            var prop = so.FindProperty("tabs");
+            prop.arraySize = tabs.Length;
+            for (int i = 0; i < tabs.Length; i++) prop.GetArrayElementAtIndex(i).objectReferenceValue = tabs[i];
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            int tiles = 0;
+            foreach (var tile in view.GetComponentsInChildren<AvatarTile>(true))
+                foreach (var a in Avatars)
+                    if (tile.name == "Avatar_" + a.file) { tile.categories = a.cat; EditorUtility.SetDirty(tile); tiles++; }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+            SceneBuilderUtils.SaveActiveScene();
+            Debug.Log($"[ProfileAvatarStepBuilder] 분류 탭 여성/남성만 적용 (아바타 {tiles}칸 분류 갱신) - 손배치 유지");
         }
 
         // 단계 표시: 원 3개(가운데 x 760/960/1160) + 연결선(34) + 아래 라벨.
@@ -290,8 +361,7 @@ namespace Artti.Editor
 
             var logo = AddText(stage, "Logo", "ARTTI", font, 46, TextWhite, true, new Vector2(100f, -52f), new Vector2(300f, 64f));
             logo.characterSpacing = 4f;
-            var logoSub = AddText(stage, "LogoSub", "AR CONVENIENCE STORE", font, 16, TextDim, false, new Vector2(102f, -112f), new Vector2(360f, 26f));
-            logoSub.characterSpacing = 6f;
+            // 변경점: 로고 아래 "AR CONVENIENCE STORE" 부제는 뺐다(2026-10-01 손배치에서 지움)
 
             BuildSteps(stage, font, stepIndex);
 
@@ -328,12 +398,71 @@ namespace Artti.Editor
             avatar.preserveAspect = true;
             avatar.raycastTarget = false;
 
-            var quoteBand = RoundedBox("QuoteBand", card, Vector2.zero, new Vector2(size.x - 20f, 118f), new Color(0.04f, 0.07f, 0.20f, 0.78f));
-            quoteBand.anchorMin = quoteBand.anchorMax = quoteBand.pivot = new Vector2(0.5f, 0f);
-            quoteBand.anchoredPosition = new Vector2(0f, 10f);
+            // 변경점: 인용문 띠를 80.png(따옴표가 그려진 테두리)로. 3단계 완료 카드(35)와 같은 모양.
+            var quoteBand = ChildRect("QuoteBand", card);
             var q = AddText(quoteBand, "Quote", quote, font, 24, TextWhite, false, Vector2.zero, Vector2.zero, TextAlignmentOptions.Center);
-            StretchFull(q.rectTransform);
+            ApplyQuoteFrame(quoteBand, q, size.x - 20f);
             return avatar;
+        }
+
+        // 인용문 띠를 80.png로 꾸민다: 띠(band) = 그림 본체 크기(폭 bodyW, 높이는 그림 비율), 그림(Frame)은 빛 번짐 여백만큼 바깥으로 넘친다.
+        // 글자는 따옴표 사이 가로 범위에 두고, 그림에 따옴표가 있으므로 글자 속 따옴표는 뺀다. 빌드와 Fix 메뉴가 같이 쓴다.
+        static void ApplyQuoteFrame(RectTransform band, TMP_Text text, float bodyW)
+        {
+            float s = bodyW / QuoteFrameBody.width;
+            band.anchorMin = band.anchorMax = band.pivot = new Vector2(0.5f, 0f);
+            band.anchoredPosition = new Vector2(0f, QuoteBandBottom);
+            band.sizeDelta = new Vector2(bodyW, QuoteFrameBody.height * s);
+            if (band.TryGetComponent<Image>(out var oldFill)) Object.DestroyImmediate(oldFill);   // 예전 어두운 둥근 띠
+
+            var oldFrame = band.Find("Frame");
+            if (oldFrame != null) Object.DestroyImmediate(oldFrame.gameObject);
+            var frame = ChildRect("Frame", band);
+            frame.SetAsFirstSibling();
+            frame.anchorMin = Vector2.zero;
+            frame.anchorMax = Vector2.one;
+            frame.offsetMin = new Vector2(-QuoteFrameBody.xMin * s, -(QuoteFrameSize.y - QuoteFrameBody.yMax) * s);
+            frame.offsetMax = new Vector2((QuoteFrameSize.x - QuoteFrameBody.xMax) * s, QuoteFrameBody.yMin * s);
+            var img = frame.gameObject.AddComponent<Image>();
+            img.sprite = LoadSprite(QuoteFramePath, 1024);
+            img.raycastTarget = false;
+
+            var tr = text.rectTransform;
+            tr.anchorMin = new Vector2(QuoteTextX0, 0f);
+            tr.anchorMax = new Vector2(QuoteTextX1, 1f);
+            tr.offsetMin = tr.offsetMax = Vector2.zero;
+            text.alignment = TextAlignmentOptions.Center;
+            text.text = text.text.Replace("“", "").Replace("”", "").Trim();
+        }
+
+        // 손배치가 있는 ProfileCreateScene의 1·2단계 큰 카드 인용문 띠만 80.png로 바꾼다. 카드 자리/크기(손배치)는 그대로 둔다.
+        [MenuItem("Artti/Fix/ProfileCreate - Quote Band 80.png (keep hand placement)")]
+        public static void ApplyQuoteFrameMenu()
+        {
+            if (EditorApplication.isPlaying) { Debug.LogWarning("[ProfileAvatarStepBuilder] Play 모드에서는 실행하지 않는다."); return; }
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+            if (scene.path != ScenePaths.ProfileCreate)
+            {
+                if (!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                scene = SceneBuilderUtils.OpenScene(ScenePaths.ProfileCreate);
+            }
+
+            int count = 0;
+            foreach (var root in scene.GetRootGameObjects())
+                foreach (var t in root.GetComponentsInChildren<RectTransform>(true))
+                {
+                    if (t.name != "QuoteBand" || !(t.parent is RectTransform card) || card.name != "PreviewCard") continue;
+                    var text = t.Find("Quote") != null ? t.Find("Quote").GetComponent<TMP_Text>() : null;
+                    if (text == null) { Debug.LogWarning($"[ProfileAvatarStepBuilder] {card.parent.name}/QuoteBand/Quote 없음"); continue; }
+                    ApplyQuoteFrame(t, text, card.rect.width - 20f);
+                    EditorUtility.SetDirty(text);
+                    count++;
+                }
+            if (count == 0) { Debug.LogError("[ProfileAvatarStepBuilder] PreviewCard/QuoteBand 없음"); return; }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+            SceneBuilderUtils.SaveActiveScene();
+            Debug.Log($"[ProfileAvatarStepBuilder] 인용문 띠 80.png 적용 ({count}개) - 손배치 유지");
         }
 
         // 가운데 기준 둥근 사각형 (Stage 좌상단 기준 center)

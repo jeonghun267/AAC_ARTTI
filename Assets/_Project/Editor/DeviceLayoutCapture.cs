@@ -56,8 +56,9 @@ namespace Artti.Editor
             Debug.Log($"[DeviceLayoutCapture] 완료 {w}x{h} -> {OutDir}");
         }
 
-        // 프로필 등록 3단계(완료)는 평소 꺼져 있어 따로 찍는다. 사진 속 25, 머리가 가장 높은 27(올림머리), 22(모자).
-        [MenuItem("Artti/Debug/Capture ProfileCreate Done Step - Tab S7 FE (2560x1600)")]
+        // 프로필 등록 2단계(프로필 설정)와 3단계(완료)는 1단계에 가려져 있어 따로 찍는다.
+        // 완료는 사진 속 25, 머리가 가장 높은 27(올림머리), 22(모자). 씬은 저장하지 않는다.
+        [MenuItem("Artti/Debug/Capture ProfileCreate Step 2 + Done Step - Tab S7 FE (2560x1600)")]
         static void CaptureDoneStep()
         {
             if (EditorApplication.isPlaying) return;
@@ -66,6 +67,16 @@ namespace Artti.Editor
             Directory.CreateDirectory(OutDir);
             try
             {
+                // 변경점: 2단계(인용문 띠 확인용)
+                EditorSceneManager.OpenScene(ScenePaths.ProfileCreate, OpenSceneMode.Single);
+                foreach (var root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
+                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (t.name == "AvatarStep" || t.name == "DoneStep") t.gameObject.SetActive(false);
+                        if (t.name == "ProfileStep") t.gameObject.SetActive(true);
+                    }
+                CaptureActiveScene(2560, 1600, Path.Combine(OutDir, "tab_ProfileStep2.png"));
+
                 foreach (var id in new[] { "25", "27", "22" })
                 {
                     EditorSceneManager.OpenScene(ScenePaths.ProfileCreate, OpenSceneMode.Single);

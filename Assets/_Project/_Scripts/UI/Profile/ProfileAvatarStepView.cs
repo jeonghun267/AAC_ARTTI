@@ -8,13 +8,14 @@ using Artti.Common;
 namespace Artti.UI
 {
     // 프로필 등록 1단계: 아바타 선택.
-    // 분류 탭(전체/여성/남성/중성/스타일)으로 그리드를 거르고, 고른 아바타를 왼쪽 큰 카드에 보여 준다.
+    // 분류 탭(여성/남성)으로 그리드를 거르고, 고른 아바타를 왼쪽 큰 카드에 보여 준다.
+    // 변경점: 전체/중성/스타일 탭을 없앴다. 처음엔 미리 고른 아바타(수정 모드면 기존 아바타)가 속한 탭을 연다.
     // 다음 -> 고른 아바타를 ProfileCreateView에 넘기고 이 패널을 닫아 2단계(프로필 설정) 폼을 보인다.
     public class ProfileAvatarStepView : MonoBehaviour
     {
         [SerializeField] private ProfileCreateView form;
         [SerializeField] private RectTransform tileRoot;
-        [SerializeField] private Button[] tabs;            // 전체, 여성, 남성, 중성, 스타일 순서
+        [SerializeField] private Button[] tabs;            // 여성, 남성 순서
         [SerializeField] private Image previewImage;
         [SerializeField] private Button randomButton;
         [SerializeField] private Button nextButton;
@@ -24,14 +25,11 @@ namespace Artti.UI
         const float TabDimAlpha = 0.55f;
         const float TabSelectedScale = 1.06f;
 
-        // 탭 순서와 같은 순서. None은 전체.
+        // 탭 순서와 같은 순서
         static readonly AvatarTile.Category[] TabFilter =
         {
-            AvatarTile.Category.None,
             AvatarTile.Category.Female,
             AvatarTile.Category.Male,
-            AvatarTile.Category.Neutral,
-            AvatarTile.Category.Style,
         };
 
         private AvatarTile[] _tiles;
@@ -103,8 +101,17 @@ namespace Artti.UI
             if (closeButton != null) closeButton.onClick.AddListener(() => SceneFader.Load(closeScene));   // 변경점: 페이드 전환
             if (previewImage != null) _previewHome = previewImage.rectTransform.anchoredPosition;
 
-            SelectTab(0);
+            SelectTab(TabIndexOf(_initial));
             Select(_initial);
+        }
+
+        // 아바타가 속한 첫 탭 (없으면 첫 탭)
+        private static int TabIndexOf(AvatarTile tile)
+        {
+            if (tile == null) return 0;
+            for (int i = 0; i < TabFilter.Length; i++)
+                if ((tile.categories & TabFilter[i]) != 0) return i;
+            return 0;
         }
 
         private void SelectTab(int index)
@@ -113,7 +120,7 @@ namespace Artti.UI
             _visible.Clear();
             foreach (var t in _tiles)
             {
-                bool show = filter == AvatarTile.Category.None || (t.categories & filter) != 0;
+                bool show = filter == AvatarTile.Category.None || (t.categories & filter) != 0;   // None: 탭이 없을 때 모두 보임
                 t.gameObject.SetActive(show);
                 if (show) _visible.Add(t);
             }

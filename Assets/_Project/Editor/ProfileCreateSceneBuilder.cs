@@ -55,7 +55,7 @@ namespace Artti.Editor
             var title = AddHeading(stage, font, "프로필을 꾸며보세요", "이름과 스타일을 설정하면 더 특별해져요.");
 
             // 왼쪽: 1단계에서 고른 아바타 카드. 카드 전체를 누르면 1단계로 돌아가 다시 고른다.
-            var avatarImg = AvatarCard(stage, CardCenter, CardSize, "“ 작은 변화가\n새로운 나를 만들어가요. ”", font);
+            var avatarImg = AvatarCard(stage, CardCenter, CardSize, "작은 변화가\n새로운 나를 만들어가요.", font);
             var changeAvatar = HitButton("ChangeAvatarBtn", stage, CardCenter, CardSize);
 
             // 오른쪽: 폼 패널 + 항목(아이콘 / 제목 / 입력 칸)
