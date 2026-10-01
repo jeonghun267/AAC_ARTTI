@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 using TMPro;
+using Artti.Training;
 
 namespace Artti.UI
 {
@@ -28,12 +29,29 @@ namespace Artti.UI
         [SerializeField] private RectTransform productContent;
         [SerializeField] private Button previousButton;
         [SerializeField] private Button nextButton;
+        // 변경점(TrainingCon 시안): 분류 없이 상품을 바로 보여 주고, 화살표는 한 쪽씩 넘긴다.
+        [SerializeField] private float productTilePitch = 134f;
 
         [Header("Dialogue hints")]
         [SerializeField] private Button[] quickPhraseButtons;
         [SerializeField] private string[] quickPhrases;
         [SerializeField] private TMP_Text[] quickPhraseLabels;
         [SerializeField] private TMP_Text quickPhraseGuide;
+
+        // 변경점(TrainingCon 시안): 말풍선 문장. 추천 문장은 빛나는 말풍선, 문장 앞에는 분류 아이콘.
+        //   비워 두면 옛 배치처럼 글자 색·굵기로만 추천 문장을 표시한다.
+        [Header("Dialogue hint bubbles (옵션)")]
+        [SerializeField] private GameObject[] quickPhraseActiveBubbles;
+        [SerializeField] private Image[] quickPhraseIcons;
+        [SerializeField] private string[] iconKeys;
+        [SerializeField] private Sprite[] iconSprites;
+
+        // 변경점(TrainingCon 시안): 오른쪽 '대화 힌트' 분류 버튼 5개 (ConvenienceHintCatalog 순서).
+        //   현재 단계의 분류가 주황으로 켜지고, 누르면 그 분류 문장이 왼쪽 말풍선 맨 앞에 온다.
+        [Header("Hint categories (옵션)")]
+        [SerializeField] private Button[] hintCategoryButtons;
+        [SerializeField] private Sprite[] hintCategoryNormalSprites;
+        [SerializeField] private Sprite[] hintCategoryActiveSprites;
 
         [Header("Speech practice")]
         [SerializeField] private TMP_Text speechPracticeText;
@@ -43,9 +61,18 @@ namespace Artti.UI
         [SerializeField] private Button helpCloseButton;
         [SerializeField] private GameObject helpPanel;
 
+        // 변경점(TrainingCon 시안): 키보드로 문장을 써서 말하기 대신 보낸다.
+        [Header("Keyboard input (옵션)")]
+        [SerializeField] private Button keyboardButton;
+        [SerializeField] private GameObject keyboardPanel;
+        [SerializeField] private TMP_InputField keyboardField;
+        [SerializeField] private Button keyboardSendButton;
+        [SerializeField] private Button keyboardCloseButton;
+
         private UnityAction[] _categoryCallbacks;
         private UnityAction[] _productCallbacks;
         private UnityAction[] _quickPhraseCallbacks;
+        private UnityAction[] _hintCategoryCallbacks;
         private bool _showingProducts;
         private string[] _activeQuickPhrases;
 
@@ -54,20 +81,30 @@ namespace Artti.UI
         // - 대화 힌트: 누른 문장이 톡 커지고, 단계가 바뀌어 문장이 바뀌면 차례로 스며 나오며, 새 추천 문장이 한 번 톡 커진다
         // - 안내 문구: 바뀔 때 스며 나온다
         static readonly Vector2 LabelAnchorLeft = new Vector2(0f, 0.5f);
+        static readonly Color InkColor = new Color32(26, 35, 58, 255);
+        static readonly Color RecommendedColor = new Color32(31, 94, 220, 255);
         const float TileStep = 0.05f;
         const float TileSeconds = 0.28f;
         const float TileFromScale = 0.85f;
         const float FirstRevealDelay = 0.3f;   // 씬 진입 페이드가 걷히는 동안 나타나게
         const float HintStep = 0.05f;
 
-        private Vector2[] _labelHomes;
-        private CanvasGroup[] _labelGroups;
+        private RectTransform[] _hintTargets;   // 톡 커지는 대상: 말풍선이 있으면 말풍선 칸, 없으면 글자
+        private Vector2[] _hintHomes;
+        private CanvasGroup[] _hintGroups;
         private CanvasGroup _guideGroup;
         private CanvasGroup _practiceGroup;
         private CancellationTokenSource _tilesCts;
         private CancellationTokenSource _hintsCts;
         private bool _tilesRevealed;
         private int _recommendedIndex = -1;
+        private Dictionary<string, Sprite> _icons;
+
+        // 현재 단계의 기본 문장 묶음과 추천 문장. 분류 버튼으로 바꿔 본 뒤에도 여기로 돌아온다.
+        private string[] _stepPhrases;
+        private string _stepRecommended = string.Empty;
+        private int _browsedCategory = -1;
+        private int _highlightedCategory = -1;
 
         private static readonly string[] BagPhrases =
             { "봉투 주세요", "봉투 필요 없어요", "얼마예요?", "계산할게요", "감사합니다" };
@@ -76,6 +113,7 @@ namespace Artti.UI
 
         public event Action<string, string, string> OnProductSelected;
         public event Action<string> OnQuickPhraseSelected;
+        public event Action<string> OnTypedUtterance;
 
         public bool HasProducts => productButtons != null && productButtons.Length > 0;
 
@@ -94,23 +132,40 @@ namespace Artti.UI
                     yield return ValueAt(productUtterances, i, productNames[i] + " 주세요");
         }
 
+        private bool HasBubbles => quickPhraseActiveBubbles != null && quickPhraseActiveBubbles.Length > 0;
+        private bool ShowsCategoryTiles => categoryContent != null && categoryButtons != null && categoryButtons.Length > 0;
+
         private void Awake()
         {
             if (previousButton != null) previousButton.onClick.AddListener(ShowPrevious);
             if (nextButton != null) nextButton.onClick.AddListener(ShowNext);
             if (helpButton != null) helpButton.onClick.AddListener(ShowHelp);
             if (helpCloseButton != null) helpCloseButton.onClick.AddListener(HideHelp);
+            if (keyboardButton != null) keyboardButton.onClick.AddListener(ShowKeyboard);
+            if (keyboardSendButton != null) keyboardSendButton.onClick.AddListener(SendKeyboardText);
+            if (keyboardCloseButton != null) keyboardCloseButton.onClick.AddListener(HideKeyboard);
+            if (keyboardField != null) keyboardField.onSubmit.AddListener(OnKeyboardSubmit);
 
             WireCategories();
             WireProducts();
             WireQuickPhrases();
+            WireHintCategories();
             AttachPress(categoryButtons);
             AttachPress(productButtons);
-            if (helpButton != null) UIPressScale.Attach(helpButton);
+            AttachPress(hintCategoryButtons);
+            AttachPress(previousButton, nextButton, helpButton, keyboardButton, keyboardSendButton, keyboardCloseButton);
+            CacheIcons();
             CacheTextEffects();
             _activeQuickPhrases = quickPhrases;
-            ShowCategories();
+            if (ShowsCategoryTiles) ShowCategories();
+            else ShowAllProducts();
             if (helpPanel != null) helpPanel.SetActive(false);
+            if (keyboardPanel != null)
+            {
+                // 변경점: 화면 자판이 올라오면 키보드 창을 화면 위로 올린다(가운데에 두면 입력 칸·버튼이 자판에 가린다)
+                UIKeyboardLift.Attach(keyboardPanel.transform.Find("Card") as RectTransform);
+                keyboardPanel.SetActive(false);
+            }
         }
 
         private void OnDestroy()
@@ -119,30 +174,26 @@ namespace Artti.UI
             if (nextButton != null) nextButton.onClick.RemoveListener(ShowNext);
             if (helpButton != null) helpButton.onClick.RemoveListener(ShowHelp);
             if (helpCloseButton != null) helpCloseButton.onClick.RemoveListener(HideHelp);
+            if (keyboardButton != null) keyboardButton.onClick.RemoveListener(ShowKeyboard);
+            if (keyboardSendButton != null) keyboardSendButton.onClick.RemoveListener(SendKeyboardText);
+            if (keyboardCloseButton != null) keyboardCloseButton.onClick.RemoveListener(HideKeyboard);
+            if (keyboardField != null) keyboardField.onSubmit.RemoveListener(OnKeyboardSubmit);
 
-            for (int i = 0; categoryButtons != null && _categoryCallbacks != null && i < categoryButtons.Length; i++)
-                if (categoryButtons[i] != null && _categoryCallbacks[i] != null)
-                    categoryButtons[i].onClick.RemoveListener(_categoryCallbacks[i]);
-
-            for (int i = 0; productButtons != null && _productCallbacks != null && i < productButtons.Length; i++)
-                if (productButtons[i] != null && _productCallbacks[i] != null)
-                    productButtons[i].onClick.RemoveListener(_productCallbacks[i]);
-
-            for (int i = 0; quickPhraseButtons != null && _quickPhraseCallbacks != null && i < quickPhraseButtons.Length; i++)
-                if (quickPhraseButtons[i] != null && _quickPhraseCallbacks[i] != null)
-                    quickPhraseButtons[i].onClick.RemoveListener(_quickPhraseCallbacks[i]);
+            Unwire(categoryButtons, _categoryCallbacks);
+            Unwire(productButtons, _productCallbacks);
+            Unwire(quickPhraseButtons, _quickPhraseCallbacks);
+            Unwire(hintCategoryButtons, _hintCategoryCallbacks);
         }
 
         public void SetInteractionEnabled(bool enabled)
         {
-            for (int i = 0; categoryButtons != null && i < categoryButtons.Length; i++)
-                if (categoryButtons[i] != null) categoryButtons[i].interactable = enabled;
-            for (int i = 0; productButtons != null && i < productButtons.Length; i++)
-                if (productButtons[i] != null) productButtons[i].interactable = enabled;
-            for (int i = 0; quickPhraseButtons != null && i < quickPhraseButtons.Length; i++)
-                if (quickPhraseButtons[i] != null) quickPhraseButtons[i].interactable = enabled;
+            SetInteractable(categoryButtons, enabled);
+            SetInteractable(productButtons, enabled);
+            SetInteractable(quickPhraseButtons, enabled);
             if (previousButton != null) previousButton.interactable = enabled;
             if (nextButton != null) nextButton.interactable = enabled;
+            if (keyboardButton != null) keyboardButton.interactable = enabled;
+            if (keyboardSendButton != null) keyboardSendButton.interactable = enabled;
         }
 
         /// <summary>
@@ -151,29 +202,30 @@ namespace Artti.UI
         /// </summary>
         public void SetDialogueContext(string objectiveId, bool hasItems)
         {
+            string[] phrases;
             int recommendedIndex;
             switch (objectiveId)
             {
                 case "extras":
-                    _activeQuickPhrases = BagPhrases;
+                    phrases = BagPhrases;
                     recommendedIndex = 1;
                     SetGuide("다음: 봉투가 필요한지 선택하세요");
                     SetSpeechPractice("‘봉투 주세요’ 또는\n‘봉투 필요 없어요’라고 말해보세요.");
                     break;
                 case "checkout":
-                    _activeQuickPhrases = PaymentPhrases;
+                    phrases = PaymentPhrases;
                     recommendedIndex = 0;
                     SetGuide("다음: 결제 방법을 선택하세요");
                     SetSpeechPractice("‘카드로 할게요’ 또는\n‘현금으로 할게요’라고 말해보세요.");
                     break;
                 case "farewell":
-                    _activeQuickPhrases = quickPhrases;
+                    phrases = quickPhrases;
                     recommendedIndex = 4;
                     SetGuide("다음: ‘감사합니다’를 눌러 마무리하세요");
                     SetSpeechPractice("마지막으로\n‘감사합니다’라고 말해보세요.");
                     break;
                 case "select_items":
-                    _activeQuickPhrases = quickPhrases;
+                    phrases = quickPhrases;
                     recommendedIndex = hasItems ? 3 : 0;
                     SetGuide(hasItems
                         ? "상품을 더 고르거나 ‘계산할게요’를 누르세요"
@@ -183,31 +235,112 @@ namespace Artti.UI
                         : "원하는 상품명을 말해보세요.\n예: ‘물 주세요’");
                     break;
                 default:
-                    _activeQuickPhrases = quickPhrases;
+                    phrases = quickPhrases;
                     recommendedIndex = 0;
                     SetGuide("상품을 선택하거나 대화 문장을 눌러보세요");
                     SetSpeechPractice("원하는 상품명을 말해보세요.\n예: ‘물 주세요’");
                     break;
             }
 
-            RecommendedPhrase = ValueAt(_activeQuickPhrases, recommendedIndex, ValueAt(quickPhrases, recommendedIndex, string.Empty));
+            _stepPhrases = phrases;
+            _stepRecommended = ValueAt(phrases, recommendedIndex, ValueAt(quickPhrases, recommendedIndex, string.Empty));
+            _browsedCategory = -1;
+            ApplyPhrases(phrases, recommendedIndex, ConvenienceHintCatalog.CategoryOf(_stepRecommended));
+        }
+
+        // 변경점: 오른쪽 분류 버튼 — 그 분류 문장을 왼쪽 말풍선 맨 앞에 두고 나머지는 현재 단계 문장으로 채운다.
+        //   같은 분류를 다시 누르면 단계 기본 문장으로 돌아간다. 추천(강조) 문장 = 그 분류 안에서 단계 추천 문장, 없으면 첫 문장.
+        private void SelectHintCategory(int category)
+        {
+            if (_stepPhrases == null) return;
+            if (category == _browsedCategory)
+            {
+                _browsedCategory = -1;
+                ApplyPhrases(_stepPhrases, IndexOf(_stepPhrases, _stepRecommended),
+                    ConvenienceHintCatalog.CategoryOf(_stepRecommended));
+                return;
+            }
+
+            _browsedCategory = category;
+            int slots = SlotCount();
+            var list = new List<string>(slots);
+            foreach (var phrase in ConvenienceHintCatalog.PhrasesOf(category))
+                if (list.Count < slots && !Contains(list, phrase)) list.Add(phrase);
+            for (int i = 0; i < _stepPhrases.Length && list.Count < slots; i++)
+                if (!Contains(list, _stepPhrases[i])) list.Add(_stepPhrases[i]);
+
+            int recommended = 0;
+            for (int i = 0; i < list.Count; i++)
+                if (ConvenienceHintCatalog.CategoryOf(list[i]) == category && SamePhrase(list[i], _stepRecommended))
+                    recommended = i;
+            ApplyPhrases(list.ToArray(), recommended, category);
+        }
+
+        private void ApplyPhrases(string[] phrases, int recommendedIndex, int highlightedCategory)
+        {
+            _activeQuickPhrases = phrases;
+            RecommendedPhrase = ValueAt(phrases, recommendedIndex, string.Empty);
+            SetHighlightedCategory(highlightedCategory);
 
             bool phrasesChanged = false;
-            for (int i = 0; quickPhraseLabels != null && i < quickPhraseLabels.Length; i++)
+            int slots = SlotCount();
+            for (int i = 0; i < slots; i++)
             {
-                var label = quickPhraseLabels[i];
-                if (label == null) continue;
-                string phrase = ValueAt(_activeQuickPhrases, i, ValueAt(quickPhrases, i, string.Empty));
-                if (label.text != phrase)
+                string phrase = ValueAt(phrases, i, string.Empty);
+                bool has = !string.IsNullOrEmpty(phrase);
+                if (quickPhraseButtons != null && i < quickPhraseButtons.Length && quickPhraseButtons[i] != null
+                    && HasBubbles && quickPhraseButtons[i].gameObject.activeSelf != has)
+                    quickPhraseButtons[i].gameObject.SetActive(has);
+
+                var label = quickPhraseLabels != null && i < quickPhraseLabels.Length ? quickPhraseLabels[i] : null;
+                if (label != null)
                 {
-                    label.text = phrase;
-                    phrasesChanged = true;
+                    if (label.text != phrase)
+                    {
+                        label.text = phrase;
+                        phrasesChanged = true;
+                    }
+                    if (!HasBubbles)
+                    {
+                        bool recommended = i == recommendedIndex;
+                        label.color = recommended ? RecommendedColor : InkColor;
+                        label.fontStyle = recommended ? FontStyles.Bold : FontStyles.Normal;
+                    }
                 }
-                bool recommended = i == recommendedIndex;
-                label.color = recommended ? new Color32(31, 94, 220, 255) : new Color32(26, 35, 58, 255);
-                label.fontStyle = recommended ? FontStyles.Bold : FontStyles.Normal;
+
+                if (HasBubbles && i < quickPhraseActiveBubbles.Length && quickPhraseActiveBubbles[i] != null)
+                    quickPhraseActiveBubbles[i].SetActive(i == recommendedIndex);
+                SetIcon(i, phrase);
             }
             PlayHintEffects(phrasesChanged, recommendedIndex);
+        }
+
+        private void SetIcon(int index, string phrase)
+        {
+            if (quickPhraseIcons == null || index >= quickPhraseIcons.Length || quickPhraseIcons[index] == null) return;
+            string key = ConvenienceHintCatalog.IconOf(phrase)
+                         ?? ConvenienceHintCatalog.CategoryIcon(ConvenienceHintCatalog.CategoryOf(phrase));
+            var icon = quickPhraseIcons[index];
+            if (key != null && _icons != null && _icons.TryGetValue(key, out var sprite) && sprite != null)
+            {
+                icon.sprite = sprite;
+                icon.enabled = true;
+            }
+            else icon.enabled = false;
+        }
+
+        private void SetHighlightedCategory(int category)
+        {
+            _highlightedCategory = category;
+            for (int i = 0; hintCategoryButtons != null && i < hintCategoryButtons.Length; i++)
+            {
+                var button = hintCategoryButtons[i];
+                if (button == null || !(button.targetGraphic is Image image)) continue;
+                var sprite = i == category
+                    ? (hintCategoryActiveSprites != null && i < hintCategoryActiveSprites.Length ? hintCategoryActiveSprites[i] : null)
+                    : (hintCategoryNormalSprites != null && i < hintCategoryNormalSprites.Length ? hintCategoryNormalSprites[i] : null);
+                if (sprite != null) image.sprite = sprite;
+            }
         }
 
         // 변경점: 문장이 바뀌면 차례로 스며 나오고, 추천 문장이 바뀌면 그 문장이 한 번 톡 커져 "다음에 할 말"을 알려 준다.
@@ -217,35 +350,35 @@ namespace Artti.UI
             bool first = _recommendedIndex < 0;
             bool recommendedChanged = recommendedIndex != _recommendedIndex;
             _recommendedIndex = recommendedIndex;
-            if (first || _labelGroups == null || (!phrasesChanged && !recommendedChanged)) return;
+            if (first || _hintGroups == null || (!phrasesChanged && !recommendedChanged)) return;
 
             var ct = UIFx.Restart(ref _hintsCts, this);
             ResetHints();   // 앞 연출이 중간에 끊겨 흐리거나 커진 채 남지 않게
             float punchDelay = 0.15f;
             if (phrasesChanged)
             {
-                for (int i = 0; i < _labelGroups.Length; i++)
-                    UIFx.FadeGroup(_labelGroups[i], 0f, 1f, i * HintStep, 0.25f, ct).Forget();
-                punchDelay += _labelGroups.Length * HintStep + 0.1f;
+                for (int i = 0; i < _hintGroups.Length; i++)
+                    UIFx.FadeGroup(_hintGroups[i], 0f, 1f, i * HintStep, 0.25f, ct).Forget();
+                punchDelay += _hintGroups.Length * HintStep + 0.1f;
             }
-            PunchLabel(recommendedIndex, punchDelay, ct);
+            PunchHint(recommendedIndex, punchDelay, ct);
         }
 
         private void ResetHints()
         {
-            for (int i = 0; i < _labelGroups.Length; i++)
+            for (int i = 0; i < _hintGroups.Length; i++)
             {
-                if (_labelGroups[i] != null) _labelGroups[i].alpha = 1f;
-                if (quickPhraseLabels[i] != null)
-                    UIFx.SetScaleAround(quickPhraseLabels[i].rectTransform, _labelHomes[i], LabelAnchorLeft, 1f);
+                if (_hintGroups[i] != null) _hintGroups[i].alpha = 1f;
+                if (_hintTargets[i] != null)
+                    UIFx.SetScaleAround(_hintTargets[i], _hintHomes[i], LabelAnchorLeft, 1f);
             }
         }
 
-        private void PunchLabel(int index, float delay, CancellationToken ct)
+        private void PunchHint(int index, float delay, CancellationToken ct)
         {
-            if (quickPhraseLabels == null || _labelHomes == null || index < 0 || index >= quickPhraseLabels.Length
-                || quickPhraseLabels[index] == null) return;
-            UIFx.PunchAround(quickPhraseLabels[index].rectTransform, _labelHomes[index], LabelAnchorLeft, 0.1f, delay, 0.26f, ct).Forget();
+            if (_hintTargets == null || index < 0 || index >= _hintTargets.Length || _hintTargets[index] == null) return;
+            float amount = HasBubbles ? 0.05f : 0.1f;   // 말풍선은 글자보다 커서 조금만 키운다
+            UIFx.PunchAround(_hintTargets[index], _hintHomes[index], LabelAnchorLeft, amount, delay, 0.26f, ct).Forget();
         }
 
         private void SetGuide(string text)
@@ -270,20 +403,40 @@ namespace Artti.UI
 
         private void CacheTextEffects()
         {
-            int n = quickPhraseLabels != null ? quickPhraseLabels.Length : 0;
-            _labelHomes = new Vector2[n];
-            _labelGroups = new CanvasGroup[n];
+            int n = SlotCount();
+            _hintTargets = new RectTransform[n];
+            _hintHomes = new Vector2[n];
+            _hintGroups = new CanvasGroup[n];
             for (int i = 0; i < n; i++)
             {
-                if (quickPhraseLabels[i] == null) continue;
-                _labelHomes[i] = quickPhraseLabels[i].rectTransform.anchoredPosition;
-                _labelGroups[i] = UIFx.Group(quickPhraseLabels[i]);
+                Component target = HasBubbles && quickPhraseButtons != null && i < quickPhraseButtons.Length
+                    ? (Component)quickPhraseButtons[i]
+                    : quickPhraseLabels != null && i < quickPhraseLabels.Length ? quickPhraseLabels[i] : null;
+                if (target == null) continue;
+                _hintTargets[i] = (RectTransform)target.transform;
+                _hintHomes[i] = _hintTargets[i].anchoredPosition;
+                _hintGroups[i] = UIFx.Group(target);
             }
             if (quickPhraseGuide != null) _guideGroup = UIFx.Group(quickPhraseGuide);
             if (speechPracticeText != null) _practiceGroup = UIFx.Group(speechPracticeText);
         }
 
-        private static void AttachPress(Button[] buttons)
+        private void CacheIcons()
+        {
+            _icons = new Dictionary<string, Sprite>(StringComparer.Ordinal);
+            for (int i = 0; iconKeys != null && i < iconKeys.Length; i++)
+                if (!string.IsNullOrEmpty(iconKeys[i]) && iconSprites != null && i < iconSprites.Length)
+                    _icons[iconKeys[i]] = iconSprites[i];
+        }
+
+        private int SlotCount()
+        {
+            int n = quickPhraseLabels != null ? quickPhraseLabels.Length : 0;
+            if (HasBubbles && quickPhraseButtons != null) n = Mathf.Max(n, quickPhraseButtons.Length);
+            return n;
+        }
+
+        private static void AttachPress(params Button[] buttons)
         {
             for (int i = 0; buttons != null && i < buttons.Length; i++) UIPressScale.Attach(buttons[i]);
         }
@@ -305,40 +458,35 @@ namespace Artti.UI
             }
         }
 
-        private void WireCategories()
+        private void WireCategories() => _categoryCallbacks = Wire(categoryButtons, SelectCategory);
+        private void WireProducts() => _productCallbacks = Wire(productButtons, SelectProduct);
+        private void WireQuickPhrases() => _quickPhraseCallbacks = Wire(quickPhraseButtons, SelectQuickPhrase);
+        private void WireHintCategories() => _hintCategoryCallbacks = Wire(hintCategoryButtons, SelectHintCategory);
+
+        private static UnityAction[] Wire(Button[] buttons, Action<int> handler)
         {
-            int count = categoryButtons != null ? categoryButtons.Length : 0;
-            _categoryCallbacks = new UnityAction[count];
+            int count = buttons != null ? buttons.Length : 0;
+            var callbacks = new UnityAction[count];
             for (int i = 0; i < count; i++)
             {
                 int captured = i;
-                _categoryCallbacks[i] = () => SelectCategory(captured);
-                if (categoryButtons[i] != null) categoryButtons[i].onClick.AddListener(_categoryCallbacks[i]);
+                callbacks[i] = () => handler(captured);
+                if (buttons[i] != null) buttons[i].onClick.AddListener(callbacks[i]);
             }
+            return callbacks;
         }
 
-        private void WireProducts()
+        private static void Unwire(Button[] buttons, UnityAction[] callbacks)
         {
-            int count = productButtons != null ? productButtons.Length : 0;
-            _productCallbacks = new UnityAction[count];
-            for (int i = 0; i < count; i++)
-            {
-                int captured = i;
-                _productCallbacks[i] = () => SelectProduct(captured);
-                if (productButtons[i] != null) productButtons[i].onClick.AddListener(_productCallbacks[i]);
-            }
+            for (int i = 0; buttons != null && callbacks != null && i < buttons.Length && i < callbacks.Length; i++)
+                if (buttons[i] != null && callbacks[i] != null)
+                    buttons[i].onClick.RemoveListener(callbacks[i]);
         }
 
-        private void WireQuickPhrases()
+        private static void SetInteractable(Button[] buttons, bool enabled)
         {
-            int count = quickPhraseButtons != null ? quickPhraseButtons.Length : 0;
-            _quickPhraseCallbacks = new UnityAction[count];
-            for (int i = 0; i < count; i++)
-            {
-                int captured = i;
-                _quickPhraseCallbacks[i] = () => SelectQuickPhrase(captured);
-                if (quickPhraseButtons[i] != null) quickPhraseButtons[i].onClick.AddListener(_quickPhraseCallbacks[i]);
-            }
+            for (int i = 0; buttons != null && i < buttons.Length; i++)
+                if (buttons[i] != null) buttons[i].interactable = enabled;
         }
 
         private void SelectProduct(int index)
@@ -362,10 +510,28 @@ namespace Artti.UI
                 if (productButtons[i] != null) productButtons[i].gameObject.SetActive(visible);
                 if (visible) visibleCount++;
             }
+            ShowProductContent(visibleCount);
+        }
 
+        // 변경점(TrainingCon 시안): 분류 칸 없이 모든 상품을 한 줄로 보여 준다.
+        private void ShowAllProducts()
+        {
+            if (productContent == null) return;
+            int count = 0;
+            for (int i = 0; productButtons != null && i < productButtons.Length; i++)
+            {
+                if (productButtons[i] == null) continue;
+                productButtons[i].gameObject.SetActive(true);
+                count++;
+            }
+            ShowProductContent(count);
+        }
+
+        private void ShowProductContent(int visibleCount)
+        {
             if (categoryContent != null) categoryContent.gameObject.SetActive(false);
             productContent.gameObject.SetActive(true);
-            productContent.sizeDelta = new Vector2(Mathf.Max(1, visibleCount) * 134f, 150f);
+            productContent.sizeDelta = new Vector2(Mathf.Max(1, visibleCount) * productTilePitch, productContent.sizeDelta.y);
             if (productScroll != null)
             {
                 productScroll.StopMovement();
@@ -394,7 +560,7 @@ namespace Artti.UI
         {
             string phrase = ValueAt(_activeQuickPhrases, index, ValueAt(quickPhrases, index, null));
             if (string.IsNullOrWhiteSpace(phrase)) return;
-            PunchLabel(index, 0f, this.GetCancellationTokenOnDestroy());   // 변경점: 누른 문장이 톡 커진다
+            PunchHint(index, 0f, this.GetCancellationTokenOnDestroy());   // 변경점: 누른 문장이 톡 커진다
             OnQuickPhraseSelected?.Invoke(phrase);
         }
 
@@ -403,17 +569,44 @@ namespace Artti.UI
                 ? values[index]
                 : fallback;
 
+        private static int IndexOf(string[] values, string phrase)
+        {
+            for (int i = 0; values != null && i < values.Length; i++)
+                if (SamePhrase(values[i], phrase)) return i;
+            return 0;
+        }
+
+        private static bool Contains(List<string> list, string phrase)
+        {
+            foreach (var item in list)
+                if (SamePhrase(item, phrase)) return true;
+            return false;
+        }
+
+        private static bool SamePhrase(string a, string b) =>
+            string.Equals(a?.Trim().TrimEnd('?', '!', '.', '…'), b?.Trim().TrimEnd('?', '!', '.', '…'), StringComparison.Ordinal);
+
         private void ShowPrevious()
         {
-            if (_showingProducts)
+            if (_showingProducts && ShowsCategoryTiles)
             {
                 ShowCategories();
                 return;
             }
-            ScrollBy(-0.34f);
+            ScrollBy(-PageStep());
         }
 
-        private void ShowNext() => ScrollBy(0.34f);
+        private void ShowNext() => ScrollBy(PageStep());
+
+        // 화면에 보이는 칸 수만큼 넘긴다. 옛 배치(분류 칸)는 예전 값 그대로.
+        private float PageStep()
+        {
+            if (ShowsCategoryTiles || productScroll == null || productScroll.content == null || productScroll.viewport == null)
+                return 0.34f;
+            float view = productScroll.viewport.rect.width;
+            float hidden = productScroll.content.rect.width - view;
+            return hidden <= 1f ? 1f : Mathf.Clamp01(view / hidden);
+        }
 
         private void ScrollBy(float amount)
         {
@@ -427,5 +620,32 @@ namespace Artti.UI
         private void ShowHelp() => UIPopupMotion.Open(helpPanel);
 
         private void HideHelp() => UIPopupMotion.Close(helpPanel);
+
+        // 변경점(TrainingCon 시안): 키보드 입력 창. 보낸 문장은 대화 힌트를 누른 것과 같은 한 턴이 된다.
+        private void ShowKeyboard()
+        {
+            if (keyboardPanel == null) return;
+            if (keyboardField != null) keyboardField.text = string.Empty;
+            UIPopupMotion.Open(keyboardPanel);
+            if (keyboardField != null) keyboardField.ActivateInputField();
+        }
+
+        private void HideKeyboard()
+        {
+            if (keyboardField != null) keyboardField.DeactivateInputField();
+            UIPopupMotion.Close(keyboardPanel);
+        }
+
+        private void OnKeyboardSubmit(string _) => SendKeyboardText();
+
+        private void SendKeyboardText()
+        {
+            if (keyboardField == null) return;
+            if (keyboardSendButton != null && !keyboardSendButton.interactable) return;   // 점원이 대답하는 중
+            string text = keyboardField.text?.Trim();
+            if (string.IsNullOrEmpty(text)) return;
+            HideKeyboard();
+            OnTypedUtterance?.Invoke(text);
+        }
     }
 }

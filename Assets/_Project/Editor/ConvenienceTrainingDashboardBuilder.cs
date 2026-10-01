@@ -275,6 +275,8 @@ namespace Artti.Editor
             completion.helpPanel.SetActive(false);
             completion.root.SetActive(false);
             micIndicator.SetActive(false);
+            // 변경점: TrainingCon 시안 — 옛 대시보드 조각을 시안 배치로 바꾸고 뷰에 다시 연결한다(Artti/Fix 메뉴와 같은 코드).
+            ConvenienceTrainingConLayout.Apply(canvasGo);
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
             Debug.Log("[ConvenienceTrainingDashboardBuilder] PNG 대시보드 화면 생성 완료");
