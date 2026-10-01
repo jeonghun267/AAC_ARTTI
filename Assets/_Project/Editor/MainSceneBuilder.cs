@@ -16,6 +16,7 @@ namespace Artti.Editor
     //   3 좌측 타이틀(ARTTI / 내 손 안의 AAC / 부제) 1086x1448
     //   4 프로필 보기  5 훈련 시작하기  6 도움 시작하기  (2172x724)
     //   7 종료하기  8 리포트보기  (1774x887). 9 설정은 프로필 설정과 겹쳐 쓰지 않는다.
+    //   10 현장모드 제목+부제(1580x995)  11 훈련모드 제목+부제(1447x1087): 빛나는 글자 그림. 글자(TMP) 대신 쓴다.
     //
     // 배치 원칙
     //  - 1번 합본이 레이아웃의 기준이다. 패널/캐릭터가 한 장이라 개별로 옮길 수 없으므로
@@ -38,6 +39,8 @@ namespace Artti.Editor
         const string HelpPath    = Dir + "6.png";
         const string QuitPath    = Dir + "7.png";
         const string ReportPath  = Dir + "8.png";
+        const string ARTitlePath    = Dir + "10.png";   // 현장모드 + 실생활에서 도움을 받아보세요.
+        const string TrainTitlePath = Dir + "11.png";   // 훈련모드 + 다양한 상황에서 말을 연습해보세요.
 
         // 이미지 속 불투명 본체 영역 (x0, y0, x1, y1) — 원본 대비 비율, y는 위에서부터.
         // 4·5·3번은 알파 실측(>200), 6~9번은 화면 판독값이라 몇 px 오차가 있을 수 있다.
@@ -213,6 +216,7 @@ namespace Artti.Editor
             so.ApplyModifiedProperties();
 
             ApplyNewPanelLayout(stage);
+            ApplyModeTitleImages(stage);
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
@@ -239,6 +243,68 @@ namespace Artti.Editor
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
             SceneBuilderUtils.SaveActiveScene();
             Debug.Log("[MainSceneBuilder] 새 1.png 배치 적용 완료 (왼쪽 글래스 분리 + 글자/버튼 재배치) - 손배치 유지");
+        }
+
+        // 손배치 씬(MainScene)에 모드 제목 그림(10/11)만 적용한다. 다른 손배치 값은 그대로 둔다.
+        [MenuItem("Artti/Fix/MainScene - Mode Title Images 10 11 (keep hand placement)")]
+        public static void ApplyModeTitleImagesMenu()
+        {
+            if (EditorApplication.isPlaying) { Debug.LogWarning("[MainSceneBuilder] Play 모드에서는 실행하지 않는다."); return; }
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+            if (scene.path != ScenePaths.Main)
+            {
+                if (!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                scene = SceneBuilderUtils.OpenScene(ScenePaths.Main);
+            }
+            RectTransform stage = null;
+            foreach (var root in scene.GetRootGameObjects())
+                if (root.name == "[Canvas]") stage = root.transform.Find("Stage") as RectTransform;
+            if (stage == null) { Debug.LogError("[MainSceneBuilder] [Canvas]/Stage 없음"); return; }
+
+            ApplyModeTitleImages(stage);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+            SceneBuilderUtils.SaveActiveScene();
+            Debug.Log("[MainSceneBuilder] 모드 제목 그림(10/11) 적용 완료 - 손배치 유지");
+        }
+
+        // 모드 제목 그림: 묶음(TrainGroup/ARGroup)의 제목(Title)+부제(Desc) 글자를 끄고 그림 한 장(TitleImage)으로 바꾼다.
+        //   그림 속 제목 글자 왼쪽 위(glyph, 그림 px)가 예전 글자 왼쪽 위 자리(묶음 좌표)에 오고, 제목 글자 폭이 예전과 같도록 줄인다.
+        //   글자 폭/자리는 예전 TMP 렌더 실측(훈련 84pt 약 317, 현장 64pt 약 245 Stage px).
+        //   변경점: 제목과 버튼 사이 메모 글이 빠져 둘이 멀어 보이므로, 부제와 버튼 사이를 약 80으로 좁힌다.
+        //   훈련 카드는 제목을 55 내리고 버튼을 57 올려 묶음이 카드 세로 가운데에 오게, 현장 카드는 제목만 22 내린다.
+        static readonly Vector2 TrainBtnCenter = new Vector2(149.3f, -321.9f);   // 예전 손배치 -378.9
+        static void ApplyModeTitleImages(RectTransform stage)
+        {
+            ModeTitleImage(stage, "TrainGroup", TrainTitlePath, new Vector2(1447f, 1087f),
+                glyphTopLeft: new Vector2(209f, 376f), glyphWidth: 1004f, target: new Vector2(3f, -69f), targetWidth: 317f, rotZ: 0f);
+            ModeTitleImage(stage, "ARGroup", ARTitlePath, new Vector2(1580f, 995f),
+                glyphTopLeft: new Vector2(314f, 350f), glyphWidth: 952f, target: new Vector2(10f, 80f), targetWidth: 245f, rotZ: -2.45f);
+            if (stage.Find("TrainGroup/TrainingModeBtn") is RectTransform trainBtn) trainBtn.anchoredPosition = TrainBtnCenter;
+        }
+
+        static void ModeTitleImage(RectTransform stage, string group, string path, Vector2 imageSize,
+            Vector2 glyphTopLeft, float glyphWidth, Vector2 target, float targetWidth, float rotZ)
+        {
+            if (!(stage.Find(group) is RectTransform g)) { Debug.LogWarning($"[MainSceneBuilder] {group} 없음"); return; }
+            foreach (var name in new[] { "Title", "Desc" })
+            {
+                var old = g.Find(name);
+                if (old != null) old.gameObject.SetActive(false);   // 글자는 그림에 들어 있다(오브젝트는 남겨 둔다)
+            }
+            var rt = g.Find("TitleImage") as RectTransform;
+            if (rt == null) rt = ChildRect("TitleImage", g);
+            rt.SetAsFirstSibling();
+            float k = targetWidth / glyphWidth;
+            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(glyphTopLeft.x / imageSize.x, 1f - glyphTopLeft.y / imageSize.y);   // 글자 왼쪽 위를 기준점으로
+            rt.sizeDelta = imageSize * k;
+            rt.anchoredPosition = target;
+            rt.localRotation = Quaternion.Euler(0f, 0f, rotZ);
+            rt.localScale = Vector3.one;
+            var img = rt.GetComponent<Image>() ?? rt.gameObject.AddComponent<Image>();
+            img.sprite = LoadSprite(path);
+            img.preserveAspect = true;
+            img.raycastTarget = false;
         }
 
         // 1.png 배치: Panels = 카드(1_cards), 그 자식 LeftGlass = 왼쪽 글래스(1_left, LeftGlassShiftX만큼 옮김).
