@@ -29678,8 +29678,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 16500442b4f5cc143bb39fc481d0f6db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NaverStaticMapController
-  naverClientId: 3ulc6dnvzj
-  naverClientSecret: cjplT4Vb1gDkRCPJOFDd1J5EHIYTrlL3z2hkgvHZ
   mapImage: {fileID: 8820000005}
   mapPlaceholder: {fileID: 8810000141}
   latitudeText: {fileID: 8810000174}
