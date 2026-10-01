@@ -26,6 +26,11 @@ namespace Artti.Training
         [Header("Convenience HUD (옵션 — 미와이어링 시 무동작)")]
         [SerializeField] private ConvenienceHudView hud;
 
+        // 변경점: 화면 둘러보기(온보딩). 사용자마다 처음 한 번 자동으로 보여 주고, 도움말 버튼으로 다시 본다.
+        //   처음 둘러보기가 끝나야 훈련(점원 첫 인사, 기록, 걸린 시간)이 시작된다.
+        [Header("화면 둘러보기 (옵션 — 미연결 시 바로 훈련 시작)")]
+        [SerializeField] private TrainingOnboardingView onboarding;
+
         [Header("Clerk 애니메이션 (옵션 — 미와이어링 시 무동작)")]
         [SerializeField] private ClerkView clerkView;
 
@@ -324,13 +329,33 @@ namespace Artti.Training
                 dashboardView.OnTypedUtterance += HandleTypedUtterance;
             }
 
+            WireHud();
+            UpdateDashboardDialogueContext();
+            ShowInitialCards();
+
+            // 변경점: 처음 들어온 사용자는 환영 창에서 화면 둘러보기 / 바로 시작을 고르고, 창이나 둘러보기가 닫히면 훈련을 시작한다.
+            if (onboarding != null)
+            {
+                onboarding.SetMode(IsConversationMode);
+                onboarding.OnStepShown += HandleOnboardingStep;
+                onboarding.OnClosed += HandleOnboardingClosed;
+            }
+            if (onboarding != null && ShouldAutoShowOnboarding()) onboarding.ShowWelcome();
+            else BeginSession();
+        }
+
+        // 훈련 시작: 기록(시작·첫 단계·걸린 시간 기준) + 점원 첫 인사. 둘러보기가 끝난 뒤 한 번만.
+        private bool _sessionBegun;
+        private static bool _onboardingShownWithoutProfile;   // 프로필 없이 바로 실행(에디터)할 때는 실행 중 한 번만
+
+        private void BeginSession()
+        {
+            if (_sessionBegun) return;
+            _sessionBegun = true;
             _eventLogger?.LogScenarioEntered(_mode);
             _eventLogger?.LogObjectiveEntered("greeting");
             _sessionStartUtc = System.DateTimeOffset.UtcNow;
             _objectivesEntered = 1;
-
-            WireHud();
-            UpdateDashboardDialogueContext();
 
             // 풀 모드: 첫 NPC 대사 + TTS (Initialize는 이벤트 안 쏘므로 수동 호출)
             if (IsPoolMode && TryGetObjectivePrompt("greeting", out var greetingLine))
@@ -338,8 +363,35 @@ namespace Artti.Training
                 SpeakNpc(greetingLine);
                 clerkView?.PlayGreeting();
             }
+        }
 
-            ShowInitialCards();
+        private static bool ShouldAutoShowOnboarding()
+        {
+            var profile = AppBootstrap.Instance?.ProfileManager?.ActiveProfile;
+            if (profile != null) return !profile.seenTrainingOnboarding;
+            return !_onboardingShownWithoutProfile;
+        }
+
+        // 환영 창·둘러보기 문장은 카드 음성으로 읽어 준다(앞 문장·점원 말은 끊는다)
+        private void HandleOnboardingStep(string text)
+        {
+            StopSpeech();
+            if (_ttsService != null && !string.IsNullOrWhiteSpace(text))
+                TrackSpeech(_ttsService.SpeakAsync(text.Replace('\n', ' '), SpeechToken)).Forget();
+        }
+
+        private void HandleOnboardingClosed()
+        {
+            StopSpeech();
+            var manager = AppBootstrap.Instance?.ProfileManager;
+            var profile = manager?.ActiveProfile;
+            if (profile != null && !profile.seenTrainingOnboarding)
+            {
+                profile.seenTrainingOnboarding = true;
+                manager.Save();
+            }
+            _onboardingShownWithoutProfile = true;
+            BeginSession();   // 처음 둘러보기였으면 여기서 훈련 시작, 도움말로 다시 본 경우는 무동작
         }
 
         // ===== Convenience HUD 연동 (hud 미와이어링 씬에서는 전부 무동작) =====
@@ -727,8 +779,14 @@ namespace Artti.Training
                 dashboardView.OnQuickPhraseSelected -= HandleDashboardQuickPhraseSelected;
                 dashboardView.OnTypedUtterance -= HandleTypedUtterance;
             }
+            if (onboarding != null)
+            {
+                onboarding.OnStepShown -= HandleOnboardingStep;
+                onboarding.OnClosed -= HandleOnboardingClosed;
+            }
             // 완료 없이 씬 이탈 → 중단 처리 (마지막 objective 기록). 레포트의 미완료/연습 필요 집계에 사용
-            if (!_sessionCompleted)
+            //   변경점: 둘러보기 중에 나가 훈련을 시작하지 않았으면 기록하지 않는다.
+            if (_sessionBegun && !_sessionCompleted)
                 _eventLogger?.LogSessionAbandoned(_dialogueManager?.CurrentObjectiveId);
             AppBootstrap.Instance?.LogStore?.FlushAsync().Forget();
 

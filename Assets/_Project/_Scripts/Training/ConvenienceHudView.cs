@@ -21,8 +21,11 @@ namespace Artti.Training
         [SerializeField] private float stepFillWidth;
         [SerializeField] private Sprite stepNodeOnSprite;
         [SerializeField] private Sprite stepNodeOffSprite;
-        // 변경점(TrainingCon 시안): 미션 링(Filled Radial360)과 "2/5" 글자 형식. 링이 없으면 무동작.
-        [SerializeField] private Image stepRing;
+        // 변경점(TrainingCon 시안): 진행 배. 단계 점(stepDots) 자리를 따라 물 위를 스르륵 움직이고 평소에는 살짝 흔들린다.
+        //   점과 같은 부모 아래에 두고 피벗은 배 바닥에 둔다. 비우면 무동작.
+        [SerializeField] private RectTransform stepBoat;
+        [SerializeField] private Vector2 stepBoatOffset;
+        [SerializeField] private float stepMoveSeconds = 0.45f;   // 단계가 오를 때 채움(배)이 다음 점까지 가는 시간
         [SerializeField] private string stepCounterFormat = "{0} / {1} 단계";
 
         [Header("일시정지")]
@@ -95,7 +98,10 @@ namespace Artti.Training
         // 변경점: 진행 표시 연출 — 단계가 오르면 목표 글자 자리에 칭찬이 톡 뜨고, 채움 막대가 다음 점까지 차오르며
         //   지나가는 점이 켜지고 톡 커진 뒤, 잠시 후 새 목표로 바뀐다. 처음 표시·같은 단계·뒤로 가기는 바로 바꾼다.
         const float FillDelaySeconds = 0.12f;
-        const float FillSeconds = 0.45f;
+        // 배 흔들림: 천천히 위아래 2.5, 기울기 3도(번쩍임 없음)
+        const float BoatBobUnits = 2.5f;
+        const float BoatBobHz = 0.45f;
+        const float BoatTiltDegrees = 3f;
         const float PraiseHoldSeconds = 1.1f;
         static readonly Vector2 LabelAnchorLeft = new Vector2(0f, 0.5f);   // 왼쪽 정렬 글자는 왼쪽 가운데 기준으로 커진다
         static readonly Vector2 Center = new Vector2(0.5f, 0.5f);
@@ -164,6 +170,15 @@ namespace Artti.Training
 
             if (completionRoot != null && completionRoot.activeSelf && confettiRoot != null)
                 AnimateConfetti();
+
+            // 진행 배: 물 위에서 살짝 흔들린다(자리는 SetBoat가 정한 _boatBase)
+            if (_boatPlaced)
+            {
+                _boatTime += Time.deltaTime;
+                float phase = _boatTime * BoatBobHz * 2f * Mathf.PI;
+                stepBoat.anchoredPosition = _boatBase + new Vector2(0f, Mathf.Sin(phase) * BoatBobUnits);
+                stepBoat.localRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(phase + 1.2f) * BoatTiltDegrees);
+            }
         }
 
         // index = 현재 objective 순번 (0부터). 이전 단계 파랑, 현재 주황, 이후 회색
@@ -194,7 +209,7 @@ namespace Artti.Training
                 for (int i = 0; i < stepDots.Length; i++) SetDot(i, current);
                 if (stepCounter != null) stepCounter.text = FormatCounter(current);
                 SetFill(FillWidth(current));
-                SetRing(RingFill(current));
+                SetBoat(current);
             }
             if (stepLabel != null)
             {
@@ -217,11 +232,11 @@ namespace Artti.Training
             // 2) 채움 막대가 다음 점까지 차오르고, 채움 끝이 지나간 점이 켜지며 톡 커진다
             float w0 = FillWidth(prev), w1 = FillWidth(next);
             int lit = prev;
-            bool canceled = await UIFx.Tween(this, FillDelaySeconds, FillSeconds, k =>
+            bool canceled = await UIFx.Tween(this, FillDelaySeconds, stepMoveSeconds, k =>
             {
-                float e = UIFx.EaseOutCubic(k);
+                float e = 0.5f - 0.5f * Mathf.Cos(k * Mathf.PI);   // 스르륵: 천천히 떠나 천천히 닿는다
                 SetFill(Mathf.Lerp(w0, w1, e));
-                SetRing(Mathf.Lerp(RingFill(prev), RingFill(next), e));
+                SetBoat(Mathf.Lerp(prev, next, e));
                 int reached = prev + Mathf.FloorToInt((next - prev) * e + 0.001f);
                 while (lit < reached) LightDot(++lit, next, ct);
             }, ct).SuppressCancellationThrow();
@@ -274,17 +289,25 @@ namespace Artti.Training
             stepFillMask.sizeDelta = size;
         }
 
-        // 변경점(TrainingCon 시안): 링은 "몇 번째 단계인가"를 채운다(2/5 = 40%).
-        private float RingFill(int index)
+        // 배 자리 = 단계 점 사이를 잇는 위치(progress = 0 ~ 점 개수-1, 소수면 두 점 사이). 점 간격이 고르지 않아도 별 위에 선다.
+        private Vector2 _boatBase;
+        private bool _boatPlaced;
+        private float _boatTime;
+
+        private void SetBoat(float progress)
         {
-            int count = stepDots != null ? stepDots.Length : 0;
-            return count > 0 ? Mathf.Clamp01((index + 1f) / count) : 0f;
+            if (stepBoat == null || stepDots == null || stepDots.Length == 0) return;
+            int last = stepDots.Length - 1;
+            progress = Mathf.Clamp(progress, 0f, last);
+            int i0 = Mathf.FloorToInt(progress);
+            int i1 = Mathf.Min(i0 + 1, last);
+            _boatBase = Vector2.Lerp(DotPosition(i0), DotPosition(i1), progress - i0) + stepBoatOffset;
+            _boatPlaced = true;
+            stepBoat.anchoredPosition = _boatBase;
         }
 
-        private void SetRing(float fill)
-        {
-            if (stepRing != null) stepRing.fillAmount = fill;
-        }
+        private Vector2 DotPosition(int i) =>
+            stepDots[i] != null ? stepDots[i].rectTransform.anchoredPosition : Vector2.zero;
 
         private string FormatCounter(int index) =>
             string.Format(string.IsNullOrEmpty(stepCounterFormat) ? "{0} / {1} 단계" : stepCounterFormat,
