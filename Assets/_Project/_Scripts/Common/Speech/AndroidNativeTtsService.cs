@@ -25,6 +25,7 @@ namespace Artti.Common.Speech
         private AndroidJavaObject _tts;
         private bool _ttsReady;
         private int _utterCounter;
+        private float _speechRate = 1f; // SetSpeakingRate로 교체 (프로필 말 빠르기)
         private readonly ConcurrentDictionary<string, UniTaskCompletionSource> _pending
             = new ConcurrentDictionary<string, UniTaskCompletionSource>();
 
@@ -123,6 +124,7 @@ namespace Artti.Common.Speech
 
             try
             {
+                _tts.Call<int>("setSpeechRate", _speechRate); // 변경점: 프로필 말 빠르기 (1.0 = 기본)
                 _tts.Call<int>("speak", text, /*QUEUE_FLUSH=*/0, null, id);
             }
             catch (Exception e)
@@ -152,6 +154,8 @@ namespace Artti.Common.Speech
         }
 
         public void SetVoice(string voiceName) { /* 단말 기본 음성 사용 — 향후 voice 선택 필요 시 구현 */ }
+
+        public void SetSpeakingRate(float rate) { _speechRate = rate > 0f ? rate : 1f; }
 
         private void Complete(string id)
         {

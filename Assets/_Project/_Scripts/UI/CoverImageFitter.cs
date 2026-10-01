@@ -20,6 +20,12 @@ namespace Artti.UI
         [SerializeField] private RectTransform follower;
         [SerializeField] private Vector2 followerSize = new Vector2(1920f, 1080f);   // follower를 배치한 기준 크기(= 이미지 전체)
 
+        // 변경점: follower 안에서 화면에 꼭 보여야 하는 영역(follower 좌상단 기준, y 아래가 +). 폭이 0이면 쓰지 않는다.
+        //   배경이 화면을 채우려고 위아래를 많이 자르면(4:3 배경을 20:9 폰에) 이 영역이 화면 밖으로 나가므로,
+        //   그때만 follower를 같은 비율로 줄이고 옮겨 영역 전체가 화면 안(여백 safeMargin)에 들어오게 한다.
+        [SerializeField] private Rect safeRect;
+        [SerializeField] private float safeMargin = 16f;
+
         private RectTransform _rt;
         private DrivenRectTransformTracker _tracker;
 
@@ -35,6 +41,14 @@ namespace Artti.UI
         {
             follower = target;
             followerSize = designSize;
+            UpdateRect();
+        }
+
+        // 변경점: follower에서 화면에 꼭 보여야 하는 영역 (follower 좌상단 기준 px, y 아래가 +)
+        public void SetSafeRect(Rect rect, float margin)
+        {
+            safeRect = rect;
+            safeMargin = margin;
             UpdateRect();
         }
 
@@ -90,8 +104,32 @@ namespace Artti.UI
             if (follower != null && followerSize.x > 0f && followerSize.y > 0f)
             {
                 _tracker.Add(this, follower, DrivenTransformProperties.Scale);
-                follower.localScale = new Vector3(w / followerSize.x, h / followerSize.y, 1f);
+                var scale = new Vector2(w / followerSize.x, h / followerSize.y);
+                if (safeRect.width > 0f && safeRect.height > 0f)
+                    FitSafeRect(p, new Vector2(w, h), ref scale);
+                follower.localScale = new Vector3(scale.x, scale.y, 1f);
             }
+        }
+
+        // 변경점: safeRect가 화면(부모) 밖으로 나가면 follower를 같은 비율로 줄이고, 원래 자리에 가장 가깝게 화면 안으로 옮긴다.
+        //   follower는 이미지 가운데 기준(anchor/pivot 0.5)이라 anchoredPosition이 곧 이미지 가운데에서의 이동량이다.
+        private void FitSafeRect(Vector2 p, Vector2 imageSize, ref Vector2 scale)
+        {
+            _tracker.Add(this, follower, DrivenTransformProperties.AnchoredPosition);
+            // 부모 좌하단 기준 이미지 가운데 (이미지 focus 지점이 부모 focus 지점에 온다)
+            Vector2 imageCenter = Vector2.Scale(focus, p) + Vector2.Scale(new Vector2(0.5f, 0.5f) - focus, imageSize);
+            // safeRect 가운데를 follower 가운데 기준(y 위가 +)으로
+            var local = new Vector2(safeRect.center.x - followerSize.x * 0.5f, followerSize.y * 0.5f - safeRect.center.y);
+            var room = p - 2f * new Vector2(safeMargin, safeMargin);
+            float k = Mathf.Min(1f, room.x / (safeRect.width * scale.x), room.y / (safeRect.height * scale.y));
+
+            Vector2 wanted = imageCenter + Vector2.Scale(local, scale);          // 줄이기 전 자리
+            Vector2 half = Vector2.Scale(safeRect.size, scale) * (0.5f * k);
+            var center = new Vector2(
+                Mathf.Clamp(wanted.x, safeMargin + half.x, p.x - safeMargin - half.x),
+                Mathf.Clamp(wanted.y, safeMargin + half.y, p.y - safeMargin - half.y));
+            scale *= k;
+            follower.anchoredPosition = center - (imageCenter + Vector2.Scale(local, scale));
         }
     }
 }

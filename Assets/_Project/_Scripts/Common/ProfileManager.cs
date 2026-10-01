@@ -18,6 +18,9 @@ namespace Artti.Common
         public int birthDay;    // 0 = 입력 안 함
         public string intro;    // 한마디 소개 (선택)
         public long lastUsedAtTicks; // 마지막 사용일자 (DateTime.Ticks)
+        public bool speakCardOnTap;    // 카드(상품·대화 힌트)를 누르면 문장을 소리로 읽어주기. 기본 꺼짐
+        public SpeechRate speechRate;  // 말 빠르기 (점원·카드 음성). 기본 보통
+        public ReadingVoice readingVoice; // 변경점: 카드 읽어주는 목소리. 기본 여자
 
         public ProfileData()
         {

@@ -55,6 +55,10 @@ namespace Artti.UI
 
         // 수정 모드: ProfileSelect의 수정 버튼이 대상 id를 설정. null이면 신규 생성.
         public static string EditTargetId;
+        // 변경점: 프로필 설정 화면에서 들어온 수정. 닫기(X)로 돌아갈 씬과, 아바타 말고 다른 항목을 고치러 왔을 때 1단계(아바타)를 건너뛸지.
+        //   둘 다 이 씬이 시작할 때 한 번 읽고 지운다. ReturnScene은 1단계 뷰(ProfileAvatarStepView.Awake)도 읽는다.
+        public static string ReturnScene;
+        public static bool SkipAvatarStep;
         private ProfileData _editing;
 
         private string _avatarId;
@@ -194,7 +198,8 @@ namespace Artti.UI
         }
 
         // 입력한 만큼만 보인다: 2001. 05. 20 / 2001. 05 / 2001년 / 05. 20 / 미입력
-        private static string FormatBirth(int year, int month, int day)
+        // 변경점: 프로필 설정 화면(ProfileSettingsView)도 같은 표기를 쓰도록 internal
+        internal static string FormatBirth(int year, int month, int day)
         {
             if (year > 0 && month > 0 && day > 0) return $"{year}. {month:D2}. {day:D2}";
             if (year > 0 && month > 0) return $"{year}. {month:D2}";
@@ -207,7 +212,15 @@ namespace Artti.UI
         // 수정 모드: 기존 프로필 값으로 폼 채우기 (아바타는 1단계 뷰가 Awake에서 미리 고른다)
         private void ApplyEditMode()
         {
+            // 변경점: 프로필 설정 화면에서 온 수정이면 닫기를 그 화면으로 돌리고, 필요하면 1단계를 닫아 둔다(1회 소비)
+            string returnScene = ReturnScene;
+            bool skipAvatar = SkipAvatarStep;
+            ReturnScene = null;
+            SkipAvatarStep = false;
+
             if (string.IsNullOrEmpty(EditTargetId)) return;
+            if (!string.IsNullOrEmpty(returnScene)) backScene = returnScene;
+            if (skipAvatar && avatarStep != null) avatarStep.SetActive(false);
             var pm = AppBootstrap.Instance != null ? AppBootstrap.Instance.ProfileManager : null;
             _editing = pm != null ? pm.Profiles.Find(p => p.id == EditTargetId) : null;
             EditTargetId = null; // 1회 소비
@@ -220,6 +233,15 @@ namespace Artti.UI
             if (_editing.birthYear > 0) SetDropdown(yearDropdown, yearEnd - _editing.birthYear + 1); // index 1 = yearEnd
             SetDropdown(monthDropdown, _editing.birthMonth);
             SetDropdown(dayDropdown, _editing.birthDay);
+
+            // 변경점: 1단계를 건너뛰면 SetAvatar가 불리지 않아 왼쪽 카드/완료 화면에 기본 아바타가 남는다. 지금 아바타로 채워 둔다
+            //   (1단계를 거치면 다음 버튼이 고른 아바타로 다시 덮는다).
+            if (skipAvatar)
+            {
+                var lib = AvatarLibrary.Load();
+                var sprite = lib != null ? lib.GetById(_editing.avatarId) : null;
+                if (sprite != null) SetAvatar(_editing.avatarId, sprite);
+            }
         }
 
         private static void SetDropdown(TMP_Dropdown dd, int index)

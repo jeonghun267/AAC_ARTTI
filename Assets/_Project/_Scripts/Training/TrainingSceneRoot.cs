@@ -41,7 +41,7 @@ namespace Artti.Training
         [SerializeField] private CounterDisplay counter;
 
         [Header("접근성 (옵션)")]
-        [Tooltip("풀 모드에서 카드를 누를 때 카드 문구를 음성으로 읽어줌. 자유발화 연습 의도와 충돌하므로 기본 끔")]
+        [Tooltip("카드(대시보드 상품·대화 힌트 포함)를 누를 때 문장을 음성으로 읽어줌. 활성 프로필이 있으면 프로필 설정값으로 덮어쓴다 — 이 값은 프로필 없이 씬을 바로 실행할 때만 쓰인다")]
         [SerializeField] private bool speakCardOnTap = false;
 
         // 변경점: 서버PC에서 돌리는 음성 인식 서버. 지정하면 사용자 발화를 이 서버로 인식하고,
@@ -123,6 +123,20 @@ namespace Artti.Training
                 ? new CloudTtsService(ttsKey, npcSpeechSource)
                 : _ttsService;
             _npcTtsService.SetVoice(TrainingModeContext.VoiceFor(_mode)); // 모드별 점원 목소리
+
+            // 변경점: 활성 프로필의 카드 읽어주기·말 빠르기(점원·카드 음성 공통)를 적용한다.
+            //   프로필 없이 씬을 바로 실행하면(에디터) Inspector 값과 보통 빠르기를 그대로 쓴다.
+            var speechPrefs = AppBootstrap.Instance?.ProfileManager?.ActiveProfile;
+            if (speechPrefs != null)
+            {
+                speakCardOnTap = speechPrefs.speakCardOnTap;
+                // 변경점: 카드 읽어주는 목소리. 점원 음성 채널이 없어 카드와 같은 서비스를 쓰면 점원 목소리를 유지한다.
+                if (!ReferenceEquals(_ttsService, _npcTtsService))
+                    _ttsService.SetVoice(speechPrefs.readingVoice.ToVoiceName());
+                float rate = speechPrefs.speechRate.ToMultiplier();
+                _ttsService.SetSpeakingRate(rate);
+                _npcTtsService.SetSpeakingRate(rate);
+            }
 
             ISttService deviceStt;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -452,6 +466,15 @@ namespace Artti.Training
                 await UniTask.Yield(PlayerLoopTiming.Update, ct);
             }
             if (waited) await UniTask.Delay(SpeechOutputDrainMs, DelayType.Realtime, PlayerLoopTiming.Update, ct);
+        }
+
+        // 변경점: 카드 음성으로 문장을 읽고 스피커 출력이 끝날 때까지 기다린다.
+        //   CloudTtsService.SpeakAsync는 재생을 시작하면 바로 돌아오므로, 재생 종료는 WaitSpeechIdleAsync로 기다린다.
+        private async UniTask SpeakCardAsync(string text, CancellationToken ct)
+        {
+            if (_ttsService == null || string.IsNullOrWhiteSpace(text)) return;
+            TrackSpeech(_ttsService.SpeakAsync(text, ct)).Forget();
+            await WaitSpeechIdleAsync(ct);
         }
 
         private void StopSpeech()
@@ -1120,6 +1143,13 @@ namespace Artti.Training
                 StopSpeech();
                 hud?.SetUserUtterance(utterance);
                 uiView.ShowSttResult(utterance);
+
+                // 변경점: 카드 읽어주기가 켜져 있으면 누른 문장을 앱이 대신 소리 내 읽고, 다 읽은 뒤 점원이 대답한다.
+                //   음성 턴(spoken 있음)은 사용자가 이미 말했으므로 읽지 않는다.
+                //   읽는 중 취소(씬 종료 등)되면 기록·진행 전에 턴을 끝낸다.
+                if (speakCardOnTap && spoken == null)
+                    await SpeakCardAsync(utterance, SpeechToken);
+
                 // 변경점: 음성 턴이면 STT 결과(명료도 포함)를, 탭 턴이면 문장만 기록한다.
                 _eventLogger?.LogCardSelected(sourceId, utterance, spoken ?? new SttResult { text = utterance });
                 _dialogueManager.HandleUserTurn(null, utterance);
