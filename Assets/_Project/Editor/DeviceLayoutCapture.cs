@@ -67,6 +67,13 @@ namespace Artti.Editor
             Directory.CreateDirectory(OutDir);
             try
             {
+                // 변경점: 1단계 칸을 고른 모양(LED 테두리 확인용). 실행 중에만 켜지는 선택 테두리를 첫 칸에 켠다.
+                EditorSceneManager.OpenScene(ScenePaths.ProfileCreate, OpenSceneMode.Single);
+                foreach (var root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
+                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                        if (t.name == "SelectedBorder" && t.parent.name == "Avatar_19") t.gameObject.SetActive(true);
+                CaptureActiveScene(2560, 1600, Path.Combine(OutDir, "tab_ProfileStep1_selected.png"));
+
                 // 변경점: 2단계(인용문 띠 확인용)
                 EditorSceneManager.OpenScene(ScenePaths.ProfileCreate, OpenSceneMode.Single);
                 foreach (var root in EditorSceneManager.GetActiveScene().GetRootGameObjects())

@@ -45,6 +45,11 @@ namespace Artti.Editor
         const float QuoteTextX0 = 0.15f, QuoteTextX1 = 0.85f;
         const float QuoteBandBottom = 12f;   // 카드 아랫변에서 띠 본체까지 (빛 번짐이 카드 마스크에 덜 잘리게)
 
+        // 고른 칸의 LED 테두리(완료 카드 35의 원 테두리 느낌). Art_Source/ui_profiles/make_led_frame.py가 만든다.
+        //   2배 해상도 9-slice: 테두리 132px = 66단위, 그림이 칸 밖으로 LedFrameMargin만큼 넘친다(빛 번짐 자리).
+        const string LedFramePath = Dir + "derived/led_tile_frame.png";
+        const float LedFrameMargin = 18f, LedFramePx = 2f, LedFrameBorderPx = 132f;
+
         // 아바타 목록. 첫 칸이 기본 선택. 분류는 탭 필터용(여성/남성 중 하나)이라 필요하면 여기서만 고치면 된다.
         struct AvatarEntry { public string file; public AvatarTile.Category cat; }
         static readonly AvatarEntry[] Avatars =
@@ -60,8 +65,9 @@ namespace Artti.Editor
             new AvatarEntry { file = "26", cat = AvatarTile.Category.Female },   // 헤드폰
         };
 
-        static readonly Color PanelFill   = new Color(0.05f, 0.08f, 0.20f, 0.86f);
-        static readonly Color PanelLine   = new Color(0.35f, 0.55f, 1.00f, 0.55f);
+        // 변경점: 창이 너무 짙어(0.86) 배경이 더 비치게 낮췄다. 창 테두리는 약한 LED(카드 테두리보다 옅게).
+        static readonly Color PanelFill   = new Color(0.05f, 0.08f, 0.20f, 0.62f);
+        static readonly Color PanelGlowTint = new Color(0.80f, 0.88f, 1.00f, 0.55f);
         static readonly Color TileFill    = new Color(0.13f, 0.18f, 0.36f, 0.92f);
         internal static readonly Color Accent = new Color(0.50f, 0.72f, 1.00f, 1.00f);
         static readonly Color TextWhite   = new Color(0.96f, 0.97f, 1.00f, 1.00f);
@@ -251,12 +257,6 @@ namespace Artti.Editor
             var hit = tileRt.gameObject.AddComponent<Image>();
             hit.color = new Color(1f, 1f, 1f, 0f);
 
-            var border = ChildRect("SelectedBorder", tileRt);
-            border.anchorMin = Vector2.zero; border.anchorMax = Vector2.one;
-            border.offsetMin = new Vector2(-5f, -5f); border.offsetMax = new Vector2(5f, 5f);
-            var bImg = border.gameObject.AddComponent<Image>();
-            bImg.sprite = Rounded(); bImg.type = Image.Type.Sliced; bImg.color = Accent; bImg.raycastTarget = false;
-
             var bgRt = ChildRect("Bg", tileRt);
             StretchFull(bgRt);
             var bgImg = bgRt.gameObject.AddComponent<Image>();
@@ -268,6 +268,10 @@ namespace Artti.Editor
             av.offsetMin = new Vector2(8f, 0f); av.offsetMax = new Vector2(-8f, -8f);
             var avImg = av.gameObject.AddComponent<Image>();
             avImg.sprite = sprite; avImg.preserveAspect = true; avImg.raycastTarget = false;
+
+            // 변경점: 선택 테두리 = LED 테두리, 칸 맨 위에 얹는다(안쪽 빛이 칸 가장자리 위로 살짝 번짐)
+            var border = ChildRect("SelectedBorder", tileRt);
+            ApplyLedFrame(border);
 
             var btn = tileRt.gameObject.AddComponent<Button>();
             btn.targetGraphic = hit;
@@ -281,6 +285,136 @@ namespace Artti.Editor
             tile.categories = a.cat;
             tile.sprite = sprite;
             border.gameObject.SetActive(false);
+        }
+
+        // 선택 테두리를 LED 테두리로: 칸보다 LedFrameMargin만큼 크게, 9-slice(가운데 비움), 칸의 맨 위 자식.
+        static void ApplyLedFrame(RectTransform border)
+        {
+            border.anchorMin = Vector2.zero;
+            border.anchorMax = Vector2.one;
+            border.offsetMin = new Vector2(-LedFrameMargin, -LedFrameMargin);
+            border.offsetMax = new Vector2(LedFrameMargin, LedFrameMargin);
+            border.SetAsLastSibling();
+            SetupLedImage(border, Color.white);
+        }
+
+        // 대상(target, 둥근 사각형) 바로 뒤 형제로 LED 테두리(frame)를 얹는다. 그림은 대상보다 LedFrameMargin만큼 바깥으로 넘친다.
+        // tint로 세기를 줄일 수 있다(흰색 = 그대로). 큰 카드/창 테두리용. 대상 모서리 반지름이 44(RoundedRect 1:1)여야 모양이 맞는다.
+        static void ApplyLedFrameAround(RectTransform frame, RectTransform target, Color tint)
+        {
+            frame.anchorMin = target.anchorMin;
+            frame.anchorMax = target.anchorMax;
+            frame.pivot = target.pivot;
+            var grow = new Vector2(LedFrameMargin * 2f, LedFrameMargin * 2f);
+            frame.sizeDelta = target.sizeDelta + grow;
+            frame.anchoredPosition = target.anchoredPosition + Vector2.Scale(target.pivot - new Vector2(0.5f, 0.5f), grow);
+            frame.localRotation = target.localRotation;
+            frame.localScale = target.localScale;
+            SetupLedImage(frame, tint);
+            if (frame.GetSiblingIndex() < target.GetSiblingIndex()) target.SetSiblingIndex(frame.GetSiblingIndex());
+            else frame.SetSiblingIndex(target.GetSiblingIndex() + 1);
+        }
+
+        static void SetupLedImage(RectTransform frame, Color tint)
+        {
+            if (!frame.TryGetComponent<Image>(out var img)) img = frame.gameObject.AddComponent<Image>();
+            img.sprite = LoadLedFrame();
+            img.type = Image.Type.Sliced;
+            img.fillCenter = false;
+            img.pixelsPerUnitMultiplier = LedFramePx;
+            img.color = tint;
+            img.raycastTarget = false;
+        }
+
+        static Sprite LoadLedFrame()
+        {
+            var sprite = LoadSprite(LedFramePath, 512);
+            if (AssetImporter.GetAtPath(LedFramePath) is TextureImporter ti)
+            {
+                var b = new Vector4(LedFrameBorderPx, LedFrameBorderPx, LedFrameBorderPx, LedFrameBorderPx);
+                var settings = new TextureImporterSettings();
+                ti.ReadTextureSettings(settings);
+                if (ti.spriteBorder != b || settings.spriteMeshType != SpriteMeshType.FullRect)
+                {
+                    // spriteBorder도 settings에 들어 있어 settings로 같이 넣는다(따로 넣으면 SetTextureSettings가 덮어씀)
+                    settings.spriteBorder = b;
+                    settings.spriteMeshType = SpriteMeshType.FullRect;
+                    ti.SetTextureSettings(settings);
+                    ti.SaveAndReimport();
+                    sprite = AssetDatabase.LoadAssetAtPath<Sprite>(LedFramePath);
+                }
+            }
+            return sprite;
+        }
+
+        // 손배치가 있는 ProfileCreateScene의 아바타 칸 선택 테두리만 LED 테두리로 바꾼다. 칸 자리/크기는 그대로.
+        [MenuItem("Artti/Fix/ProfileCreate - Avatar Tile LED Border (keep hand placement)")]
+        public static void ApplyLedFrameMenu()
+        {
+            if (EditorApplication.isPlaying) { Debug.LogWarning("[ProfileAvatarStepBuilder] Play 모드에서는 실행하지 않는다."); return; }
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+            if (scene.path != ScenePaths.ProfileCreate)
+            {
+                if (!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                scene = SceneBuilderUtils.OpenScene(ScenePaths.ProfileCreate);
+            }
+
+            int count = 0;
+            foreach (var root in scene.GetRootGameObjects())
+                foreach (var tile in root.GetComponentsInChildren<AvatarTile>(true))
+                {
+                    if (!(tile.transform.Find("SelectedBorder") is RectTransform border)) continue;
+                    ApplyLedFrame(border);
+                    count++;
+                }
+            if (count == 0) { Debug.LogError("[ProfileAvatarStepBuilder] AvatarTile/SelectedBorder 없음"); return; }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+            SceneBuilderUtils.SaveActiveScene();
+            Debug.Log($"[ProfileAvatarStepBuilder] 아바타 칸 LED 테두리 적용 ({count}칸) - 손배치 유지");
+        }
+
+        // 손배치가 있는 ProfileCreateScene 1~3단계에: 창을 덜 짙게, 창 테두리는 약한 LED, 1·2단계 큰 카드 테두리는 LED로.
+        // 자리/크기(손배치)는 그대로 두고 그림과 색, 테두리 크기만 바꾼다. 예전 카드 빛 번짐(PreviewGlow)은 지운다.
+        [MenuItem("Artti/Fix/ProfileCreate - Glow Borders + Lighter Panel (keep hand placement)")]
+        public static void ApplyGlowBordersMenu()
+        {
+            if (EditorApplication.isPlaying) { Debug.LogWarning("[ProfileAvatarStepBuilder] Play 모드에서는 실행하지 않는다."); return; }
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+            if (scene.path != ScenePaths.ProfileCreate)
+            {
+                if (!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                scene = SceneBuilderUtils.OpenScene(ScenePaths.ProfileCreate);
+            }
+
+            var stages = new System.Collections.Generic.List<RectTransform>();
+            foreach (var root in scene.GetRootGameObjects())
+                foreach (var t in root.GetComponentsInChildren<RectTransform>(true))
+                    if (t.name == "Stage" && t.parent != null &&
+                        (t.parent.name == "AvatarStep" || t.parent.name == "ProfileStep" || t.parent.name == "DoneStep"))
+                        stages.Add(t);
+            if (stages.Count == 0) { Debug.LogError("[ProfileAvatarStepBuilder] 단계 Stage 없음"); return; }
+
+            int panels = 0, cards = 0;
+            foreach (var stage in stages)
+            {
+                if (stage.Find("Panel") is RectTransform panel)
+                {
+                    if (panel.TryGetComponent<Image>(out var fill)) fill.color = PanelFill;
+                    if (stage.Find("PanelLine") is RectTransform line) { ApplyLedFrameAround(line, panel, PanelGlowTint); panels++; }
+                }
+                if (stage.Find("PreviewCard") is RectTransform card && stage.Find("PreviewLine") is RectTransform cardLine)
+                {
+                    var glow = stage.Find("PreviewGlow");
+                    if (glow != null) Object.DestroyImmediate(glow.gameObject);
+                    ApplyLedFrameAround(cardLine, card, Color.white);
+                    cards++;
+                }
+            }
+
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+            SceneBuilderUtils.SaveActiveScene();
+            Debug.Log($"[ProfileAvatarStepBuilder] 창 {panels}개(덜 짙게 + 약한 LED 테두리), 큰 카드 {cards}개 LED 테두리 적용 - 손배치 유지");
         }
 
         // 아바타 id는 스프라이트 이름(파일명)이다. 메인/레포트 등이 AvatarLibrary.GetById로 찾을 수 있게 넣어 둔다.
@@ -356,8 +490,8 @@ namespace Artti.Editor
             stage.anchorMin = stage.anchorMax = stage.pivot = new Vector2(0.5f, 0.5f);
             stage.sizeDelta = new Vector2(1920f, 1080f);
 
-            RoundedBox("PanelLine", stage, new Vector2(960f, -540f), new Vector2(1846f, 1038f), PanelLine);
-            RoundedBox("Panel", stage, new Vector2(960f, -540f), new Vector2(1840f, 1032f), PanelFill);
+            var panel = RoundedBox("Panel", stage, new Vector2(960f, -540f), new Vector2(1840f, 1032f), PanelFill);
+            ApplyLedFrameAround(ChildRect("PanelLine", stage), panel, PanelGlowTint);   // 변경점: 창 테두리 = 약한 LED
 
             var logo = AddText(stage, "Logo", "ARTTI", font, 46, TextWhite, true, new Vector2(100f, -52f), new Vector2(300f, 64f));
             logo.characterSpacing = 4f;
@@ -383,10 +517,10 @@ namespace Artti.Editor
         // 카드의 둥근 모양으로 잘라(Mask) 좌우 어깨가 카드 밖으로 나가지 않게 한다. 아래에 인용문 띠.
         internal static Image AvatarCard(Transform parent, Vector2 center, Vector2 size, string quote, TMP_FontAsset font)
         {
-            RoundedBox("PreviewGlow", parent, center, size + new Vector2(16f, 16f), new Color(0.35f, 0.55f, 1f, 0.35f));
-            RoundedBox("PreviewLine", parent, center, size + new Vector2(8f, 8f), Accent);
             var card = RoundedBox("PreviewCard", parent, center, size, new Color(0.12f, 0.25f, 0.62f, 0.95f));
             card.gameObject.AddComponent<Mask>().showMaskGraphic = true;
+            // 변경점: 카드 테두리 = LED 테두리(아바타 칸 선택 테두리와 같은 그림). 카드는 Mask라 형제로 카드 바로 뒤에 얹는다.
+            ApplyLedFrameAround(ChildRect("PreviewLine", parent), card, Color.white);
 
             float side = size.y * 0.9f;
             var avatarRt = ChildRect("Avatar", card);
