@@ -13,7 +13,7 @@ namespace Artti.Editor
     //   2 배경(야경 로비) 1672x941
     //   3 좌측 타이틀(ARTTI / 내 손 안의 AAC / 부제) 1086x1448
     //   4 프로필 보기  5 훈련 시작하기  6 도움 시작하기  (2172x724)
-    //   7 종료하기  8 리포트보기  9 설정  (1774x887)
+    //   7 종료하기  8 리포트보기  (1774x887). 9 설정은 프로필 설정과 겹쳐 쓰지 않는다.
     //
     // 배치 원칙
     //  - 1번 합본이 레이아웃의 기준이다. 패널/캐릭터가 한 장이라 개별로 옮길 수 없으므로
@@ -35,7 +35,6 @@ namespace Artti.Editor
         const string HelpPath    = Dir + "6.png";
         const string QuitPath    = Dir + "7.png";
         const string ReportPath  = Dir + "8.png";
-        const string SettingPath = Dir + "9.png";
 
         // 이미지 속 불투명 본체 영역 (x0, y0, x1, y1) — 원본 대비 비율, y는 위에서부터.
         // 4·5·3번은 알파 실측(>200), 6~9번은 화면 판독값이라 몇 px 오차가 있을 수 있다.
@@ -44,7 +43,6 @@ namespace Artti.Editor
         static readonly Rect BodyHelp    = Frac(148, 152, 1852, 497, 2000, 667);
         static readonly Rect BodyQuit    = Frac(342, 270, 1432, 605, 1774, 887);
         static readonly Rect BodyReport  = Frac(195, 237, 1580, 633, 1774, 887);
-        static readonly Rect BodySetting = Frac(333, 257, 1440, 620, 1774, 887);
         static readonly Rect BodyTitle   = Frac(89, 207, 997, 1283, 1086, 1448);   // 글자 영역
         const float PillAspect = 2172f / 724f;   // 4~6번 원본 비율
         const float TopAspect  = 1774f / 887f;   // 7~9번 원본 비율
@@ -152,23 +150,22 @@ namespace Artti.Editor
             AddText(arNote, "Note", "언제든\n도와드릴게요 :)", font, 26, TextNote, false, new Vector2(-137.8f, 51.7f), new Vector2(275.6f, 103.3f),
                 TextAlignmentOptions.Center);
 
-            // ===== 우상단 버튼: 종료하기 / 리포트보기 / 설정 =====
+            // ===== 우상단 버튼: 종료하기 / 리포트보기 =====
             // Stage가 아니라 캔버스(화면) 우상단에 붙인다. 20:9 기기에서도 화면 모서리에 붙고, 16:9 밖으로 나가지 않는다.
             // 손배치 값: 본체 높이 64에 배율 1.168, 버튼 사이 약 21. 가로 위치는 손배치 그대로(Stage 오른쪽 끝 기준으로 환산).
             // 세로는 손배치 때 화면이 16:9보다 길어 Stage 위(+87)에 놓였는데, 16:9 폰에서는 화면 밖이 되므로
             // 화면 윗변에서 TopMargin만큼 내린 자리로 고정한다.
+            // 변경점: 설정 버튼은 프로필 설정과 겹쳐 뺐다. 리포트보기 오른쪽 끝이 설정 오른쪽 끝(화면 끝에서 35.9)에
+            // 오도록 두 버튼을 설정 폭 + 간격(249.1)만큼 오른쪽으로 옮겼다.
             var top = ChildRect("TopRightMenu", canvasGo.transform);
             StretchFull(top);
-            const float topH = 64f, topScale = 1.168f, TopMargin = 24f;
+            const float topH = 64f, topScale = 1.168f, TopMargin = 24f, TopShift = 249.1f;
             float topY = -(TopMargin + topH * topScale / 2f);
-            float wSet = topH * BodySetting.width * TopAspect / BodySetting.height;
             float wRep = topH * BodyReport.width * TopAspect / BodyReport.height;
             float wQuit = topH * BodyQuit.width * TopAspect / BodyQuit.height;
-            var quitBtn = MakeImageButton("QuitBtn", top, QuitPath, BodyQuit, TopAspect, new Vector2(1231.0f - 1920f, topY), wQuit, anchorRight: true);
-            var reportBtn = MakeImageButton("ReportBtn", top, ReportPath, BodyReport, TopAspect, new Vector2(1504.3f - 1920f, topY), wRep, anchorRight: true);
-            // 설정씬 미구현. 모양만 있고 클릭 동작은 없다.
-            var setBtn = MakeImageButton("SettingsBtn", top, SettingPath, BodySetting, TopAspect, new Vector2(1770.1f - 1920f, topY), wSet, anchorRight: true);
-            foreach (var b in new[] { quitBtn, reportBtn, setBtn }) b.transform.localScale = Vector3.one * topScale;
+            var quitBtn = MakeImageButton("QuitBtn", top, QuitPath, BodyQuit, TopAspect, new Vector2(1231.0f - 1920f + TopShift, topY), wQuit, anchorRight: true);
+            var reportBtn = MakeImageButton("ReportBtn", top, ReportPath, BodyReport, TopAspect, new Vector2(1504.3f - 1920f + TopShift, topY), wRep, anchorRight: true);
+            foreach (var b in new[] { quitBtn, reportBtn }) b.transform.localScale = Vector3.one * topScale;
 
             var menu = canvasGo.AddComponent<HomeMenu>();
             WireClick(quitBtn, menu, nameof(HomeMenu.Quit));
