@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using System.Globalization;
 using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
@@ -35,6 +36,9 @@ public class OcrTestController : MonoBehaviour
     [Header("카카오 API 검색 컴포넌트")]
     [SerializeField] private KakaoLocalSearcher kakaoSearcher;
 
+    [Header("ResultPanel - 위치 지도")]
+    [SerializeField] private NaverStaticMapController naverStaticMapController;
+
     [Header("HelpDetailPanel - 최신 메뉴")]
     [SerializeField] private LatestMenuController latestMenuController;
 
@@ -51,6 +55,7 @@ public class OcrTestController : MonoBehaviour
     private readonly KeywordDictionary _dict = new KeywordDictionary();
     private bool _isProcessing = false;
     private Texture2D _currentTexture;
+    private Coroutine _resultMapRoutine;
 
     private void Awake()
     {
@@ -216,6 +221,9 @@ public class OcrTestController : MonoBehaviour
         SetStatus("위치 기반 검색 중...");
 
         KeywordMatch finalMatch = null;
+        KeywordMatch ocrMatch = _dict.Match(ocrText);
+        string recognizedBrand = KakaoLocalSearcher.IsMegaCoffeeOcr(ocrText, ocrMatch?.MatchedKeyword)
+            ? "메가MGC커피" : null;
 
         // ============================================================
         // Plan A: 카카오 좌표 기반 검색
@@ -237,7 +245,8 @@ public class OcrTestController : MonoBehaviour
                 {
                     kakaoFinished = true;
                     Debug.Log("[OcrTest] Plan A 실패. 로컬 사전으로 넘어갑니다.");
-                }
+                },
+                recognizedBrand: recognizedBrand
             ));
 
             yield return new WaitUntil(() => kakaoFinished);
@@ -250,7 +259,7 @@ public class OcrTestController : MonoBehaviour
         {
             Debug.Log("[OcrTest] Plan B: 로컬 사전 검색.");
             SetStatus("텍스트 기반 검색 중...");
-            finalMatch = _dict.Match(ocrText);
+            finalMatch = ocrMatch;
 
             if (finalMatch != null)
                 Debug.Log($"[OcrTest] Plan B 성공! [{finalMatch.Category}] 로컬 사전 매칭.");
@@ -284,6 +293,11 @@ public class OcrTestController : MonoBehaviour
 
     private void ShowHomePanel()
     {
+        if (_resultMapRoutine != null)
+        {
+            StopCoroutine(_resultMapRoutine);
+            _resultMapRoutine = null;
+        }
         if (homePanel != null) homePanel.SetActive(true);
         if (resultPanel != null) resultPanel.SetActive(false);
     }
@@ -311,7 +325,9 @@ public class OcrTestController : MonoBehaviour
         LoadCapturedImage(imagePath);
 
         if (categoryText != null)
-            categoryText.text = match.Category;
+            categoryText.text = LatestMenuController.IsMegaCoffee(finalPlaceName)
+                ? "메가MGC커피"
+                : match.Category;
 
         if (categoryBadgeImage != null && _categoryColors.TryGetValue(match.Category, out Color color))
             categoryBadgeImage.color = color;
@@ -337,6 +353,74 @@ public class OcrTestController : MonoBehaviour
 
         if (homePanel != null) homePanel.SetActive(false);
         if (resultPanel != null) resultPanel.SetActive(true);
+
+        KakaoDocument selectedPlace = kakaoSearcher != null ? kakaoSearcher.SelectedPlace : null;
+        Debug.Log($"[ResultMap] GPS IsReady = {GPSManager.IsReady}");
+        Debug.Log($"[ResultMap] User Latitude = {GPSManager.Latitude}");
+        Debug.Log($"[ResultMap] User Longitude = {GPSManager.Longitude}");
+        Debug.Log($"[ResultMap] SelectedPlace = {selectedPlace?.place_name ?? "(없음)"}");
+        Debug.Log($"[ResultMap] Store Longitude(x) = {selectedPlace?.x ?? "(없음)"}");
+        Debug.Log($"[ResultMap] Store Latitude(y) = {selectedPlace?.y ?? "(없음)"}");
+
+        if (_resultMapRoutine != null)
+        {
+            StopCoroutine(_resultMapRoutine);
+            _resultMapRoutine = null;
+        }
+        if (naverStaticMapController != null)
+            _resultMapRoutine = StartCoroutine(UpdateResultMapWhenReady(selectedPlace));
+        else
+            Debug.LogWarning("[ResultMap] NaverStaticMapController 참조가 없습니다.");
+    }
+
+    private IEnumerator UpdateResultMapWhenReady(KakaoDocument selectedPlace)
+    {
+        if (!GPSManager.IsReady ||
+            !NaverStaticMapController.IsCoordinateValid(GPSManager.Latitude, GPSManager.Longitude))
+        {
+            naverStaticMapController.ShowLocationStatus("위치 확인 중");
+            float deadline = Time.realtimeSinceStartup + 8f;
+            while (Time.realtimeSinceStartup < deadline &&
+                   (!GPSManager.IsReady ||
+                    !NaverStaticMapController.IsCoordinateValid(GPSManager.Latitude, GPSManager.Longitude)))
+                yield return new WaitForSecondsRealtime(0.25f);
+        }
+
+        if (!GPSManager.IsReady ||
+            !NaverStaticMapController.IsCoordinateValid(GPSManager.Latitude, GPSManager.Longitude))
+        {
+            naverStaticMapController.ShowLocationStatus("위치 확인 실패");
+            Debug.LogWarning("[ResultMap] GPS 준비를 8초 기다렸지만 유효한 좌표가 없습니다.");
+            yield break;
+        }
+
+        GPSManager.UpdateCoords();
+        double userLatitude = GPSManager.Latitude;
+        double userLongitude = GPSManager.Longitude;
+        if (!NaverStaticMapController.IsCoordinateValid(userLatitude, userLongitude))
+        {
+            naverStaticMapController.ShowLocationStatus("위치 확인 실패");
+            Debug.LogWarning("[ResultMap] 갱신된 GPS 좌표가 유효하지 않습니다.");
+            yield break;
+        }
+
+        naverStaticMapController.ShowPlaceholder();
+        naverStaticMapController.ShowUserCoordinates(userLatitude, userLongitude);
+
+        if (selectedPlace == null ||
+            !double.TryParse(selectedPlace.x, NumberStyles.Float, CultureInfo.InvariantCulture, out double storeLongitude) ||
+            !double.TryParse(selectedPlace.y, NumberStyles.Float, CultureInfo.InvariantCulture, out double storeLatitude) ||
+            !NaverStaticMapController.IsCoordinateValid(storeLatitude, storeLongitude))
+        {
+            Debug.LogWarning("[ResultMap] Kakao에서 선택된 매장 좌표가 없어 지도 요청을 건너뜁니다.");
+            yield break;
+        }
+
+        Debug.Log($"[NaverMap] 사용자 위치: {userLatitude:F6}, {userLongitude:F6}");
+        Debug.Log($"[NaverMap] 매장 위치: {storeLatitude:F6}, {storeLongitude:F6}");
+        Debug.Log($"[NaverMap] 매장명: {selectedPlace.place_name}");
+        naverStaticMapController.UpdateMap(userLatitude, userLongitude,
+                                            storeLatitude, storeLongitude, selectedPlace.place_name);
     }
 
     // 카테고리 매칭에 실패했을 때도 촬영 사진과 인식 결과를 보여주며 결과 화면으로 전환
@@ -369,6 +453,12 @@ public class OcrTestController : MonoBehaviour
 
         if (homePanel != null) homePanel.SetActive(false);
         if (resultPanel != null) resultPanel.SetActive(true);
+        if (_resultMapRoutine != null)
+        {
+            StopCoroutine(_resultMapRoutine);
+            _resultMapRoutine = null;
+        }
+        if (naverStaticMapController != null) naverStaticMapController.ShowPlaceholder();
     }
 
     private void LoadCapturedImage(string imagePath)
