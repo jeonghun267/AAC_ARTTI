@@ -13,6 +13,7 @@ namespace Artti.Editor
         public const string Splash             = "Assets/_Project/Scenes/SplashScene.unity";
         public const string ProfileCreate      = "Assets/_Project/Scenes/ProfileCreateScene.unity";
         public const string ProfileSelect      = "Assets/_Project/Scenes/ProfileSelectScene.unity";
+        public const string ProfileSettings    = "Assets/_Project/Scenes/ProfileSettingsScene.unity"; // 변경점: 프로필 설정 화면
         public const string Main               = "Assets/_Project/Scenes/MainScene.unity";
         public const string TrainingHub        = "Assets/_Project/Scenes/TrainingHubScene.unity";
         public const string TrainingConvenience = "Assets/_Project/Scenes/TrainingConvenienceScene.unity";

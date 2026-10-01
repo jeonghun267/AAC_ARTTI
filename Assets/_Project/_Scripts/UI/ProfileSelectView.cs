@@ -35,6 +35,7 @@ namespace Artti.UI
         [SerializeField] private Button deleteCloseButton;   // X
 
         [SerializeField] private string createScene = "ProfileCreateScene";
+        [SerializeField] private string settingsScene = "ProfileSettingsScene";   // 변경점: 프로필 설정 화면
         [SerializeField] private string backScene = "MainScene";
         [SerializeField] private string proceedScene = "MainScene";
 
@@ -187,12 +188,13 @@ namespace Artti.UI
             if (!string.IsNullOrEmpty(proceedScene)) SceneFader.Load(proceedScene);   // 변경점: 페이드 전환
         }
 
-        // 프로필 설정: 고른 사용자를 수정 모드로 연다. 사용자가 없으면 새로 만들기.
+        // 프로필 설정: 고른 사용자의 프로필 설정 화면으로. 사용자가 없으면 새로 만들기.
+        // 변경점: 바로 수정 화면(ProfileCreateScene)으로 가던 것을 프로필 설정 화면(ProfileSettingsScene)으로 바꿈
         private void OnSettings()
         {
             if (_selectedId == null) { OpenCreate(); return; }
-            ProfileCreateView.EditTargetId = _selectedId;
-            SceneFader.Load(createScene);
+            ProfileSettingsView.TargetId = _selectedId;
+            SceneFader.Load(settingsScene);
         }
 
         private void OpenCreate()

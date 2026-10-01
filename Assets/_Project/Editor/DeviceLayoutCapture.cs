@@ -18,7 +18,7 @@ namespace Artti.Editor
 
         static readonly string[] Scenes =
         {
-            ScenePaths.Splash, ScenePaths.ProfileSelect, ScenePaths.ProfileCreate, ScenePaths.Main,
+            ScenePaths.Splash, ScenePaths.ProfileSelect, ScenePaths.ProfileSettings, ScenePaths.ProfileCreate, ScenePaths.Main,
             ScenePaths.TrainingHub, ScenePaths.Report, ScenePaths.RecordDetail, ScenePaths.TrainingConvenience,
         };
 

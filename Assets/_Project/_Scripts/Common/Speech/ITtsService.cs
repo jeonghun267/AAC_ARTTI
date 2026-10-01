@@ -20,5 +20,8 @@ namespace Artti.Common.Speech
 
         // Optional voice/language hint. Implementations may ignore.
         void SetVoice(string voiceName);
+
+        // Speaking speed multiplier (1.0 = normal). Implementations may ignore.
+        void SetSpeakingRate(float rate);
     }
 }

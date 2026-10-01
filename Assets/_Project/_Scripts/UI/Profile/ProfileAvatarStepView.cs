@@ -76,6 +76,8 @@ namespace Artti.UI
             var editId = ProfileCreateView.EditTargetId;
             if (!string.IsNullOrEmpty(editId))
             {
+                // 변경점: 프로필 설정 화면에서 온 수정이면 닫기(X)도 그 화면으로
+                if (!string.IsNullOrEmpty(ProfileCreateView.ReturnScene)) closeScene = ProfileCreateView.ReturnScene;
                 var profiles = AppBootstrap.Instance?.ProfileManager?.Profiles;
                 var editing = profiles != null ? profiles.Find(p => p.id == editId) : null;
                 if (editing != null)

@@ -10,5 +10,6 @@ namespace Artti.Common.Speech
         public UniTask SpeakAsync(string text, CancellationToken ct = default) => UniTask.CompletedTask;
         public void StopAll() { }
         public void SetVoice(string voiceName) { }
+        public void SetSpeakingRate(float rate) { }
     }
 }

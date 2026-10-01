@@ -18,6 +18,7 @@ namespace Artti.Common.Speech
         //   훈련 씬은 점원 음성이 끝나길 기다렸다가 마이크를 여므로 걸린 요청이 듣기를 막는다.
         private const int RequestTimeoutSeconds = 10;
         private string _voiceName = "ko-KR-Standard-A"; // SetVoice로 교체 (훈련 모드별 점원 목소리)
+        private float _speakingRate = 1f;                // SetSpeakingRate로 교체 (프로필 말 빠르기)
 
         public CloudTtsService(string apiKey, AudioSource audioSource)
         {
@@ -35,7 +36,7 @@ namespace Artti.Common.Speech
             {
                 input = new TtsInput { text = text },
                 voice = new TtsVoice { languageCode = "ko-KR", name = _voiceName },
-                audioConfig = new TtsAudioConfig { audioEncoding = "LINEAR16", sampleRateHertz = SampleRate }
+                audioConfig = new TtsAudioConfig { audioEncoding = "LINEAR16", sampleRateHertz = SampleRate, speakingRate = _speakingRate }
             };
             var jsonBody = JsonUtility.ToJson(req);
 
@@ -89,6 +90,11 @@ namespace Artti.Common.Speech
         {
             if (!string.IsNullOrWhiteSpace(voiceName)) _voiceName = voiceName;
         }
+        // 변경점: Cloud TTS speakingRate 허용 범위는 0.25~4.0 (1.0 = 기본 속도). 범위 밖이면 요청이 400으로 실패한다.
+        public void SetSpeakingRate(float rate)
+        {
+            _speakingRate = Mathf.Clamp(rate, 0.25f, 4f);
+        }
 
         static AudioClip PcmToAudioClip(byte[] pcm16le, int sampleRate)
         {
@@ -113,7 +119,7 @@ namespace Artti.Common.Speech
         [Serializable] class TtsRequest    { public TtsInput input; public TtsVoice voice; public TtsAudioConfig audioConfig; }
         [Serializable] class TtsInput      { public string text; }
         [Serializable] class TtsVoice      { public string languageCode; public string name; }
-        [Serializable] class TtsAudioConfig{ public string audioEncoding; public int sampleRateHertz; }
+        [Serializable] class TtsAudioConfig{ public string audioEncoding; public int sampleRateHertz; public float speakingRate; }
         [Serializable] class TtsResponse   { public string audioContent; }
     }
 }
