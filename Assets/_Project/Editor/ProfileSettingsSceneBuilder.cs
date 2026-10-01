@@ -9,11 +9,14 @@ using static Artti.Editor.ProfileAvatarStepBuilder;
 namespace Artti.Editor
 {
     // 프로필 설정 화면 (다크 네온, 시안 완성본). 사용자 선택 화면의 "프로필 설정"에서 들어온다.
-    // 좌표는 시안(배경 62와 같은 1448x1086 px, 위에서부터 y)으로 적고 Stage 단위(x K = 1920/1448)로 바꾼다.
-    // Stage = 배경 전체(1920x1440)이고 배경을 따라 같이 늘어난다(CoverImageFitter follower). 배경이 4:3이라 넓은 화면(16:9, 20:9 폰)은
-    // 위아래가 많이 잘려 패널이 화면 밖으로 나가므로, 그때만 Stage를 같은 비율로 줄여 패널 전체가 보이게 한다(SafeRect).
+    // 변경점(2026-10-01): 배경 62를 사용자 선택 배경(48)과 같은 그림(가운데 유리판만 없음, 1672x941)으로 바꿨다.
+    //   배경 맞춤(CoverImageFitter)과 Stage(1920x1080)를 사용자 선택 화면과 똑같이 써서, 두 화면을 오갈 때 배경과 왼쪽 메뉴가 움직이지 않는다.
+    //   왼쪽 메뉴는 사용자 선택 화면 손배치 자리(Stage px) 그대로, 패널은 점원 오른쪽에 둔다.
+    // 패널 안 좌표는 시안 완성본(1448x1086 px, 위에서부터 y)으로 적고 Stage 단위로 바꾼다:
+    //   Stage = (시안 - MockOrigin) x K. 시안 패널 왼쪽 위(522, 84)가 Stage (PanelLeft, PanelTop)에 온다.
+    // 20:9 폰은 배경 위아래가 잘려 패널이 화면 밖으로 나가므로, 그때만 Stage를 같은 비율로 줄여 패널 전체가 보이게 한다(SafeRect).
     // 에셋: Art/UI/Home/profile_T/
-    //   62 배경(점원 / ARTTI 로고 / 좌하단 문구 / 오른쪽 안내 패널이 그려져 있음)
+    //   62 배경(점원 / ARTTI 로고 / 좌하단 문구 / 오른쪽 안내 패널이 그려져 있음, 48에서 가운데 유리판을 뺀 그림)
     //   70 패널(제목 "프로필 설정" + 부제가 그려져 있음)   71~74 내 프로필 행(아이콘 + 이름이 그려져 있음)   75 꺾쇠
     //   76/77 스위치 손잡이(끔/켬)   78/79 스위치 트랙(끔/켬. 79는 저장 버튼에도 씀)   80~85 느리게/보통/빠르게(보통, 선택)
     //   86/87 미리듣기(평소, 읽는 중)   88~91 남자/여자 선택지(보통, 선택)
@@ -24,15 +27,22 @@ namespace Artti.Editor
     public static class ProfileSettingsSceneBuilder
     {
         static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
-        const float BgW = 1448f, BgH = 1086f;
-        const float K = 1920f / BgW;                                   // 시안 px -> Stage 단위
-        static readonly Vector2 StageSize = new Vector2(1920f, 1920f * BgH / BgW);
+        const float BgW = 1672f, BgH = 941f;                            // 62 = 48과 같은 크기
+        static readonly Vector2 StageSize = new Vector2(1920f, 1080f);  // 사용자 선택 화면과 같은 Stage
+        // 시안 px -> Stage 단위. 패널(시안 높이 878)이 Stage 57~1023에 들어가는 배율(태블릿에서 예전과 같은 글자 크기).
+        const float K = 1.10f;
+        const float PanelLeft = 720f, PanelTop = 57f;                   // 시안 패널 왼쪽 위(522, 84)가 오는 Stage 자리. 점원 어깨 오른쪽
+        static readonly Vector2 MockOrigin = new Vector2(522f - PanelLeft / K, 84f - PanelTop / K);   // Stage (0,0)에 해당하는 시안 좌표
         const string Dir = "Assets/_Project/Art/UI/Home/profile_T/";
         const string Der = Dir + "derived/";
-        const string NavDir = "Assets/_Project/Art/UI/Profile_C/";     // 사용자 선택 화면의 메뉴 원본(크기/본체 기준)
 
-        // 화면에 꼭 보여야 하는 영역(시안 px): 왼쪽 메뉴 ~ 패널 + 저장 버튼 빛
-        static readonly Rect SafeMock = Rect.MinMaxRect(25f, 75f, 1210f, 970f);
+        // 왼쪽 메뉴: 사용자 선택 화면(ProfileSelectScene) 손배치 자리 그대로 (Stage px, 본체 가운데 / 폭)
+        static readonly Vector2 NavUserStage = new Vector2(186f, 272f);
+        static readonly Vector2 NavSettingsStage = new Vector2(186f, 377f);
+        const float NavWidthStage = 244f;
+
+        // 화면에 꼭 보여야 하는 영역(Stage px, 위에서부터 y): 왼쪽 메뉴 ~ 패널 + 저장 버튼 빛
+        static readonly Rect SafeStage = Rect.MinMaxRect(50f, 40f, 1490f, 1040f);
 
         // 이미지 원본 크기(px)
         static readonly Vector2 Size2172 = new Vector2(2172f, 724f);
@@ -79,7 +89,6 @@ namespace Artti.Editor
         };
 
         // ===== 배치 (시안 px) =====
-        const float NavCenterX = 128.5f, NavUserY = 218.5f, NavSettingsY = 305f, NavWidth = 196f;
         static readonly Rect PanelRect = Rect.MinMaxRect(522, 84, 1199, 962);
         static readonly Rect SecProfileRect = Rect.MinMaxRect(561, 239, 1172, 573);
         static readonly Rect SecTrainingRect = Rect.MinMaxRect(561, 590, 1172, 860);
@@ -96,6 +105,12 @@ namespace Artti.Editor
         const float ChipX = 958f, ChipH = 34f, ChipLabelOffset = 28.7f, ChipLabelSize = 14.5f;   // 라벨 = 칩 본체 왼쪽에서 28.7(지운 '여자' 자리)
         const float PreviewX = 1081f, PreviewH = 40f;
         static readonly Rect SaveRect = Rect.MinMaxRect(689, 882, 1022, 941);
+        // 프로필 삭제: 사용자 선택 화면 카드에 있던 빨간 삭제 칩(Profile_C/54, 1536x1024)을 패널 오른쪽 위, 제목 줄에 둔다.
+        //   누르는 영역은 보이는 칩보다 사방 DeleteHitPad 넓게.
+        const string DeleteChipPath = "Assets/_Project/Art/UI/Profile_C/54.png";
+        static readonly Rect DeleteChipBody = Rect.MinMaxRect(146, 327, 1389, 710);   // 54 알파>250
+        static readonly Vector2 DeleteCenter = new Vector2(1122f, 150f);
+        const float DeleteW = 92f, DeleteHitPad = 8f;
         const float SaveLabelSize = 22f;
         const float OptionH = 32f, OptionGap = 6f, OptionHitW = 110f;
 
@@ -124,27 +139,31 @@ namespace Artti.Editor
             var font = SceneBuilderUtils.GetKoreanFont();
 
             // ===== 배경 (62, 화면 꽉 채움) + Stage (배경을 따라 늘어남, 패널이 잘리면 줄어듦) =====
+            // 사용자 선택 화면(ProfileSelectSceneBuilder.BuildBackground)과 같은 맞춤: 비율 최대 6% 조정, 기준점 위쪽(0.72)
             var bg = ChildRect("Background", canvasGo.transform);
             var bgImg = bg.gameObject.AddComponent<Image>();
             bgImg.sprite = LoadSprite(Dir + "62.png", 2048);
             bgImg.raycastTarget = false;
             var fitter = bg.gameObject.AddComponent<CoverImageFitter>();
-            // 태블릿(16:10)은 위아래가 12% 잘린다. 기준점을 위(0.70)에 두어 위쪽 ARTTI 로고를 남긴다(아래 문구가 조금 잘림).
-            fitter.Setup(BgW / BgH, 1.06f, new Vector2(0.5f, 0.70f));
+            fitter.Setup(BgW / BgH, 1.06f, new Vector2(0.5f, 0.72f));
             var stage = ChildRect("Stage", bg);
             stage.anchorMin = stage.anchorMax = stage.pivot = new Vector2(0.5f, 0.5f);
             stage.anchoredPosition = Vector2.zero;
             stage.sizeDelta = StageSize;
             fitter.SetFollower(stage, StageSize);
-            fitter.SetSafeRect(new Rect(SafeMock.x * K, SafeMock.y * K, SafeMock.width * K, SafeMock.height * K), 16f);
-            var o = Vector2.zero;   // Stage 좌상단 = 시안 (0, 0)
+            fitter.SetSafeRect(SafeStage, 16f);
+            var o = MockOrigin;   // Stage 좌상단에 해당하는 시안 좌표
 
             // ===== 왼쪽 메뉴: 사용자 선택(꺼짐, 누르면 사용자 선택 화면) / 프로필 설정(켜짐 = 지금 화면) =====
+            // 사용자 선택 화면과 같은 자리·폭(그 화면의 51/50과 같은 틀이라 본체 크기도 같다)
+            var navUser = StageToMock(NavUserStage);
+            var navSettings = StageToMock(NavSettingsStage);
+            float navW = NavWidthStage / K;
             var userSelectBtn = ImageButton("UserSelectBtn", stage, o, Der + "nav_user_off.png", new Vector2(1448f, 1086f), NavOffBody,
-                new Vector2(NavCenterX, NavUserY), NavWidth, 2048);
-            float navOnH = NavWidth * NavOnBody.height / NavOnBody.width;
+                navUser, navW, 2048);
+            float navOnH = navW * NavOnBody.height / NavOnBody.width;
             ImageByBody("ProfileSettingsMenu", stage, o, Der + "nav_settings_on.png", new Vector2(1672f, 941f), NavOnBody,
-                new Vector2(NavCenterX, NavSettingsY), navOnH, 2048);
+                navSettings, navOnH, 2048);
 
             // ===== 패널(70) + 섹션 2개 =====
             SlicedByBody("Panel", stage, o, Dir + "70.png", new Vector2(1122f, 1402f), PanelBody,
@@ -249,8 +268,29 @@ namespace Artti.Editor
             var saveLabel = Label("Label", saveVis, sro, "변경사항 저장", font, SaveLabelSize, White, true,
                 SaveRect.xMin, SaveRect.xMax, SaveRect.center.y, TextAlignmentOptions.Center);
 
+            // ===== 프로필 삭제 칩 (패널 오른쪽 위) =====
+            float delH = DeleteW * DeleteChipBody.height / DeleteChipBody.width;
+            var deleteBtn = ButtonBox("DeleteProfileBtn", stage, o,
+                DeleteCenter.x - DeleteW / 2f - DeleteHitPad, DeleteCenter.y - delH / 2f - DeleteHitPad,
+                DeleteCenter.x + DeleteW / 2f + DeleteHitPad, DeleteCenter.y + delH / 2f + DeleteHitPad, out var delVis);
+            ImageByBody("Image", delVis, new Vector2(DeleteCenter.x - DeleteW / 2f - DeleteHitPad, DeleteCenter.y - delH / 2f - DeleteHitPad),
+                DeleteChipPath, new Vector2(1536f, 1024f), DeleteChipBody, DeleteCenter, delH, 2048);
+
             // ===== 목소리 선택 목록 (칩 아래로 열림, 맨 위에 그린다) =====
-            var list = BuildVoiceList(stage, chipW, y2c, out var blocker, out var optionBtns, out var optionNormal, out var optionSelected);
+            var list = BuildVoiceList(stage, o, chipW, y2c, out var blocker, out var optionBtns, out var optionNormal, out var optionSelected);
+
+            // ===== 삭제 확인 팝업 (사용자 선택 화면에 있던 것과 같은 52~55 판, 캔버스 맨 위) =====
+            var deletePopupGo = ProfileSelectSceneBuilder.BuildDeletePopup(canvasGo.transform, font, out var delInput, out var delCover,
+                out var delConfirm, out var delCancel, out var delX);
+            deletePopupGo.transform.SetAsLastSibling();
+            var deletePopup = deletePopupGo.AddComponent<ProfileDeletePopup>();
+            var dso = new SerializedObject(deletePopup);
+            dso.FindProperty("input").objectReferenceValue = delInput;
+            dso.FindProperty("fieldCover").objectReferenceValue = delCover;
+            dso.FindProperty("confirmButton").objectReferenceValue = delConfirm;
+            dso.FindProperty("cancelButton").objectReferenceValue = delCancel;
+            dso.FindProperty("closeButton").objectReferenceValue = delX;
+            dso.ApplyModifiedPropertiesWithoutUndo();
 
             // ===== View 와이어링 =====
             var audio = canvasGo.AddComponent<AudioSource>();
@@ -289,11 +329,14 @@ namespace Artti.Editor
             so2.FindProperty("previewSource").objectReferenceValue = audio;
             so2.FindProperty("saveButton").objectReferenceValue = save;
             so2.FindProperty("saveLabel").objectReferenceValue = saveLabel;
+            so2.FindProperty("deleteButton").objectReferenceValue = deleteBtn;
+            so2.FindProperty("deletePopup").objectReferenceValue = deletePopup;
             so2.ApplyModifiedProperties();
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[ProfileSettingsSceneBuilder] 완료 (배경 62 + 왼쪽 메뉴 + 패널 70 + 내 프로필 71~74 + 훈련 설정(스위치/말 빠르기/목소리) + 저장)");
+            SceneBuilderUtils.SaveActiveSceneAgainAfterEditorTicks();   // 배경 맞춤이 다음 틱에 씬을 수정됨으로 만들어서
+            Debug.Log("[ProfileSettingsSceneBuilder] 완료 (배경 62 + 왼쪽 메뉴 + 패널 70 + 내 프로필 71~74 + 훈련 설정(스위치/말 빠르기/목소리) + 저장 + 프로필 삭제)");
         }
 
         static void OpenOrCreateScene()
@@ -338,7 +381,7 @@ namespace Artti.Editor
         }
 
         // 목소리 선택 목록: 화면 전체 투명 막이(누르면 닫힘) + Panel(어두운 판 + 여자/남자). UIPopupMotion이 Panel을 키우며 연다.
-        static GameObject BuildVoiceList(RectTransform stage, float chipW, float chipYc, out Button blocker,
+        static GameObject BuildVoiceList(RectTransform stage, Vector2 stageOrigin, float chipW, float chipYc, out Button blocker,
             out Button[] options, out GameObject[] normal, out GameObject[] selected)
         {
             const float pad = 3000f;   // Stage가 줄어든 폰에서도 화면 전체를 덮게 Stage 밖으로 넉넉히
@@ -352,7 +395,7 @@ namespace Artti.Editor
             blocker = root.gameObject.AddComponent<Button>();
             blocker.targetGraphic = hit;
             blocker.transition = Selectable.Transition.None;
-            var lo = new Vector2(-pad / K, -pad / K);   // 막이 좌상단(시안 px)
+            var lo = stageOrigin + new Vector2(-pad / K, -pad / K);   // 막이 좌상단(시안 px)
 
             float x0 = ChipX - 62f, x1 = ChipX + 62f;
             float y0 = chipYc + ChipH / 2f + 8f;
@@ -400,6 +443,9 @@ namespace Artti.Editor
 
         // 시안 좌표 -> 부모 좌상단 기준 Stage 단위 (y 위가 +)
         static Vector2 At(Vector2 p, Vector2 origin) => new Vector2((p.x - origin.x) * K, -(p.y - origin.y) * K);
+
+        // Stage 좌표(px, 위에서부터 y) -> 시안 좌표
+        static Vector2 StageToMock(Vector2 stagePx) => MockOrigin + stagePx / K;
 
         // 시안 사각형 (x0,y0)-(x1,y1) 자리의 빈 rect (부모 좌상단 앵커, 가운데 피벗)
         static RectTransform Box(string name, Transform parent, Vector2 origin, float x0, float y0, float x1, float y1)

@@ -4,16 +4,18 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using Artti.Common;
 
 /// <summary>ResultPanel의 사용자/선택 매장 위치를 NAVER Static Map으로 표시합니다.</summary>
 public class NaverStaticMapController : MonoBehaviour
 {
     private const string StaticMapUrl = "https://maps.apigw.ntruss.com/map-static/v2/raster";
 
-    [Header("NAVER Maps ID-KEY 인증")]
-    // 주의: Inspector에 입력한 Secret은 Scene에 직렬화됩니다. 실제 배포 키를 Git에 커밋하지 마세요.
-    [SerializeField] private string naverClientId;
-    [SerializeField] private string naverClientSecret;
+    // NAVER Maps ID-KEY 인증
+    // 변경점: 키는 .env의 NAVER_CLIENT_ID / NAVER_CLIENT_SECRET에서 읽는다(빌드는 Resources/api_keys.txt, ApiKeyLoader).
+    //   Inspector 필드는 씬에 저장돼 공개 저장소에 올라가므로 없앴다.
+    private static string naverClientId => ApiKeyLoader.Get(ApiKeyLoader.NaverClientId);
+    private static string naverClientSecret => ApiKeyLoader.Get(ApiKeyLoader.NaverClientSecret);
 
     [Header("ResultPanel / CenterMapCard")]
     [SerializeField] private RawImage mapImage;

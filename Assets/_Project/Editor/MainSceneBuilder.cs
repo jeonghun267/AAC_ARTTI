@@ -10,6 +10,8 @@ namespace Artti.Editor
     // 메인(모드 선택) 화면 v3 — 다크 네온 최종 시안.
     // 에셋: Art/UI/Home/main/1~9.png
     //   1 패널 합본(좌측 패널 + 훈련 카드 + 현장 카드 + 두 캐릭터, 투명 배경) 1672x941
+    //     (2026-10-01 다시 교체: 처음 시안과 패널 자리는 같고 카드 안 작은 유리창만 빠졌다. 중간에 쓴 1536x1024 시안은 버림)
+    //     -> 1_left(왼쪽 글래스) / 1_cards(카드 + 캐릭터)로 나눠 쓴다(Art_Source/ui_main/split_panels.py). 1.png를 바꾸면 다시 나눈다.
     //   2 배경(야경 로비) 1672x941
     //   3 좌측 타이틀(ARTTI / 내 손 안의 AAC / 부제) 1086x1448
     //   4 프로필 보기  5 훈련 시작하기  6 도움 시작하기  (2172x724)
@@ -27,7 +29,8 @@ namespace Artti.Editor
         static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
 
         const string Dir = "Assets/_Project/Art/UI/Home/main/";
-        const string PanelsPath  = Dir + "1.png";
+        const string CardsPath     = Dir + "1_cards.png";   // 1.png에서 나눈 카드 + 캐릭터
+        const string LeftGlassPath = Dir + "1_left.png";    // 1.png에서 나눈 왼쪽 글래스
         const string BgPath      = Dir + "2.png";
         const string TitlePath   = Dir + "3.png";
         const string ProfilePath = Dir + "4.png";
@@ -50,6 +53,26 @@ namespace Artti.Editor
 
         // 합본 px -> Stage 단위. 1920 / 1672 = 1.14833
         const float S = 1920f / 1672f;
+
+        // ===== 1.png(1672x941) 배치 =====
+        // 합본이 Stage(1920x1080)와 같은 16:9라 Stage를 꽉 채운다(태블릿에선 패널이 화면 좌우 끝 가까이까지 온다).
+        // 왼쪽 글래스는 화면 왼쪽 끝에 붙어 있어 더 옮길 자리가 없고, 처음 시안의 틈(약 60px)이라 옮기지 않는다.
+        // 1_left/1_cards로 나눠 둔 것은 틈을 다시 조절할 때 쓰려고 남겨 둔다(값만 바꾸면 된다).
+        const float PanelsShiftX = 0f, LeftGlassShiftX = 0f;
+        // 글자/버튼 자리 (Stage px, 좌상단 기준, y 아래가 -). 처음 시안의 손배치 값(MainScene.unity, 2026-09-29) 그대로.
+        //   카드 안 작은 유리창이 빠졌어도 메모는 같은 자리(캐릭터 오른쪽 빈 유리, 도움 시작하기 오른쪽)에 둔다.
+        static readonly Vector2 TitlePos      = new Vector2(238.9f, -438f);
+        static readonly Vector2 ProfileBtnPos = new Vector2(238.9f, -744f);
+        const float LeftScale = 1f;
+        static readonly Vector2 TrainPos      = new Vector2(574.2f, -91.9f);
+        const float TrainRot = -4f, TrainScale = 1f;
+        static readonly Vector2 TrainNotePos  = new Vector2(1678.9f, -341.1f);
+        const float TrainNoteRot = -7f;
+        static readonly Vector2 ARPos         = new Vector2(643.1f, -734.9f);
+        const float ARRot = 2.5f, ARScale = 1f;
+        static readonly Vector2 ARNoteChildPos = new Vector2(425f, -56f);   // ARGroup 안 "필요한 순간" 메모
+        static readonly Vector2 ARSideNotePos = new Vector2(1711f, -677.5f);
+        const float ARSideNoteRot = 3f;
 
         static readonly Color TextWhite = new Color(0.96f, 0.97f, 1f, 1f);
         static readonly Color TextSub   = new Color(0.84f, 0.88f, 1f, 0.92f);
@@ -98,16 +121,16 @@ namespace Artti.Editor
             stage.anchorMin = stage.anchorMax = stage.pivot = new Vector2(0.5f, 0.5f);
             stage.sizeDelta = ReferenceResolution;
 
-            // 패널 합본
+            // 패널 합본 (카드 + 왼쪽 글래스. 그림과 자리는 ApplyNewPanelLayout이 정한다)
             var panels = ChildRect("Panels", stage);
             StretchFull(panels);
             var panelsImg = panels.gameObject.AddComponent<Image>();
-            panelsImg.sprite = LoadSprite(PanelsPath);
             panelsImg.preserveAspect = true;
             panelsImg.raycastTarget = false;
 
-            // 아래 위치/회전/크기 값은 손배치 결과(MainScene.unity, 2026-09-29)를 옮긴 것이다. 단위는 Stage px,
+            // 아래 묶음 안 자식 위치/회전/크기 값은 손배치 결과(MainScene.unity, 2026-09-29)를 옮긴 것이다. 단위는 Stage px,
             // Stage 좌상단 기준(y 아래가 -). 크기는 이미지 본체 비율로 계산되므로 폭만 적는다.
+            // 묶음 자리/배율(새 1.png 기준)은 마지막에 ApplyNewPanelLayout이 정한다.
 
             // ===== 좌측 패널: 타이틀 + 프로필 보기 =====
             var left = ChildRect("LeftGroup", stage);
@@ -189,9 +212,72 @@ namespace Artti.Editor
             so.FindProperty("arFieldModeBtn").objectReferenceValue = arBtn;
             so.ApplyModifiedProperties();
 
+            ApplyNewPanelLayout(stage);
+
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[MainSceneBuilder] 완료 v4 (손배치 반영)");
+            Debug.Log("[MainSceneBuilder] 완료 v5 (새 1.png: 왼쪽 글래스 분리 + 글자/버튼 재배치)");
+        }
+
+        // 손배치 씬(MainScene)에 새 1.png 배치만 다시 적용한다. 다른 손배치 값(묶음 안 글자 위치, 우상단 버튼 등)은 그대로 둔다.
+        [MenuItem("Artti/Fix/MainScene - Apply New Panels 1.png (keep hand placement)")]
+        public static void ApplyNewPanelsMenu()
+        {
+            if (EditorApplication.isPlaying) { Debug.LogWarning("[MainSceneBuilder] Play 모드에서는 실행하지 않는다."); return; }
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+            if (scene.path != ScenePaths.Main)
+            {
+                if (!UnityEditor.SceneManagement.EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                scene = SceneBuilderUtils.OpenScene(ScenePaths.Main);
+            }
+            RectTransform stage = null;
+            foreach (var root in scene.GetRootGameObjects())
+                if (root.name == "[Canvas]") stage = root.transform.Find("Stage") as RectTransform;
+            if (stage == null) { Debug.LogError("[MainSceneBuilder] [Canvas]/Stage 없음"); return; }
+
+            ApplyNewPanelLayout(stage);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+            SceneBuilderUtils.SaveActiveScene();
+            Debug.Log("[MainSceneBuilder] 새 1.png 배치 적용 완료 (왼쪽 글래스 분리 + 글자/버튼 재배치) - 손배치 유지");
+        }
+
+        // 1.png 배치: Panels = 카드(1_cards), 그 자식 LeftGlass = 왼쪽 글래스(1_left, LeftGlassShiftX만큼 옮김).
+        // 글자/버튼 묶음은 자리/회전/배율만 바꾼다(묶음 안 자식 배치는 그대로). 빌드와 Fix 메뉴가 같이 쓴다.
+        static void ApplyNewPanelLayout(RectTransform stage)
+        {
+            if (stage.Find("Panels") is RectTransform panels)
+            {
+                panels.offsetMin = new Vector2(PanelsShiftX, panels.offsetMin.y);
+                panels.offsetMax = new Vector2(PanelsShiftX, panels.offsetMax.y);
+                if (panels.TryGetComponent<Image>(out var cards)) cards.sprite = LoadSprite(CardsPath);
+                for (int i = panels.childCount - 1; i >= 0; i--)
+                    if (panels.GetChild(i).name == "LeftGlass") Object.DestroyImmediate(panels.GetChild(i).gameObject);
+                var glass = ChildRect("LeftGlass", panels);
+                StretchFull(glass);
+                glass.offsetMin = new Vector2(LeftGlassShiftX, 0f);
+                glass.offsetMax = new Vector2(LeftGlassShiftX, 0f);
+                var glassImg = glass.gameObject.AddComponent<Image>();
+                glassImg.sprite = LoadSprite(LeftGlassPath);
+                glassImg.preserveAspect = true;
+                glassImg.raycastTarget = false;
+            }
+            else Debug.LogWarning("[MainSceneBuilder] Stage/Panels 없음");
+
+            Place(stage, "LeftGroup/Title", TitlePos, 0f, LeftScale);
+            Place(stage, "LeftGroup/ProfileBtn", ProfileBtnPos, 0f, LeftScale);
+            Place(stage, "TrainGroup", TrainPos, TrainRot, TrainScale);
+            Place(stage, "TrainSideNote", TrainNotePos, TrainNoteRot, TrainScale);
+            Place(stage, "ARGroup", ARPos, ARRot, ARScale);
+            Place(stage, "ARSideNote", ARSideNotePos, ARSideNoteRot, ARScale);
+            if (stage.Find("ARGroup/Note") is RectTransform arNote) arNote.anchoredPosition = ARNoteChildPos;
+        }
+
+        static void Place(Transform stage, string path, Vector2 pos, float rotZ, float scale)
+        {
+            if (!(stage.Find(path) is RectTransform rt)) { Debug.LogWarning($"[MainSceneBuilder] {path} 없음"); return; }
+            rt.anchoredPosition = pos;
+            rt.localRotation = Quaternion.Euler(0f, 0f, rotZ);
+            rt.localScale = new Vector3(scale, scale, 1f);
         }
 
         // ===== 배치 헬퍼 =====

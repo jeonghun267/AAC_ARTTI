@@ -17,6 +17,8 @@ namespace Artti.Editor
     // 좌표는 시안(1672x941)을 1920 폭으로 환산(x1.1483)한 값.
     // 구성: 왼쪽 메뉴(사용자 선택=지금 화면 / 프로필 설정) + 가운데 가로 카드 줄(< >로 넘김, 맨 끝 "새 사용자")
     //       + 다음 + 우상단 닫기. 시안의 STEP 표시, 분류 탭, 랜덤 선택, 완료 메뉴는 넣지 않는다.
+    // 변경점(2026-10-01): 사용자 삭제는 프로필 설정 화면으로 옮겼다. 이 화면에는 삭제 칩/삭제 팝업을 만들지 않는다.
+    //   삭제 팝업(52~55) 만드는 코드는 프로필 설정 빌더가 그대로 쓴다(BuildDeletePopup).
     public static class ProfileSelectSceneBuilder
     {
         static readonly Vector2 ReferenceResolution = new Vector2(1920, 1080);
@@ -52,10 +54,6 @@ namespace Artti.Editor
         static readonly Rect PopupCloseBody = Rect.MinMaxRect(377, 418, 891, 922);        // 55 (1254x1254) 알파>250
         const float PopupBtnH = 156f, PopupBtnGap = 70f, PopupBtnY = 692f;                // 52 px. 입력칸 아래 42 띄워 두 버튼을 같은 높이로
         static readonly Color HintColor = new Color(1.00f, 0.72f, 0.74f, 0.95f);
-
-        // 카드 삭제 칩(54를 작게): 캐릭터/이름 아래, 틀 아래쪽 받침 타원(y 258~292) 가운데. 누르는 영역은 보이는 칩보다 넉넉히.
-        const float ChipBodyW = 100f;
-        static readonly Vector2 ChipCenter = new Vector2(CardW / 2f, -276f), ChipHit = new Vector2(124f, 40f);
 
         static readonly Color White     = new Color(0.96f, 0.97f, 1.00f, 1.00f);
         static readonly Color TextSoft  = new Color(0.76f, 0.82f, 0.98f, 0.92f);
@@ -128,10 +126,6 @@ namespace Artti.Editor
             // ===== 다음 (17) =====
             var nextBtn = MakeImageButton("NextBtn", stage, Dir + "17.png", NextBody, PillW, PillH, new Vector2(1442f, -886f), 330f);
 
-            // ===== 삭제 확인 팝업 (가운데 모달, "동의한다" 타이핑 확인) =====
-            var deletePopup = BuildDeletePopup(canvas, font, out var delInput, out var delCover,
-                out var delConfirm, out var delCancel, out var delX);
-
             // ===== View 와이어링 =====
             var view = canvasGo.AddComponent<ProfileSelectView>();
             var so = new SerializedObject(view);
@@ -143,19 +137,13 @@ namespace Artti.Editor
             so.FindProperty("nextButton").objectReferenceValue = nextBtn;
             so.FindProperty("settingsButton").objectReferenceValue = settingsBtn;
             so.FindProperty("backButton").objectReferenceValue = closeBtn;
-            so.FindProperty("deletePopup").objectReferenceValue = deletePopup;
-            so.FindProperty("deleteFieldCover").objectReferenceValue = delCover;
-            so.FindProperty("deleteInput").objectReferenceValue = delInput;
-            so.FindProperty("deleteConfirmButton").objectReferenceValue = delConfirm;
-            so.FindProperty("deleteCancelButton").objectReferenceValue = delCancel;
-            so.FindProperty("deleteCloseButton").objectReferenceValue = delX;
             so.FindProperty("proceedScene").stringValue = "MainScene";
             so.FindProperty("backScene").stringValue = "MainScene";
             so.ApplyModifiedProperties();
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[ProfileSelectSceneBuilder] 완료 (배경 48 꽉 채움 + 왼쪽 메뉴(51/50) + 끌어서 넘기는 카드 줄(49) + 다음 + 삭제 팝업)");
+            Debug.Log("[ProfileSelectSceneBuilder] 완료 (배경 48 꽉 채움 + 왼쪽 메뉴(51/50) + 끌어서 넘기는 카드 줄(49) + 다음)");
         }
 
         // 배경(48): 화면을 빈틈 없이 꽉 채운다(양옆/위아래 빈 띠 없음). 48에는 로고/인용구/간판 글자가 가장자리 가까이
@@ -320,39 +308,23 @@ namespace Artti.Editor
             DestroyChildren(stage, "PrevBtn");
             DestroyChildren(stage, "NextPageBtn");
 
-            // 삭제 확인 팝업(52~55): 손배치가 없는 부분이라 새로 만들고 View에 다시 연결한다. 맨 위(마지막)에 둔다.
+            // 변경점: 삭제는 프로필 설정 화면으로 옮겼다. 예전에 만든 삭제 팝업과 카드 프리팹의 삭제 칩을 지운다.
             DestroyChildren(canvas, "DeleteConfirmPopup");
-            var popup = BuildDeletePopup(canvas, LoadFont(), out var delInput, out var delCover,
-                out var delConfirm, out var delCancel, out var delX);
-            popup.transform.SetAsLastSibling();
-            if (view != null)
-            {
-                var so = new SerializedObject(view);
-                so.FindProperty("deletePopup").objectReferenceValue = popup;
-                so.FindProperty("deleteInput").objectReferenceValue = delInput;
-                so.FindProperty("deleteFieldCover").objectReferenceValue = delCover;
-                so.FindProperty("deleteConfirmButton").objectReferenceValue = delConfirm;
-                so.FindProperty("deleteCancelButton").objectReferenceValue = delCancel;
-                so.FindProperty("deleteCloseButton").objectReferenceValue = delX;
-                so.ApplyModifiedPropertiesWithoutUndo();
-            }
-
-            // 카드 프리팹의 삭제 칩(54). 프리팹의 다른 부분은 그대로 두고 칩만 바꾼다(Button은 유지돼 연결이 그대로).
             var card = PrefabUtility.LoadPrefabContents(CardPrefabPath);
             try
             {
-                if (card.transform.Find("DeleteChip") is RectTransform chip)
+                if (card.transform.Find("DeleteChip") is Transform chip)
                 {
-                    SetupDeleteChip(chip);
+                    if (card.TryGetComponent<ProfileCardView>(out var pcvOld)) pcvOld.deleteButton = null;
+                    Object.DestroyImmediate(chip.gameObject);
                     PrefabUtility.SaveAsPrefabAsset(card, CardPrefabPath);
                 }
-                else Debug.LogWarning("[ProfileSelectSceneBuilder] 카드 프리팹에 DeleteChip 없음");
             }
             finally { PrefabUtility.UnloadPrefabContents(card); }
 
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[ProfileSelectSceneBuilder] 변경분 적용 완료 (배경 꽉 채움 / 사용자 선택 51 / 우상단 모서리 / 끌어서 넘기기 / 삭제 팝업 52~55 / 삭제 칩 54) - 손배치 유지");
+            Debug.Log("[ProfileSelectSceneBuilder] 변경분 적용 완료 (배경 꽉 채움 / 사용자 선택 51 / 우상단 모서리 / 끌어서 넘기기 / 삭제 팝업·칩 지움) - 손배치 유지");
         }
 
         static void DestroyChildren(Transform parent, string name)
@@ -411,12 +383,6 @@ namespace Artti.Editor
             checkImg.preserveAspect = true;
             checkImg.raycastTarget = false;
 
-            // 좌상단 삭제 칩 (54)
-            var chip = ChildRect("DeleteChip", root);
-            chip.gameObject.AddComponent<Image>();
-            var deleteBtn = chip.gameObject.AddComponent<Button>();
-            SetupDeleteChip(chip);
-
             var pcv = root.gameObject.AddComponent<ProfileCardView>();
             pcv.nameText = nameText;
             pcv.introText = introText;
@@ -424,7 +390,6 @@ namespace Artti.Editor
             pcv.selectedBorder = border.gameObject;
             pcv.checkMark = check;
             pcv.selectButton = selectBtn;
-            pcv.deleteButton = deleteBtn;
             pcv.SetSelected(false);
 
             var prefab = PrefabUtility.SaveAsPrefabAsset(root.gameObject, CardPrefabPath);
@@ -482,40 +447,10 @@ namespace Artti.Editor
             img.raycastTarget = false;
         }
 
-        // 삭제 칩: 루트 = 투명한 누르는 영역(Button), Visual = 54 이미지. 이미 있는 칩(프리팹)에도 그대로 다시 적용할 수 있다.
-        static void SetupDeleteChip(RectTransform chip)
-        {
-            for (int i = chip.childCount - 1; i >= 0; i--) Object.DestroyImmediate(chip.GetChild(i).gameObject);
-            chip.anchorMin = chip.anchorMax = new Vector2(0f, 1f);
-            chip.pivot = new Vector2(0.5f, 0.5f);
-            chip.anchoredPosition = ChipCenter;
-            chip.sizeDelta = ChipHit;
-            if (!chip.TryGetComponent<Image>(out var hit)) hit = chip.gameObject.AddComponent<Image>();
-            hit.sprite = null;
-            hit.type = Image.Type.Simple;
-            hit.color = new Color(1f, 1f, 1f, 0f);
-            hit.raycastTarget = true;
-            if (!chip.TryGetComponent<Button>(out var btn)) btn = chip.gameObject.AddComponent<Button>();
-            btn.targetGraphic = hit;
-            btn.transition = Selectable.Transition.None;
-
-            float s = ChipBodyW / DeleteBody.width;
-            var visual = ChildRect("Visual", chip);
-            visual.anchorMin = visual.anchorMax = visual.pivot = new Vector2(0.5f, 0.5f);
-            visual.sizeDelta = new Vector2(1536f, 1024f) * s;
-            visual.anchoredPosition = new Vector2((768f - DeleteBody.center.x) * s, (DeleteBody.center.y - 512f) * s);
-            var img = visual.gameObject.AddComponent<Image>();
-            img.sprite = LoadSprite(SelDir + "54.png", 2048);
-            img.preserveAspect = true;
-            img.raycastTarget = false;
-            if (!chip.TryGetComponent<HomeButtonGlow>(out var glow)) glow = chip.gameObject.AddComponent<HomeButtonGlow>();
-            glow.Setup(null, visual);   // 누르면 살짝 작아지는 반응
-        }
-
         // ===== 삭제 확인 팝업 (52 판 + 53 취소 + 54 삭제 + 55 닫기) =====
         // 52에 제목/안내 문구/입력칸('동의한다' 안내 글자 포함)이 그려져 있어, 입력칸 위에는 투명한 입력창만 얹는다.
         // 글자를 치는 중이거나 틀렸다는 안내를 띄울 때는 52 속 '동의한다'를 가림 조각(FieldCover)으로 덮는다(View가 켜고 끈다).
-        static GameObject BuildDeletePopup(Transform canvas, TMP_FontAsset font, out TMP_InputField input, out GameObject fieldCover,
+        internal static GameObject BuildDeletePopup(Transform canvas, TMP_FontAsset font, out TMP_InputField input, out GameObject fieldCover,
             out Button confirm, out Button cancel, out Button close)
         {
             var overlay = ChildRect("DeleteConfirmPopup", canvas);
