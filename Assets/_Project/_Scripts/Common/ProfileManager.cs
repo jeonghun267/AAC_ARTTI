@@ -21,6 +21,7 @@ namespace Artti.Common
         public bool speakCardOnTap;    // 카드(상품·대화 힌트)를 누르면 문장을 소리로 읽어주기. 기본 꺼짐
         public SpeechRate speechRate;  // 말 빠르기 (점원·카드 음성). 기본 보통
         public ReadingVoice readingVoice; // 변경점: 카드 읽어주는 목소리. 기본 여자
+        public bool seenTrainingOnboarding; // 변경점: 편의점 훈련 화면 둘러보기를 본 적 있음(처음 한 번만 자동으로 보여 준다)
 
         public ProfileData()
         {

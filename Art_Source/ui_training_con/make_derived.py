@@ -6,6 +6,8 @@
 #     hint_request_item.png                   - '물건 요청하기' 버튼을 다른 힌트 버튼과 같은 해상도로 줄인 것(원본은 4.6배 크기)
 #     product_tile.png, thumb_*.png           - 추천 상품 칸 바탕과 상품 그림(옛 상품 카드에서 글자를 뺀 부분)
 #     title_chat.png, title_bulb.png, title_star.png, title_cart.png - 패널 제목 아이콘(원본에 없어 직접 그림)
+#     node_on.png, node_off.png               - 미션 물결 별 표시(지난 별 = 빛 고리, 남은 별 = 어둡게)
+#     spot_frame.png                          - 화면 둘러보기(온보딩)에서 짚은 곳 둘레의 빛 테두리(9-slice, 테두리 40px)
 #     bottom_glass.png                        - 화면 아래 가로 유리 띠(가운데가 살짝 솟은 곡선 + 하늘색 테두리). 시안 측정값으로 그림
 # 디자이너가 진짜 그림을 주면 같은 이름으로 바꿔 넣으면 된다(레이아웃은 Unity 메뉴가 다시 맞춘다).
 # 원본을 바꾸면 이 스크립트를 다시 돌리고 Unity에서 Artti/Fix/TrainingConvenience - Apply TrainingCon Design을 실행한다.
@@ -242,13 +244,25 @@ def finish(im, ss, name, glow=None):
     print('saved', name)
 
 
-def make_dots():
-    # 미션 진행 점: 켜짐(하늘색 + 빛) / 꺼짐(흐린 회청색)
-    for name, color, glow in [('dot_on.png', (96, 232, 255, 255), (64, 214, 255)), ('dot_off.png', (128, 146, 196, 150), None)]:
-        im, s = canvas(64)
-        d = ImageDraw.Draw(im)
-        d.ellipse([14 * s, 14 * s, 50 * s, 50 * s], fill=color)
-        finish(im, s, name, glow=glow)
+def make_nodes():
+    # 미션 물결(boatwater.png) 위 별 5개에 겹치는 표시. 켜짐 = 별 둘레 하늘색 빛 고리(가운데 비움), 꺼짐 = 별을 어둡게 덮는 남색 원.
+    #   그림 64px 중 가운데 지름 38px = 물결 그림 속 별 원(지름 약 84px)에 맞춰 Unity에서 크기를 정한다.
+    n, ss = 64, 4
+    on = Image.new('RGBA', (n * ss, n * ss), (0, 0, 0, 0))
+    d = ImageDraw.Draw(on)
+    d.ellipse([12 * ss, 12 * ss, 52 * ss, 52 * ss], outline=(150, 238, 255, 255), width=3 * ss)
+    on = on.resize((n, n), Image.LANCZOS)
+    glow = on.getchannel('A').filter(ImageFilter.GaussianBlur(3)).point(lambda v: int(min(255, v * 1.5)))
+    out = Image.new('RGBA', (n, n), (64, 214, 255, 0))
+    out.putalpha(glow)
+    out.alpha_composite(on)
+    out.save(os.path.join(OUT, 'node_on.png'))
+    print('saved node_on.png')
+    off = Image.new('RGBA', (n * ss, n * ss), (0, 0, 0, 0))
+    d = ImageDraw.Draw(off)
+    d.ellipse([13 * ss, 13 * ss, 51 * ss, 51 * ss], fill=(8, 16, 48, 165))
+    off.resize((n, n), Image.LANCZOS).save(os.path.join(OUT, 'node_off.png'))
+    print('saved node_off.png')
 
 
 def make_shade():
@@ -286,6 +300,22 @@ def make_bottom_glass():
     a[..., :3] = color
     a[..., 3] = alpha * 255
     save(a, 'bottom_glass.png')
+
+
+def make_spot_frame():
+    # 둘러보기 테두리: 안쪽은 비우고 둥근 하늘색 선 + 바깥으로 옅은 빛. Unity에서 9-slice(40px)로 아무 크기에나 맞춘다
+    n, ss = 128, 4
+    big = Image.new('RGBA', (n * ss, n * ss), (0, 0, 0, 0))
+    d = ImageDraw.Draw(big)
+    m = 22
+    d.rounded_rectangle([m * ss, m * ss, (n - m) * ss - 1, (n - m) * ss - 1], 18 * ss, outline=(120, 228, 255, 255), width=4 * ss)
+    line = big.resize((n, n), Image.LANCZOS)
+    glow = line.getchannel('A').filter(ImageFilter.GaussianBlur(6)).point(lambda v: int(min(255, v * 1.6)))
+    out = Image.new('RGBA', (n, n), (64, 214, 255, 0))
+    out.putalpha(glow)
+    out.alpha_composite(line)
+    out.save(os.path.join(OUT, 'spot_frame.png'))
+    print('saved spot_frame.png')
 
 
 def make_title_icons():
@@ -337,6 +367,7 @@ if __name__ == '__main__':
     make_product_tile()
     make_thumbs()
     make_title_icons()
-    make_dots()
+    make_nodes()
     make_shade()
     make_bottom_glass()
+    make_spot_frame()

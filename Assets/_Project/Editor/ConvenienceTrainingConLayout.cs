@@ -24,7 +24,6 @@ namespace Artti.Editor
         const string Dir = "Assets/_Project/Art/UI/TrainingCon/";
         const string Der = Dir + "derived/";
         const string RoundedPath = "Assets/_Project/Art/UI/RoundedRect.png";
-        const string RingPath = "Assets/_Project/Art/UI/DonutRing.png";
 
         const float MockW = 1448f, MockH = 1086f;
         const float K = 1024f / 1086f;   // 시안 px -> 캔버스 단위 (세로 1024 안에 시안 세로 전체가 들어가게)
@@ -35,10 +34,21 @@ namespace Artti.Editor
         static readonly Rect FieldModeBody = Rect.MinMaxRect(14f, 12f, 202f, 68f);
         static readonly Rect FieldCaption = Rect.MinMaxRect(226f, 22f, 470f, 58f);
         static readonly Rect MissionBody = Rect.MinMaxRect(12f, 90f, 412f, 258f);
-        static readonly Rect RingBox = Rect.MinMaxRect(35f, 121f, 125f, 211f);
-        static readonly Rect MissionTitle = Rect.MinMaxRect(144f, 112f, 404f, 144f);
-        static readonly Rect MissionText = Rect.MinMaxRect(144f, 148f, 404f, 204f);
-        const float DotX0 = 153f, DotX1 = 358f, DotY = 226f, DotSize = 26f;
+        static readonly Rect MissionTitle = Rect.MinMaxRect(36f, 104f, 404f, 134f);
+        static readonly Rect MissionText = Rect.MinMaxRect(36f, 134f, 404f, 166f);
+        // 진행 물결 = boatwater.png(2170x725). 그림 속 별 5개 중심 x(px), 별 줄 y, 별 원 지름. 간격이 고르지 않아 별마다 따로 둔다
+        const string WavePath = Dir + "boatwater.png";
+        static readonly Vector2 WaveSize = new Vector2(2170f, 725f);
+        static readonly float[] WaveNodeX = { 217f, 647f, 1095f, 1538f, 1955f };
+        const float WaveNodeY = 350f, WaveNodeDiameter = 84f;
+        const float WaveX0 = 56f, WaveX1 = 368f, WaveY = 226f;   // 시안 px: 첫 별 x ~ 끝 별 x, 별 줄 높이
+        // 진행 배 = boat.png(1536x1024), 배 몸통 (413,181)-(1136,841). 배 바닥(y 841)을 현재 별 바로 위에 띄운다
+        const string BoatPath = Dir + "boat.png";
+        static readonly Vector2 BoatSize = new Vector2(1536f, 1024f);
+        const float BoatBottomY = 841f, BoatVisibleH = 660f;
+        const float BoatHeight = 48f;      // 시안 px: 돛 끝 ~ 배 바닥
+        const float BoatLift = 4f;         // 시안 px: 배 바닥을 별 중심보다 이만큼 위에
+        const float BoatMoveSeconds = 1f;  // 다음 별까지 스르륵 가는 시간
 
         static readonly Rect LeftBody = Rect.MinMaxRect(12f, 275f, 461f, 881f);
         static readonly Rect LeftIcon = Rect.MinMaxRect(45f, 296f, 95f, 346f);
@@ -59,8 +69,12 @@ namespace Artti.Editor
         static readonly Rect TipText = Rect.MinMaxRect(1166f, 733f, 1420f, 808f);
         const float TopBtnY0 = 14f, TopBtnY1 = 63f, TopBtnRight = 1440f, TopBtnGap = 6f;
 
-        static readonly Rect BannerBody = Rect.MinMaxRect(505f, -16f, 940f, 76f);
-        static readonly Rect BannerBrand = Rect.MinMaxRect(545f, 10f, 900f, 66f);
+        // 배너 = banner.png(2171x724, ARTTI 글자가 그림에 들어 있다). 판 몸통(알파 245 이상) x, y, 너비, 높이(px).
+        //   가로는 시안 폭(435)에, 세로는 그림 비율대로. 위쪽 턱(LED 줄)이 보이게 화면 맨 위에 붙인다
+        const string BannerPath = Dir + "banner.png";
+        static readonly Rect BannerSpriteBody = new Rect(61f, 130f, 2051f, 387f);
+        static readonly Vector2 BannerSpriteSize = new Vector2(2171f, 724f);
+        static readonly Rect BannerBody = Rect.MinMaxRect(505f, 0f, 940f, 435f * 387f / 2051f);
 
         static readonly Rect ProductBody = Rect.MinMaxRect(479f, 706f, 1115f, 905f);
         static readonly Rect CartIcon = Rect.MinMaxRect(492f, 719f, 520f, 747f);
@@ -114,7 +128,10 @@ namespace Artti.Editor
             "SpeechPracticeCard", "RecommendedProducts", "ProductViewport", "Previous", "Next", "VoiceButton",
             "HelpButton", "SettingsButton",
             // 이 메뉴가 만든 것 (다시 실행할 때 지우고 새로 만든다)
-            "TrainingConBackground", "TrainingCon", "KeyboardModal", "TrainingSettingsModal",
+            "TrainingConBackground", "TrainingCon", "KeyboardModal", "TrainingSettingsModal", "Onboarding",
+            "OnboardingWelcome",
+            // 글자 도움말 창은 화면 둘러보기(온보딩)로 바꿨다
+            "HelpModal",
         };
 
         static readonly string[] HintNormal =
@@ -134,6 +151,56 @@ namespace Artti.Editor
         };
 
         static readonly string[] IconKeys = { "basket", "question", "card", "won", "bag", "pin", "smile" };
+
+        // ===== 화면 둘러보기(온보딩): 짚을 곳([Canvas] 기준 경로)과 문장. 실제 대화 순서 -> 보조 기능 -> 위쪽 버튼 =====
+        //   대화 모드 문장이 비어 있으면 정확도 모드 문장을 쓴다(말하기 단계만 모드별로 다르다).
+        static readonly string[] TourTargets =
+        {
+            "NPCBubble/BodyArea", "TrainingCon/SpeakButton", "TrainingCon/PhrasePanel", "TrainingCon/HintPanel",
+            "TrainingCon/ProductPanel", "TrainingCon/MissionPanel", "TrainingCon/KeyboardButton",
+            "TrainingCon/FieldModeButton", "TrainingCon/TopButtonsArea",
+        };
+        static readonly string[] TourAccuracy =
+        {
+            "점원이 하는 말이 여기에 나와요.\n말풍선을 누르면 다시 들을 수 있어요.",
+            "이 버튼을 누르고 또박또박 말해 보세요.\n잘 안 들리면 점원이 다시 말해 달라고 해요.",
+            "말하기 어려우면 이 문장을 눌러도 돼요.\n빛나는 문장이 지금 하면 좋은 말이에요.",
+            "하고 싶은 말의 종류를 누르면\n맞는 문장이 왼쪽 맨 위에 나와요.",
+            "상품을 누르면 그 물건을 달라고 말해요.\n화살표로 다른 상품도 볼 수 있어요.",
+            "지금 해야 할 일이 여기에 나와요.\n한 단계씩 해낼 때마다 배가 다음 별로 나아가요.",
+            "말 대신 글자로 써서\n점원에게 보낼 수 있어요.",
+            "현장모드로 가면 실제 가게에서\n카메라로 간판을 비춰 볼 수 있어요.",
+            "이 설명은 ‘도움말’을 누르면 다시 볼 수 있어요.\n‘나가기’를 누르면 훈련을 마쳐요.",
+        };
+        static readonly string[] TourConversation =
+        {
+            "",
+            "이 버튼을 누르고 편하게 말해 보세요.\n조금 틀려도 점원이 알아들어요.",
+            "이 문장을 누르면 점원에게 대신 말해 줘요.\n빛나는 문장이 지금 하면 좋은 말이에요.",
+            "", "", "", "", "", "",
+        };
+        // 설명 창 그림 = Boarding.png(1448x1086). 몸통(알파 245 이상, 위쪽 가운데 탭 포함) (91,71)-(1358,990),
+        //   탭 아래 판 윗변 y 122, 모서리 반지름 약 110px. 탭 안쪽 (470,80)-(980,175)에 단계 번호를 넣는다
+        const string TourCardPath = Dir + "Boarding.png";
+        static readonly Vector2 TourCardSize = new Vector2(1448f, 1086f);
+        static readonly Rect TourCardBody = Rect.MinMaxRect(91f, 71f, 1358f, 990f);
+        const float TourCardPanelTop = 122f, TourCardCorner = 112f;
+        // 버튼 그림(2172x724): 100.png = 건너뛰기(진한 파랑), 101.png = 다음(밝게 빛나는 파랑). 몸통 = 알파 245 이상
+        const string TourSkipPath = Dir + "100.png", TourNextPath = Dir + "101.png";
+        static readonly Vector2 TourButtonSize = new Vector2(2172f, 724f);
+        static readonly Rect TourSkipBody = Rect.MinMaxRect(162f, 148f, 2010f, 553f);
+        static readonly Rect TourNextBody = Rect.MinMaxRect(210f, 147f, 1959f, 558f);
+        const float TourCardW = 560f, TourCardH = 270f;   // Card 사각형 = 탭까지 포함한 몸통
+
+        // 처음 들어왔을 때 환영 창 = BoardingStart.png(1448x1086, 글·그림이 다 들어 있다). 몸통 (99,66)-(1356,1037),
+        //   그림 속 X 가운데 (1261,212) 반지름 약 43px. 아래 빈 칸(y 820~1012) 가운데에 바로 시작하기(100) / 화면 둘러보기(101)
+        const string WelcomePath = Dir + "BoardingStart.png";
+        static readonly Vector2 WelcomeSize = new Vector2(1448f, 1086f);
+        static readonly Rect WelcomeBody = Rect.MinMaxRect(99f, 66f, 1356f, 1037f);
+        static readonly Vector2 WelcomeClose = new Vector2(1261f, 212f);
+        const float WelcomeButtonY = 916f;
+        const float WelcomeCardW = 640f, WelcomeButtonW = 230f, WelcomeButtonH = 52f, WelcomeCloseHit = 64f;
+        const string WelcomeSpeech = "환영해요! 편의점 대화를 쉽고 재미있게 연습해 볼까요? 천천히 따라가면 누구나 할 수 있어요.";
 
         static readonly string[] QuickPhrases = { "물 주세요", "어디에 있어요?", "얼마예요?", "계산할게요", "감사합니다" };
 
@@ -216,6 +283,13 @@ namespace Artti.Editor
             {
                 Place(clerk3D, Anchor.BC, ClerkBox);
                 clerk3D.SetSiblingIndex(bg.GetSiblingIndex() + 1);
+                // 보이지 않는 칸 = 점원 얼굴(머리카락 포함, 점원 그림 안 비율). 둘러보기 설명 창이 피한다
+                var oldFace = clerk3D.Find("FaceArea");
+                if (oldFace != null) Object.DestroyImmediate(oldFace.gameObject);
+                var face = NewRect("FaceArea", clerk3D);
+                face.anchorMin = new Vector2(0.33f, 0.55f);
+                face.anchorMax = new Vector2(0.72f, 0.86f);
+                face.offsetMin = face.offsetMax = Vector2.zero;
             }
             var oldClerk = canvas.Find("Clerk") as RectTransform;   // 꺼 둔 옛 그림 점원(되돌리기용)
             if (oldClerk != null) Place(oldClerk, Anchor.BC, ClerkBox);
@@ -258,11 +332,11 @@ namespace Artti.Editor
                 mic.SetSiblingIndex(root.GetSiblingIndex() + 2);
             }
 
-            var help = canvas.Find("HelpModal");
             var exitModal = canvas.Find("SettingsModal");
-            StyleHelpPopup(help);
             StyleConfirmPopup(exitModal);
             var keyboardModal = BuildKeyboardModal(canvas);
+            var tour = BuildOnboarding(canvas);
+            var welcome = BuildWelcome(canvas);
             var completion = canvas.Find("CompletionRoot");
             if (completion != null) completion.SetAsLastSibling();
 
@@ -281,13 +355,14 @@ namespace Artti.Editor
                 var so = new SerializedObject(hud);
                 SetObjects(so.FindProperty("stepDots"), mission.dots);
                 so.FindProperty("stepLabel").objectReferenceValue = mission.label;
-                so.FindProperty("stepCounter").objectReferenceValue = mission.counter;
-                so.FindProperty("stepFillMask").objectReferenceValue = mission.fillMask;
-                so.FindProperty("stepFillWidth").floatValue = (DotX1 - DotX0) * K;
-                so.FindProperty("stepNodeOnSprite").objectReferenceValue = Sprite(Der + "dot_on.png");
-                so.FindProperty("stepNodeOffSprite").objectReferenceValue = Sprite(Der + "dot_off.png");
-                so.FindProperty("stepRing").objectReferenceValue = mission.ring;
-                so.FindProperty("stepCounterFormat").stringValue = "{0}/{1}";
+                so.FindProperty("stepCounter").objectReferenceValue = null;   // 원형 차트(1/5)는 뺐다: 배가 진행을 보여 준다
+                so.FindProperty("stepFillMask").objectReferenceValue = null;
+                so.FindProperty("stepFillWidth").floatValue = (WaveX1 - WaveX0) * K;
+                so.FindProperty("stepNodeOnSprite").objectReferenceValue = Sprite(Der + "node_on.png");
+                so.FindProperty("stepNodeOffSprite").objectReferenceValue = Sprite(Der + "node_off.png");
+                so.FindProperty("stepBoat").objectReferenceValue = mission.boat;
+                so.FindProperty("stepBoatOffset").vector2Value = new Vector2(0f, BoatLift * K);
+                so.FindProperty("stepMoveSeconds").floatValue = BoatMoveSeconds;
                 so.FindProperty("pauseBtn").objectReferenceValue = null;
                 so.FindProperty("exitBtn").objectReferenceValue = top.exit;
                 so.FindProperty("fieldModeBtn").objectReferenceValue = fieldMode;
@@ -333,12 +408,10 @@ namespace Artti.Editor
                 SetObjects(so.FindProperty("hintCategoryActiveSprites"), new Object[0]);
                 so.FindProperty("speechPracticeText").objectReferenceValue = null;
 
-                so.FindProperty("helpButton").objectReferenceValue = top.help;
-                if (help != null)
-                {
-                    so.FindProperty("helpPanel").objectReferenceValue = help.gameObject;
-                    so.FindProperty("helpCloseButton").objectReferenceValue = help.Find("Card/Close")?.GetComponent<Button>();
-                }
+                // 도움말 버튼은 화면 둘러보기가 맡는다(아래 TrainingOnboardingView.replayButton)
+                so.FindProperty("helpButton").objectReferenceValue = null;
+                so.FindProperty("helpPanel").objectReferenceValue = null;
+                so.FindProperty("helpCloseButton").objectReferenceValue = null;
                 so.FindProperty("keyboardButton").objectReferenceValue = keyboard;
                 so.FindProperty("keyboardPanel").objectReferenceValue = keyboardModal.root;
                 so.FindProperty("keyboardField").objectReferenceValue = keyboardModal.field;
@@ -347,7 +420,51 @@ namespace Artti.Editor
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 
+            // 화면 둘러보기: 뷰는 캔버스에 붙인다(둘러보기 화면은 꺼 둔 채 저장하므로 그 안에 두면 Awake가 안 불린다)
+            if (!canvasGo.TryGetComponent<TrainingOnboardingView>(out var tourView))
+                tourView = canvasGo.AddComponent<TrainingOnboardingView>();
+            {
+                var so = new SerializedObject(tourView);
+                so.FindProperty("root").objectReferenceValue = tour.root;
+                so.FindProperty("dimTop").objectReferenceValue = tour.dims[0];
+                so.FindProperty("dimBottom").objectReferenceValue = tour.dims[1];
+                so.FindProperty("dimLeft").objectReferenceValue = tour.dims[2];
+                so.FindProperty("dimRight").objectReferenceValue = tour.dims[3];
+                so.FindProperty("frame").objectReferenceValue = tour.frame;
+                so.FindProperty("card").objectReferenceValue = tour.card;
+                so.FindProperty("counterText").objectReferenceValue = tour.counter;
+                so.FindProperty("bodyText").objectReferenceValue = tour.body;
+                so.FindProperty("nextButton").objectReferenceValue = tour.next;
+                so.FindProperty("nextLabel").objectReferenceValue = tour.next.GetComponentInChildren<TMP_Text>(true);
+                so.FindProperty("skipButton").objectReferenceValue = tour.skip;
+                so.FindProperty("replayButton").objectReferenceValue = top.help;
+                var targets = TourTargets.Select(path => (Object)(canvas.Find(path) as RectTransform)).ToArray();
+                for (int i = 0; i < targets.Length; i++)
+                    if (targets[i] == null) Debug.LogWarning($"[ConvenienceTrainingConLayout] 둘러보기 대상 없음: {TourTargets[i]}");
+                SetObjects(so.FindProperty("targets"), targets);
+                SetStrings(so.FindProperty("accuracyTexts"), TourAccuracy);
+                SetStrings(so.FindProperty("conversationTexts"), TourConversation);
+                var faceArea = canvas.Find("Clerk3D/FaceArea") as RectTransform;
+                SetObjects(so.FindProperty("avoidAreas"), faceArea != null ? new Object[] { faceArea } : new Object[0]);
+                so.FindProperty("welcomeRoot").objectReferenceValue = welcome.root;
+                so.FindProperty("welcomeCard").objectReferenceValue = welcome.card;
+                so.FindProperty("welcomeTourButton").objectReferenceValue = welcome.tour;
+                so.FindProperty("welcomeStartButton").objectReferenceValue = welcome.start;
+                so.FindProperty("welcomeCloseButton").objectReferenceValue = welcome.close;
+                so.FindProperty("welcomeSpeech").stringValue = WelcomeSpeech;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+            var sceneRoot = Object.FindFirstObjectByType<TrainingSceneRoot>(FindObjectsInactive.Include);
+            if (sceneRoot != null)
+            {
+                var so = new SerializedObject(sceneRoot);
+                so.FindProperty("onboarding").objectReferenceValue = tourView;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+
             keyboardModal.root.SetActive(false);
+            tour.root.SetActive(false);
+            welcome.root.SetActive(false);
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
         }
 
@@ -361,73 +478,48 @@ namespace Artti.Editor
             return button;
         }
 
-        static (Image[] dots, TMP_Text label, TMP_Text counter, RectTransform fillMask, Image ring) BuildMission(RectTransform root)
+        // 오늘의 미션: 제목 + 지금 할 일 + 진행 물결(별 5개) 위를 움직이는 배
+        static (Image[] dots, TMP_Text label, RectTransform boat) BuildMission(RectTransform root)
         {
             var panel = Panel("MissionPanel", root, Anchor.TL, MissionBody, Dir + "glass_top_left_info_panel.png",
                 new Rect(13f, 13f, 413f, 161f), new Vector2(438f, 189f));
 
-            var track = Child(Img("RingTrack", panel, RingPath), MissionBody, RingBox);
-            track.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.16f);
-            var ringRect = Child(Img("RingFill", panel, RingPath), MissionBody, RingBox);
-            var ring = ringRect.GetComponent<Image>();
-            ring.color = new Color32(70, 226, 255, 255);
-            ring.type = Image.Type.Filled;
-            ring.fillMethod = Image.FillMethod.Radial360;
-            ring.fillOrigin = (int)Image.Origin360.Top;
-            ring.fillClockwise = true;
-            ring.fillAmount = 0.2f;
-            var counter = Text("Counter", panel, "1/5", 26f, new Color32(205, 245, 255, 255), true);
-            counter.alignment = TextAlignmentOptions.Center;
-            Child(counter.rectTransform, MissionBody, RingBox);
-
             var title = Text("Title", panel, "오늘의 미션", 20f, Color.white, true);
             Child(title.rectTransform, MissionBody, MissionTitle);
             var label = Text("Objective", panel, "점원에게 인사하기", 19f, new Color32(235, 242, 255, 255), false);
-            label.textWrappingMode = TextWrappingModes.Normal;
             label.overflowMode = TextOverflowModes.Overflow;
             Child(label.rectTransform, MissionBody, MissionText);
 
-            // 진행 점 5개: 왼쪽 점부터 오른쪽 점까지가 채움 막대의 전체 길이(HUD stepFillWidth)
+            // 물결 그림: 첫 별 ~ 끝 별이 시안 WaveX0 ~ WaveX1에 오게 크기를 맞춘다
+            float s = (WaveX1 - WaveX0) / (WaveNodeX[WaveNodeX.Length - 1] - WaveNodeX[0]);
+            float left = WaveX0 - WaveNodeX[0] * s, top = WaveY - WaveNodeY * s;
+            Child(Img("Wave", panel, WavePath), MissionBody, new Rect(left, top, WaveSize.x * s, WaveSize.y * s));
+
+            // 별 표시 5개(그림 속 별 자리) + 배. 배와 별은 같은 부모라 배가 별 자리를 그대로 따라간다
             var progress = NewRect("Progress", panel);
-            Child(progress, MissionBody, Rect.MinMaxRect(DotX0, DotY - DotSize / 2f, DotX1, DotY + DotSize / 2f));
-            var line = NewRect("Track", progress);
-            line.anchorMin = new Vector2(0f, 0.5f);
-            line.anchorMax = new Vector2(1f, 0.5f);
-            line.sizeDelta = new Vector2(0f, 4f * K);
-            var lineImage = line.gameObject.AddComponent<Image>();
-            lineImage.color = new Color(1f, 1f, 1f, 0.2f);
-            lineImage.raycastTarget = false;
-
-            var fillMask = NewRect("FillMask", progress);
-            fillMask.anchorMin = fillMask.anchorMax = new Vector2(0f, 0.5f);
-            fillMask.pivot = new Vector2(0f, 0.5f);
-            fillMask.anchoredPosition = Vector2.zero;
-            fillMask.sizeDelta = new Vector2(0f, 6f * K);
-            fillMask.gameObject.AddComponent<RectMask2D>();
-            var fill = NewRect("Fill", fillMask);
-            fill.anchorMin = fill.anchorMax = new Vector2(0f, 0.5f);
-            fill.pivot = new Vector2(0f, 0.5f);
-            fill.anchoredPosition = Vector2.zero;
-            fill.sizeDelta = new Vector2((DotX1 - DotX0) * K, 4f * K);
-            var fillImage = fill.gameObject.AddComponent<Image>();
-            fillImage.color = new Color32(80, 228, 255, 255);
-            fillImage.raycastTarget = false;
-
-            var dots = new Image[5];
-            float step = (DotX1 - DotX0) / (dots.Length - 1);
+            Child(progress, MissionBody, Rect.MinMaxRect(WaveX0, WaveY - 15f, WaveX1, WaveY + 15f));
+            var dots = new Image[WaveNodeX.Length];
+            float nodeSize = WaveNodeDiameter * s * 64f / 38f;   // node_on/off 그림 64px 중 별 원 지름 38px
             for (int i = 0; i < dots.Length; i++)
             {
                 var dot = NewRect($"Step_{i + 1}", progress);
                 dot.anchorMin = dot.anchorMax = new Vector2(0f, 0.5f);
                 dot.pivot = new Vector2(0.5f, 0.5f);
-                dot.anchoredPosition = new Vector2(i * step * K, 0f);
-                dot.sizeDelta = new Vector2(DotSize * K, DotSize * K);
+                dot.anchoredPosition = new Vector2((WaveNodeX[i] - WaveNodeX[0]) * s * K, 0f);
+                dot.sizeDelta = new Vector2(nodeSize * K, nodeSize * K);
                 var image = dot.gameObject.AddComponent<Image>();
-                image.sprite = Sprite(Der + (i == 0 ? "dot_on.png" : "dot_off.png"));
+                image.sprite = Sprite(Der + (i == 0 ? "node_on.png" : "node_off.png"));
                 image.raycastTarget = false;
                 dots[i] = image;
             }
-            return (dots, label, counter, fillMask, ring);
+
+            float bs = BoatHeight / BoatVisibleH;
+            var boat = Img("Boat", progress, BoatPath);
+            boat.anchorMin = boat.anchorMax = new Vector2(0f, 0.5f);
+            boat.pivot = new Vector2(0.5f, (BoatSize.y - BoatBottomY) / BoatSize.y);   // 피벗 = 배 바닥
+            boat.sizeDelta = new Vector2(BoatSize.x * bs, BoatSize.y * bs) * K;
+            boat.anchoredPosition = new Vector2(0f, BoatLift * K);
+            return (dots, label, boat);
         }
 
         // ===== 왼쪽: 무엇을 말해볼까요? (말풍선 5개) =====
@@ -540,7 +632,7 @@ namespace Artti.Editor
             return (buttons, buttons.Length);
         }
 
-        static (Button help, Button exit) BuildTopButtons(RectTransform root)
+        static (Button help, Button exit, RectTransform area) BuildTopButtons(RectTransform root)
         {
             // 도움말 / 나가기: 높이를 맞추고 오른쪽 끝에서부터 붙여 놓는다
             string[] paths = { Dir + "btn_help.png", Dir + "btn_exit.png" };
@@ -555,18 +647,16 @@ namespace Artti.Editor
                 result[i] = SpriteButton(names[i], root, Anchor.TR, paths[i], Rect.MinMaxRect(x1 - w, TopBtnY0, x1, TopBtnY1), false);
                 x1 -= w + TopBtnGap;
             }
-            return (result[0], result[1]);
+            var area = NewRect("TopButtonsArea", root);   // 보이지 않는 칸: 도움말+나가기를 한 번에 짚는다
+            Place(area, Anchor.TR, Rect.MinMaxRect(x1 + TopBtnGap, TopBtnY0, TopBtnRight, TopBtnY1));
+            return (result[0], result[1], area);
         }
 
         static void BuildBanner(RectTransform root)
         {
             var banner = NewRect("Banner", root);
             Place(banner, Anchor.TC, BannerBody);
-            AddFrame(banner, Dir + "glass_top_banner.png", BannerBody, new Rect(14f, 14f, 459f, 97f), new Vector2(488f, 125f), sliced: false);
-            var brand = Text("Brand", banner, "ARTTI", 42f, Color.white, true);
-            brand.characterSpacing = 6f;
-            brand.alignment = TextAlignmentOptions.Center;
-            Child(brand.rectTransform, BannerBody, BannerBrand);
+            AddFrame(banner, BannerPath, BannerBody, BannerSpriteBody, BannerSpriteSize, sliced: false);
         }
 
         // ===== 가운데 아래: 추천 상품 =====
@@ -672,6 +762,14 @@ namespace Artti.Editor
             artImage.raycastTarget = true;
             if (bubble.TryGetComponent<Button>(out var replay)) replay.targetGraphic = artImage;
 
+            var oldArea = bubble.Find("BodyArea");
+            if (oldArea != null) Object.DestroyImmediate(oldArea.gameObject);
+            var area = NewRect("BodyArea", bubble);   // 보이지 않는 칸 = 말풍선 몸통(둘러보기가 짚는 곳)
+            area.anchorMin = Vector2.zero;
+            area.anchorMax = Vector2.one;
+            area.offsetMin = new Vector2(body.xMin * s, (NpcBubbleSize.y - body.yMax) * s) * K;
+            area.offsetMax = -new Vector2((NpcBubbleSize.x - body.xMax) * s, body.yMin * s) * K;
+
             var text = bubble.Find("Text") as RectTransform;
             if (text != null)
             {
@@ -695,31 +793,6 @@ namespace Artti.Editor
         }
 
         // ===== 팝업 =====
-
-        // 도움말: 제목 + 안내 4개 + 닫기(yes)
-        static void StyleHelpPopup(Transform help)
-        {
-            var card = PopupCard(help, 640f);
-            if (card == null) return;
-            var title = FindText(card, "Title");
-            if (title != null)
-            {
-                title.text = "화면 도움말";
-                PopupText(title, 40f, 58f, 560f, 56f, 34f, Color.white, true, TextAlignmentOptions.Center);
-            }
-            var body = FindText(card, "Body");
-            if (body != null)
-            {
-                body.text = "• 왼쪽 말풍선을 누르면 그 문장으로 점원에게 말해요.\n" +
-                            "• 오른쪽 대화 힌트를 누르면 맞는 문장이 왼쪽 맨 위에 나와요.\n" +
-                            "• ‘지금 말해보세요’를 누르고 직접 말하거나,\n   ‘키보드 입력’으로 써서 보낼 수 있어요.\n" +
-                            "• 추천 상품을 누르면 그 물건을 달라고 말해요.";
-                PopupText(body, 56f, 138f, 528f, 290f, 20f, new Color32(228, 237, 255, 255), false, TextAlignmentOptions.MidlineLeft);
-                body.lineSpacing = 20f;
-                body.textWrappingMode = TextWrappingModes.Normal;
-            }
-            ChoiceButton(card, "Close", YesPath, 190f, 456f, 260f);
-        }
 
         // 나가기 / 현장모드 확인: 제목 + 문구(런타임에 바뀜) + 계속하기(no) / 확인(yes)
         static void StyleConfirmPopup(Transform modal)
@@ -825,6 +898,143 @@ namespace Artti.Editor
             text.fontStyle = bold ? FontStyles.Bold : FontStyles.Normal;
             text.alignment = alignment;
             text.overflowMode = TextOverflowModes.Overflow;
+        }
+
+        // 화면 둘러보기: 입력 막 + 어두운 판 4장(짚은 곳만 뚫림) + 빛 테두리 + 설명 창(Boarding.png, 다음=101 / 건너뛰기=100).
+        //   자리는 런타임에 TrainingOnboardingView가 단계마다 맞춘다. 판들은 가운데 앵커여야 한다.
+        static (GameObject root, RectTransform[] dims, RectTransform frame, RectTransform card, TMP_Text counter, TMP_Text body,
+            Button next, Button skip) BuildOnboarding(Transform canvas)
+        {
+            var root = NewRect("Onboarding", canvas);
+            Stretch(root);
+            var completion = canvas.Find("CompletionRoot");
+            root.SetSiblingIndex(completion != null ? completion.GetSiblingIndex() : canvas.childCount - 1);
+            var blocker = root.gameObject.AddComponent<Image>();
+            blocker.color = new Color(0f, 0f, 0f, 0.001f);   // 둘러보는 동안 뒤 버튼이 눌리지 않게
+
+            string[] dimNames = { "DimTop", "DimBottom", "DimLeft", "DimRight" };
+            var dims = new RectTransform[4];
+            for (int i = 0; i < dims.Length; i++)
+            {
+                dims[i] = NewRect(dimNames[i], root);
+                dims[i].anchorMin = dims[i].anchorMax = new Vector2(0.5f, 0.5f);
+                dims[i].pivot = new Vector2(0.5f, 0.5f);
+                var dim = dims[i].gameObject.AddComponent<Image>();
+                dim.color = new Color(0f, 0.01f, 0.05f, 0.72f);
+            }
+
+            var frame = Img("Frame", root, Der + "spot_frame.png");
+            frame.anchorMin = frame.anchorMax = new Vector2(0.5f, 0.5f);
+            frame.pivot = new Vector2(0.5f, 0.5f);
+            var frameImage = frame.GetComponent<Image>();
+            frameImage.sprite = SpriteWithBorder(Der + "spot_frame.png", new Vector4(40f, 40f, 40f, 40f));
+            frameImage.type = Image.Type.Sliced;
+
+            var card = Card(root.gameObject, TourCardW, TourCardH);
+            float s = TourCardW / TourCardBody.width;
+            var counter = Text("Counter", card, "1 / 9", 19f / K, Color.white, true);   // 위쪽 탭 안
+            counter.alignment = TextAlignmentOptions.Center;
+            Local(counter.rectTransform, (470f - TourCardBody.xMin) * s, (80f - TourCardBody.yMin) * s, 510f * s, 95f * s);
+            var body = Text("Body", card, TourAccuracy[0], 23f / K, Color.white, true);
+            body.alignment = TextAlignmentOptions.Center;
+            body.textWrappingMode = TextWrappingModes.Normal;
+            body.lineSpacing = 10f;
+            body.enableAutoSizing = true;   // 긴 문장(세 줄)도 버튼을 덮지 않게
+            body.fontSizeMin = 19f;
+            body.fontSizeMax = 23f;
+            Local(body.rectTransform, 36f, 60f, TourCardW - 72f, 116f);
+            var skip = TextButton("Skip", card, "건너뛰기", 0f, 0f, 10f, 10f, Color.white);
+            var next = TextButton("Next", card, "다음", 0f, 0f, 10f, 10f, Color.white);
+            TourCardFrame(card);
+            TourButton(card, "Skip", TourSkipPath, TourSkipBody, 50f, 192f, 210f, 46f);
+            TourButton(card, "Next", TourNextPath, TourNextBody, 300f, 192f, 210f, 46f);
+            return (root.gameObject, dims, frame, card, counter, body, next, skip);
+        }
+
+        // 처음 들어왔을 때 환영 창: 어두운 막 + BoardingStart 그림(그림 비율 그대로) + 아래 빈 칸에 버튼 둘 + 그림 속 X 자리의 보이지 않는 버튼
+        static (GameObject root, RectTransform card, Button tour, Button start, Button close) BuildWelcome(Transform canvas)
+        {
+            var overlay = Overlay("OnboardingWelcome", canvas);
+            float s = WelcomeCardW / WelcomeBody.width;
+            var card = NewRect("Card", overlay.transform);
+            card.anchorMin = card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = new Vector2(WelcomeCardW, WelcomeBody.height * s);
+            var art = Img("Frame", card, WelcomePath);
+            art.anchorMin = Vector2.zero;
+            art.anchorMax = Vector2.one;
+            art.offsetMin = new Vector2(-WelcomeBody.xMin * s, -(WelcomeSize.y - WelcomeBody.yMax) * s);
+            art.offsetMax = new Vector2((WelcomeSize.x - WelcomeBody.xMax) * s, WelcomeBody.yMin * s);
+            art.GetComponent<Image>().raycastTarget = true;   // 판을 눌러도 뒤로 지나가지 않게
+
+            float y = (WelcomeButtonY - WelcomeBody.yMin) * s - WelcomeButtonH / 2f;
+            float gap = WelcomeCardW - 2f * WelcomeButtonW - 2f * 70f;
+            var start = TextButton("Start", card, "바로 시작하기", 0f, 0f, 10f, 10f, Color.white);
+            var tour = TextButton("Tour", card, "화면 둘러보기", 0f, 0f, 10f, 10f, Color.white);
+            TourButton(card, "Start", TourSkipPath, TourSkipBody, 70f, y, WelcomeButtonW, WelcomeButtonH);
+            TourButton(card, "Tour", TourNextPath, TourNextBody, 70f + WelcomeButtonW + gap, y, WelcomeButtonW, WelcomeButtonH);
+
+            // 그림 속 X: 보이지 않는 누름 칸(손가락에 맞게 그림보다 조금 넉넉히)
+            var closeRt = NewRect("Close", card);
+            Local(closeRt, (WelcomeClose.x - WelcomeBody.xMin) * s - WelcomeCloseHit / 2f,
+                (WelcomeClose.y - WelcomeBody.yMin) * s - WelcomeCloseHit / 2f, WelcomeCloseHit, WelcomeCloseHit);
+            var closeImage = closeRt.gameObject.AddComponent<Image>();
+            closeImage.color = new Color(1f, 1f, 1f, 0f);
+            var close = closeRt.gameObject.AddComponent<Button>();
+            close.targetGraphic = closeImage;
+            close.transition = Selectable.Transition.None;
+            return (overlay, card, tour, start, close);
+        }
+
+        // 설명 창 판: 가로는 그림 비율 그대로라 탭이 늘어나지 않고, 세로만 9-slice로 줄인다(탭은 위쪽 테두리 칸에 들어 있다)
+        static void TourCardFrame(RectTransform card)
+        {
+            if (card.TryGetComponent<Image>(out var plain)) plain.enabled = false;   // 옛 남색 둥근 판
+            if (card.TryGetComponent<Outline>(out var outline)) Object.DestroyImmediate(outline);
+            float s = TourCardW / TourCardBody.width;
+            var frame = NewRect("Frame", card);
+            frame.SetAsFirstSibling();
+            frame.anchorMin = Vector2.zero;
+            frame.anchorMax = Vector2.one;
+            frame.offsetMin = new Vector2(-TourCardBody.xMin * s, -(TourCardSize.y - TourCardBody.yMax) * s);
+            frame.offsetMax = new Vector2((TourCardSize.x - TourCardBody.xMax) * s, TourCardBody.yMin * s);
+            var image = frame.gameObject.AddComponent<Image>();
+            image.sprite = SpriteWithBorder(TourCardPath, new Vector4(TourCardBody.xMin + TourCardCorner,
+                TourCardSize.y - TourCardBody.yMax + TourCardCorner, TourCardSize.x - TourCardBody.xMax + TourCardCorner,
+                TourCardPanelTop + TourCardCorner));
+            image.type = Image.Type.Sliced;
+            image.pixelsPerUnitMultiplier = 1f / s;
+            image.color = Color.white;   // 다른 팝업과 달리 불투명: 패널 위에 자주 겹쳐서 뒤 글씨가 비치면 설명이 읽기 어렵다
+            image.raycastTarget = true;   // 판을 눌러도 뒤로 지나가지 않게
+        }
+
+        // 둘러보기 버튼: 그림 속 몸통(body, px)이 카드 안 상자(x, y, 너비, 높이)에 꼭 맞게 놓고, 흰 글자는 몸통 가운데에
+        static void TourButton(RectTransform card, string name, string path, Rect body, float x, float y, float width, float height)
+        {
+            var rt = card.Find(name) as RectTransform;
+            if (rt == null) return;
+            float sx = width / body.width, sy = height / body.height;
+            Local(rt, x - body.xMin * sx, y - body.yMin * sy, TourButtonSize.x * sx, TourButtonSize.y * sy);
+            if (rt.TryGetComponent<Image>(out var image))
+            {
+                image.sprite = Sprite(path);
+                image.type = Image.Type.Simple;
+                image.color = Color.white;
+            }
+            var label = rt.GetComponentInChildren<TMP_Text>(true);
+            if (label != null)
+            {
+                label.color = Color.white;
+                label.fontSize = 22f;
+                label.fontStyle = FontStyles.Bold;
+                label.alignment = TextAlignmentOptions.Center;
+                var lr = label.rectTransform;
+                lr.anchorMin = Vector2.zero;
+                lr.anchorMax = Vector2.one;
+                lr.pivot = new Vector2(0.5f, 0.5f);
+                lr.offsetMin = new Vector2(body.xMin * sx, (TourButtonSize.y - body.yMax) * sy);
+                lr.offsetMax = -new Vector2((TourButtonSize.x - body.xMax) * sx, body.yMin * sy);
+            }
         }
 
         // 키보드로 말하기: 다른 팝업과 같은 popup.png 판 + 보내기(yes)/닫기(no).
@@ -1164,7 +1374,91 @@ namespace Artti.Editor
             Capture("KeyboardModal");
             Capture("KeyboardModal", liftForKeyboard: true);
             Capture("SettingsModal");
-            Capture("HelpModal");
+        }
+
+        // 화면 둘러보기 단계별 캡처(태블릿). 캔버스 크기가 기기 해상도로 바뀐 뒤 자리를 맞춰야 해서 같은 장면을 두 번 찍는다.
+        [MenuItem("Artti/Debug/Capture TrainingConvenience Onboarding - Tab")]
+        static void CaptureOnboardingMenu()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            if (SceneManager.GetActiveScene().isDirty)
+            {
+                Debug.LogWarning("[ConvenienceTrainingConLayout] 저장 안 한 씬 변경이 있어 캡처하지 않는다.");
+                return;
+            }
+            string outDir = Path.GetFullPath(Path.Combine(Application.dataPath, "../Temp/LayoutCaptures"));
+            Directory.CreateDirectory(outDir);
+            try
+            {
+                {
+                    var scene = EditorSceneManager.OpenScene(ScenePaths.TrainingConvenience, OpenSceneMode.Single);
+                    var canvas = scene.GetRootGameObjects().First(g => g.name == "[Canvas]");
+                    var welcome = canvas.transform.Find("OnboardingWelcome");
+                    if (welcome != null)
+                    {
+                        RenderClerkCameras();
+                        string file = Path.Combine(outDir, "tab_TrainingCon_Welcome.png");
+                        welcome.gameObject.SetActive(true);
+                        DeviceLayoutCapture.CaptureActiveScene(2560, 1600, file);
+                        DeviceLayoutCapture.CaptureActiveScene(2560, 1600, file);
+                    }
+                }
+                for (int i = 0; i < TourTargets.Length; i++)
+                {
+                    var scene = EditorSceneManager.OpenScene(ScenePaths.TrainingConvenience, OpenSceneMode.Single);
+                    var canvas = scene.GetRootGameObjects().First(g => g.name == "[Canvas]");
+                    var view = canvas.GetComponent<TrainingOnboardingView>();
+                    if (view == null) return;
+                    RenderClerkCameras();
+                    string file = Path.Combine(outDir, $"tab_TrainingCon_Onboarding_{i + 1}.png");
+                    DeviceLayoutCapture.CaptureActiveScene(2560, 1600, file);   // 캔버스를 태블릿 크기로 맞춘다
+                    view.PreviewStep(i, false);
+                    DeviceLayoutCapture.CaptureActiveScene(2560, 1600, file);
+                }
+            }
+            finally
+            {
+                EditorSceneManager.OpenScene(ScenePaths.TrainingConvenience, OpenSceneMode.Single);
+            }
+            Debug.Log($"[ConvenienceTrainingConLayout] 둘러보기 캡처 완료 -> {outDir}");
+        }
+
+        // 미션 진행 배를 단계(1~5)마다 찍는다(태블릿). HUD의 ApplyObjective를 에디터에서 불러 그 단계 모습으로 맞춘다.
+        [MenuItem("Artti/Debug/Capture TrainingConvenience Mission Steps - Tab")]
+        static void CaptureMissionStepsMenu()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            if (SceneManager.GetActiveScene().isDirty)
+            {
+                Debug.LogWarning("[ConvenienceTrainingConLayout] 저장 안 한 씬 변경이 있어 캡처하지 않는다.");
+                return;
+            }
+            string outDir = Path.GetFullPath(Path.Combine(Application.dataPath, "../Temp/LayoutCaptures"));
+            Directory.CreateDirectory(outDir);
+            var apply = typeof(ConvenienceHudView).GetMethod("ApplyObjective",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            string[] labels = { "점원에게 인사하기", "원하는 상품 고르기", "봉투 여부 답하기", "결제 방법 말하기", "감사 인사하기" };
+            try
+            {
+                for (int i = 0; i < labels.Length; i++)
+                {
+                    var scene = EditorSceneManager.OpenScene(ScenePaths.TrainingConvenience, OpenSceneMode.Single);
+                    var hud = scene.GetRootGameObjects().First(g => g.name == "[Canvas]").GetComponent<ConvenienceHudView>();
+                    // 에디터에서는 Awake가 안 돌아 글자 제자리(_labelHome)가 비어 있다 -> 지금 자리로 채운다
+                    var so = new SerializedObject(hud);
+                    if (so.FindProperty("stepLabel").objectReferenceValue is TMP_Text stepLabel)
+                        typeof(ConvenienceHudView).GetField("_labelHome", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                            ?.SetValue(hud, stepLabel.rectTransform.anchoredPosition);
+                    apply?.Invoke(hud, new object[] { i, labels[i] });
+                    RenderClerkCameras();
+                    DeviceLayoutCapture.CaptureActiveScene(2560, 1600, Path.Combine(outDir, $"tab_TrainingCon_Mission_{i + 1}.png"));
+                }
+            }
+            finally
+            {
+                EditorSceneManager.OpenScene(ScenePaths.TrainingConvenience, OpenSceneMode.Single);
+            }
+            Debug.Log($"[ConvenienceTrainingConLayout] 미션 단계 캡처 완료 -> {outDir}");
         }
 
         // liftForKeyboard: 화면 자판이 올라온 상태(UIKeyboardLift가 판을 화면 위로 올린 위치)를 흉내 낸다. 에디터에는 자판이 없다.
