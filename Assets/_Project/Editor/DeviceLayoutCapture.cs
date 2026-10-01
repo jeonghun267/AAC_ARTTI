@@ -91,9 +91,10 @@ namespace Artti.Editor
             Debug.Log($"[DeviceLayoutCapture] 완료 화면 캡처 -> {OutDir}");
         }
 
-        // 사용자 선택 화면의 삭제 확인 팝업 3가지 상태(빈 칸 / 입력 중 / 틀렸을 때 안내) + 선택된 카드의 삭제 칩.
-        // 카드는 실행 중에만 생기므로 프리팹을 하나 놓아 보여 준다. 씬은 저장하지 않는다.
-        [MenuItem("Artti/Debug/Capture ProfileSelect Delete Popup - Tab S7 FE (2560x1600)")]
+        // 프로필 설정 화면의 삭제 확인 팝업 3가지 상태(빈 칸 / 입력 중 / 틀렸을 때 안내) + 사용자 선택 화면 카드 줄(선택 카드 튀어나옴).
+        // 변경점: 삭제는 프로필 설정 화면으로 옮겼다. 카드는 실행 중에만 생기므로 프리팹을 놓고 바로 선택 모양으로 바꿔 보여 준다.
+        // 씬은 저장하지 않는다.
+        [MenuItem("Artti/Debug/Capture Delete Popup + Profile Cards - Tab S7 FE (2560x1600)")]
         static void CaptureDeletePopup()
         {
             if (EditorApplication.isPlaying) return;
@@ -103,10 +104,11 @@ namespace Artti.Editor
             try
             {
                 // card0/1/3: 사용자 카드 0/1/3장(첫 장 선택). View.Refresh로 줄 정렬(적으면 가운데, 넘치면 왼쪽부터)까지 확인
-                foreach (var state in new[] { "empty", "typing", "hint", "card0", "card1", "card3" })
+                // card3/card5: 사용자 3명/5명 = 원통 회전 줄. card5는 원통을 반 칸 돌린 모양(끌고 있는 중)
+                foreach (var state in new[] { "empty", "typing", "hint", "card0", "card1", "card3", "card5" })
                 {
-                    EditorSceneManager.OpenScene(ScenePaths.ProfileSelect, OpenSceneMode.Single);
                     bool cardState = state.StartsWith("card");
+                    EditorSceneManager.OpenScene(cardState ? ScenePaths.ProfileSelect : ScenePaths.ProfileSettings, OpenSceneMode.Single);
                     foreach (var root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
                     {
                         foreach (var t in root.GetComponentsInChildren<Transform>(true))
@@ -116,7 +118,7 @@ namespace Artti.Editor
                                 var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/Profile/ProfileCard.prefab");
                                 int count = state[state.Length - 1] - '0';
                                 for (int i = 0; i < count; i++)
-                                    ((GameObject)PrefabUtility.InstantiatePrefab(prefab, t)).GetComponent<Artti.UI.ProfileCardView>().SetSelected(i == 0);
+                                    ((GameObject)PrefabUtility.InstantiatePrefab(prefab, t)).GetComponent<Artti.UI.ProfileCardView>().SetSelectedImmediate(i == 0);
                             }
                             if (t.name != "DeleteConfirmPopup" || cardState) continue;
                             t.gameObject.SetActive(true);
@@ -128,7 +130,13 @@ namespace Artti.Editor
                         }
                     }
                     if (cardState)
-                        foreach (var v in Object.FindObjectsByType<Artti.UI.ProfileSelectView>(FindObjectsSortMode.None)) v.Refresh();
+                    {
+                        foreach (var v in Object.FindObjectsByType<Artti.UI.ProfileSelectView>(FindObjectsSortMode.None))
+                        {
+                            v.Refresh();
+                            v.PreviewCylinder(state == "card5" ? 20f : 0f);   // 실행 중 Start가 만드는 원통(카드 4장 이상)
+                        }
+                    }
                     CaptureActiveScene(2560, 1600, Path.Combine(OutDir, $"tab_DeletePopup_{state}.png"));
                 }
             }

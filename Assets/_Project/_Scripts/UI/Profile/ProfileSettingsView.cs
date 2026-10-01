@@ -12,6 +12,7 @@ namespace Artti.UI
     // 프로필 설정 화면 (시안 Art/UI/Home/profile_T). 왼쪽 메뉴(사용자 선택 / 프로필 설정 = 지금 화면) + 가운데 패널.
     //  내 프로필: 아바타·닉네임·한마디·생년월일 행. 누르면 프로필 수정 화면(ProfileCreateScene)에 갔다가 이 화면으로 돌아온다.
     //  훈련 설정: 카드 눌러 읽어주기(켬/끔), 점원 말 빠르기(느리게/보통/빠르게), 읽어주는 목소리(여자/남자 + 미리듣기).
+    //  프로필 삭제: 패널 오른쪽 위 삭제 -> '동의한다' 입력 확인(ProfileDeletePopup) -> 지우고 사용자 선택 화면으로.
     // 훈련 설정은 고르는 동안 ProfileSettingsDraft에만 담고 변경사항 저장에서 프로필에 쓴다.
     // 이 화면에는 취소가 없으므로, 저장을 누르지 않고 다른 화면으로 가도 고친 값을 잃지 않게 떠날 때도 저장한다.
     public class ProfileSettingsView : MonoBehaviour
@@ -63,6 +64,10 @@ namespace Artti.UI
         [Header("저장")]
         [SerializeField] private Button saveButton;
         [SerializeField] private TMP_Text saveLabel;
+
+        [Header("프로필 삭제 (사용자 선택 화면에서 옮겨 옴)")]
+        [SerializeField] private Button deleteButton;
+        [SerializeField] private ProfileDeletePopup deletePopup;   // '동의한다' 입력 확인
 
         [SerializeField] private string profileSelectScene = "ProfileSelectScene";
         [SerializeField] private string editScene = "ProfileCreateScene";
@@ -120,10 +125,11 @@ namespace Artti.UI
             }
             if (previewButton != null) previewButton.onClick.AddListener(OnPreview);
             if (saveButton != null) saveButton.onClick.AddListener(OnSave);
+            if (deleteButton != null) deleteButton.onClick.AddListener(OnDelete);
 
-            // 사용자가 없으면(에디터에서 이 씬을 바로 실행) 고칠 대상이 없으므로 행과 저장을 막는다
+            // 사용자가 없으면(에디터에서 이 씬을 바로 실행) 고칠 대상이 없으므로 행과 저장/삭제를 막는다
             bool hasProfile = _profile != null;
-            foreach (var b in new[] { avatarRow, nicknameRow, introRow, birthRow, saveButton })
+            foreach (var b in new[] { avatarRow, nicknameRow, introRow, birthRow, saveButton, deleteButton })
                 if (b != null) b.interactable = hasProfile;
         }
 
@@ -360,6 +366,26 @@ namespace Artti.UI
                 .SuppressCancellationThrow();
             if (canceled || saveLabel == null) return;
             saveLabel.text = SaveText;
+        }
+
+        // ===== 프로필 삭제 =====
+
+        // 삭제: '동의한다'를 입력해야 지운다. 지우면 사용자 선택 화면으로(고르던 훈련 설정은 저장하지 않는다).
+        private void OnDelete()
+        {
+            if (_profile == null || deletePopup == null) return;
+            SetVoiceListOpen(false, instant: true);
+            StopPreview();
+            deletePopup.Open(DeleteProfile);
+        }
+
+        private void DeleteProfile()
+        {
+            var pm = ProfileManagerOrNull();
+            if (pm != null && _profile != null) pm.DeleteProfile(_profile.id);
+            _profile = null;
+            TargetId = null;
+            SceneFader.Load(profileSelectScene);
         }
 
         private static ProfileManager ProfileManagerOrNull() =>

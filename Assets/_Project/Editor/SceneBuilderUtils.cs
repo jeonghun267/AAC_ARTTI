@@ -130,6 +130,27 @@ namespace Artti.Editor
             EditorSceneManager.SaveScene(SceneManager.GetActiveScene());
         }
 
+        // 변경점: CoverImageFitter 같은 [ExecuteAlways] 컴포넌트는 붙인 뒤 에디터 업데이트(OnValidate delayCall, Start)에서
+        //   자리를 다시 맞추며, 내용은 그대로인데 방금 저장한 씬을 '수정됨'으로 표시한다. 그러면 레이아웃 캡처 메뉴가 저장 확인 창을 띄우고 멈춘다.
+        //   빌드 직후 잠깐(ticks번의 에디터 업데이트) 같은 씬이 수정됨이면 다시 저장한다. 사람이 손대기 전의 아주 짧은 시간이다.
+        public static void SaveActiveSceneAgainAfterEditorTicks(int ticks = 30)
+        {
+            var path = SceneManager.GetActiveScene().path;
+            int left = ticks;
+            EditorApplication.CallbackFunction tick = null;
+            tick = () =>
+            {
+                var scene = SceneManager.GetActiveScene();
+                if (scene.path != path || --left <= 0 || EditorApplication.isPlayingOrWillChangePlaymode)
+                {
+                    EditorApplication.update -= tick;
+                    return;
+                }
+                if (scene.isDirty) EditorSceneManager.SaveScene(scene);
+            };
+            EditorApplication.update += tick;
+        }
+
         public static void ClearRootObjects()
         {
             var scene = SceneManager.GetActiveScene();
