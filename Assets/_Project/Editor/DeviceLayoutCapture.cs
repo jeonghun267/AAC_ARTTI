@@ -165,6 +165,74 @@ namespace Artti.Editor
             Debug.Log($"[DeviceLayoutCapture] 삭제 팝업 캡처 -> {OutDir}");
         }
 
+        // 변경점: AR 현장모드 결과 화면(HJ 시안). 결과 패널은 실행 중에만 켜지므로 켜고 예시 글/사진을 넣어 태블릿·폰·16:9로 찍는다.
+        // 씬은 저장하지 않는다.
+        [MenuItem("Artti/Debug/Capture ARField Result - Tab + Phone + 16x9")]
+        static void CaptureARFieldResult()
+        {
+            if (EditorApplication.isPlaying) return;
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            var original = EditorSceneManager.GetActiveScene().path;
+            Directory.CreateDirectory(OutDir);
+            try
+            {
+                foreach (var (w, h, tag) in new[] { (2560, 1600, "tab"), (2400, 1080, "phone"), (1920, 1080, "169") })
+                {
+                    EditorSceneManager.OpenScene(ScenePaths.ARField, OpenSceneMode.Single);
+                    foreach (var root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
+                    {
+                        var panel = root.transform.Find("ResultPanel");
+                        if (panel == null) continue;
+                        foreach (Transform sib in root.transform)
+                            if (sib is RectTransform) sib.gameObject.SetActive(sib == panel);
+                        FillARResultSample(panel);
+                    }
+                    CaptureActiveScene(w, h, Path.Combine(OutDir, $"{tag}_ARFieldResult.png"));
+                }
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(original)) EditorSceneManager.OpenScene(original, OpenSceneMode.Single);
+            }
+            Debug.Log($"[DeviceLayoutCapture] AR 결과 화면 캡처 -> {OutDir}");
+        }
+
+        static void FillARResultSample(Transform panel)
+        {
+            var controller = Object.FindFirstObjectByType<OcrTestController>(FindObjectsInactive.Include);
+            if (controller != null)
+            {
+                var so = new SerializedObject(controller);
+                if (so.FindProperty("categoryText").objectReferenceValue is TMPro.TMP_Text name) name.text = "메가MGC커피";
+                if (so.FindProperty("descriptionText").objectReferenceValue is TMPro.TMP_Text desc)
+                    desc.text = "촬영한 이미지에서 카페 '메가MGC커피'로 인식되었습니다. 해당 장소에 대한 다양한 의사소통 도움 내용을 확인할 수 있습니다.";
+                if (so.FindProperty("capturedImage").objectReferenceValue is RawImage photo)
+                {
+                    photo.texture = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/_Project/Art/UI/Home/main/2.png");
+                    photo.color = Color.white;
+                    if (photo.TryGetComponent<Artti.UI.RawImageCover>(out var cover)) cover.Apply();
+                }
+                if (so.FindProperty("aacImageComponent").objectReferenceValue is Image aac)
+                {
+                    var cafe = Resources.Load<Sprite>("AAC/cafe");
+                    if (cafe != null) { aac.sprite = cafe; aac.color = Color.white; }
+                }
+            }
+            var map = Object.FindFirstObjectByType<NaverStaticMapController>(FindObjectsInactive.Include);
+            if (map != null)
+            {
+                var so = new SerializedObject(map);
+                if (so.FindProperty("latitudeText").objectReferenceValue is TMPro.TMP_Text lat) lat.text = "위도: 37.566500";
+                if (so.FindProperty("longitudeText").objectReferenceValue is TMPro.TMP_Text lon) lon.text = "경도: 126.978000";
+            }
+            var view = panel.GetComponent<Artti.UI.ARResultView>();
+            if (view != null)
+            {
+                var so = new SerializedObject(view);
+                if (so.FindProperty("chipText").objectReferenceValue is TMPro.TMP_Text chip) chip.text = "카페";
+            }
+        }
+
         // 변경점: 점원 검증(ArttiMaleClerkCheck)이 점원 RT를 그린 뒤 같은 방식으로 화면 전체를 찍도록 internal로 연다.
         internal static void CaptureActiveScene(int w, int h, string file)
         {
