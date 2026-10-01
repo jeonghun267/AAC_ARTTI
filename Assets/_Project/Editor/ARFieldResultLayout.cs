@@ -321,14 +321,14 @@ namespace Artti.Editor
             return t;
         }
 
-        static RectTransform FindDeep(Transform root, string name)
+        internal static RectTransform FindDeep(Transform root, string name)
         {
             foreach (var t in root.GetComponentsInChildren<RectTransform>(true))
                 if (t != root && t.name == name) return t;
             return null;
         }
 
-        static RectTransform NewRect(string name, Transform parent)
+        internal static RectTransform NewRect(string name, Transform parent)
         {
             var go = new GameObject(name, typeof(RectTransform));
             go.layer = parent.gameObject.layer;
@@ -336,11 +336,11 @@ namespace Artti.Editor
             return (RectTransform)go.transform;
         }
 
-        static T GetOrAdd<T>(Component c) where T : Component
+        internal static T GetOrAdd<T>(Component c) where T : Component
             => c.TryGetComponent<T>(out var x) ? x : c.gameObject.AddComponent<T>();
 
         // rect(그림 px)를 parent(그림 속 parentRect 자리) 안에 좌상단 기준으로 놓는다
-        static void Place(RectTransform rt, RectTransform parent, Rect rect, Rect parentRect)
+        internal static void Place(RectTransform rt, RectTransform parent, Rect rect, Rect parentRect)
         {
             if (rt.parent != parent) rt.SetParent(parent, false);
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 1f);
@@ -351,7 +351,7 @@ namespace Artti.Editor
             if (rt.TryGetComponent<LayoutElement>(out var le)) le.ignoreLayout = true;
         }
 
-        static void Stretch(RectTransform rt)
+        internal static void Stretch(RectTransform rt)
         {
             rt.anchorMin = Vector2.zero;
             rt.anchorMax = Vector2.one;
@@ -361,7 +361,7 @@ namespace Artti.Editor
             rt.localRotation = Quaternion.identity;
         }
 
-        static TMP_Text Style(RectTransform rt, float size, bool bold, Color color, TextAlignmentOptions align)
+        internal static TMP_Text Style(RectTransform rt, float size, bool bold, Color color, TextAlignmentOptions align)
         {
             var t = rt.GetComponent<TMP_Text>();
             t.fontSize = size;
@@ -386,7 +386,7 @@ namespace Artti.Editor
             DisableOutline(card);
         }
 
-        static void DisableOutline(Component c)
+        internal static void DisableOutline(Component c)
         {
             foreach (var o in c.GetComponents<Shadow>()) o.enabled = false;   // Outline은 Shadow를 상속
         }
@@ -429,7 +429,7 @@ namespace Artti.Editor
         }
 
         // 본체(body) 크기로 놓인 root 안에, 빛 번짐까지 든 그림 전체(imageSize px)를 본체가 root와 겹치게 놓는다
-        static void Visual(RectTransform root, string path, Rect body, Vector2 imageSize)
+        internal static void Visual(RectTransform root, string path, Rect body, Vector2 imageSize, int maxSize = 1024)
         {
             var v = FindDeep(root, "Visual") ?? NewRect("Visual", root);
             v.gameObject.SetActive(true);
@@ -440,13 +440,13 @@ namespace Artti.Editor
             v.anchoredPosition = new Vector2((imageSize.x * 0.5f - body.center.x) * k, (body.center.y - imageSize.y * 0.5f) * k);
             v.localScale = Vector3.one;
             var img = GetOrAdd<Image>(v);
-            img.sprite = LoadSprite(path, 1024);
+            img.sprite = LoadSprite(path, maxSize);
             img.preserveAspect = true;
             img.raycastTarget = false;
             img.color = Color.white;
         }
 
-        static Sprite LoadSprite(string path, int maxSize)
+        internal static Sprite LoadSprite(string path, int maxSize)
         {
             if (AssetImporter.GetAtPath(path) == null)
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
