@@ -27,7 +27,10 @@ namespace Artti.Common
         public static string Get(string keyName)
         {
             EnsureLoaded();
-            return _keys.TryGetValue(keyName, out var v) ? v : null;
+            var value = _keys.TryGetValue(keyName, out var v) ? v : null;
+            if (keyName == KakaoRestApi)
+                Debug.Log($"[ApiKeyLoader] Kakao REST API Key loaded = {!string.IsNullOrWhiteSpace(value)}");
+            return value;
         }
 
         public static string GetOrFallback(string primary, string fallback)
