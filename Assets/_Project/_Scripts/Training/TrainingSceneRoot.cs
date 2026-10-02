@@ -265,7 +265,6 @@ namespace Artti.Training
         private bool _lastNpcWasFallback;
         // 비풀 모드 fallback은 ApplyToolCall→HandleToolCall→SpeakNpc 경로라 다음 SpeakNpc에 fallback 여부 전달용.
         private bool _fallbackPending;
-        private int _objectivesEntered;
         private System.DateTimeOffset _sessionStartUtc;
 
         // v1 풀 모드: 각 objective 진입 시 NPC가 말하는 대사 (STT만 사용, Gemini 미사용 흐름)
@@ -355,7 +354,6 @@ namespace Artti.Training
             _eventLogger?.LogScenarioEntered(_mode);
             _eventLogger?.LogObjectiveEntered("greeting");
             _sessionStartUtc = System.DateTimeOffset.UtcNow;
-            _objectivesEntered = 1;
 
             // 풀 모드: 첫 NPC 대사 + TTS (Initialize는 이벤트 안 쏘므로 수동 호출)
             if (IsPoolMode && TryGetObjectivePrompt("greeting", out var greetingLine))
@@ -406,8 +404,10 @@ namespace Artti.Training
             hud.OnRetrySession += () => SceneFader.Load(SceneManager.GetActiveScene().name);
             hud.OnGoHub += () => SceneFader.Load("TrainingHubScene");
             hud.OnGoHome += () => SceneFader.Load("MainScene");
-            hud.OnGoReport += () => SceneFader.Load("ReportScene");
+            // 변경점: 완료 화면 '리포트보기'는 방금 연습한 모드의 리포트로
+            hud.OnGoReport += () => ReportNavigation.Open(_mode);
             hud.OnGoFieldMode += () => SceneFader.Load("ARFieldScene");
+            hud.OnQuitApp += AppQuit.QuitApp;
             hud.SetObjective(0, StepperLabel("greeting"));
         }
 
@@ -747,7 +747,6 @@ namespace Artti.Training
         private void HandleObjectiveChanged(string newObjectiveId)
         {
             _eventLogger?.LogObjectiveEntered(newObjectiveId);
-            _objectivesEntered++;
 
             // 진행 표시는 objective를 따라감 (turn 아님)
             if (hud != null && ObjectiveOrderByScenario.TryGetValue(scenarioId, out var order))
@@ -1497,28 +1496,62 @@ namespace Artti.Training
         private bool _sessionCompleted;
 
         // 세션 완료 기록 + 즉시 flush — 레포트가 파일에서 바로 읽을 수 있게
+        // 변경점: flush는 완료 화면(ShowCompletionScreenAsync)이 기다린 뒤 같은 기록에서 점수를 계산한다
         private void MarkSessionCompleted()
         {
             if (_sessionCompleted) return;
             _sessionCompleted = true;
             _eventLogger?.LogSessionEnded("completed");
-            AppBootstrap.Instance?.LogStore?.FlushAsync().Forget();
-            ShowCompletionScreen();
+            ShowCompletionScreenAsync(this.GetCancellationTokenOnDestroy()).Forget();
         }
 
-        // 완료 화면 — 평가성 요소 없이 시나리오/걸린 시간/진행 단계 수만 (시안 스펙)
-        private void ShowCompletionScreen()
+        // 변경점(ending 시안): 완료 화면 — 점수·별·정확도·잘한 표현·최고 기록을 레포트와 같은 기록(JSONL)에서 계산한다.
+        //   기록이 없으면(프로필 없이 바로 실행) 점수 칸은 빈 값으로 보인다.
+        private async UniTaskVoid ShowCompletionScreenAsync(CancellationToken ct)
         {
-            if (hud == null) return;
             var elapsed = System.DateTimeOffset.UtcNow - _sessionStartUtc;
-            string duration = elapsed.TotalSeconds < 60 ? "1분 이내" : $"{Mathf.RoundToInt((float)elapsed.TotalMinutes)}분";
             SpeakNpc("정말 잘했어요! 다음에도 함께해요.");
-            hud.ShowCompletion(
-                Artti.Report.ReportLabels.ScenarioName(scenarioId),
-                duration,
-                $"{_objectivesEntered}단계 완료");
+
+            Artti.Report.ReportDataService service = null;
+            var store = AppBootstrap.Instance?.LogStore;
+            if (store != null)
+            {
+                await store.FlushAsync(ct);
+                var path = (store as Artti.AAC.Logging.JsonAppendLogStore)?.FilePath;
+                if (_eventLogger != null && !string.IsNullOrEmpty(path)) service = new Artti.Report.ReportDataService(path);
+            }
+            if (ct.IsCancellationRequested || hud == null) return;
+
+            // 변경점: 대화 모드는 Gemini가 대화 전체를 한 번 평가해 기록에 남긴다(리포트의 자연스러움·응답 적절성·AI 코멘트).
+            //   완료 화면에서 바로 나가도 끝까지 하도록 앱 수명(AppBootstrap) 토큰을 쓴다. 실패하면 리포트는 기존 계산을 쓴다
+            if (IsConversationMode && service != null && _eventLogger != null && AppBootstrap.Instance != null)
+                EvaluateConversationAsync(Artti.Report.ConversationReportBuilder.Transcript(service, _eventLogger.SessionId), _eventLogger,
+                    AppBootstrap.Instance.GetCancellationTokenOnDestroy()).Forget();
+
+            var result = Artti.Report.TrainingResultCalculator.Build(service, _eventLogger?.SessionId,
+                accuracyClarityMinPercent, _mode, Artti.Report.ReportLabels.ScenarioName(scenarioId),
+                Mathf.RoundToInt((float)elapsed.TotalSeconds));
+            hud.ShowCompletion(result);
         }
 
+
+        // 이 씬이 사라진 뒤에도 돌 수 있게 인스턴스 필드를 쓰지 않는다
+        private static async UniTaskVoid EvaluateConversationAsync(Artti.Report.ConversationTranscript transcript, EventLogger logger,
+            CancellationToken ct)
+        {
+            try
+            {
+                var service = Artti.Report.ConversationEvaluationService.FromEnv();   // OpenAI 키가 있으면 OpenAI
+                var evaluation = await service.EvaluateAsync(transcript.lines, ct);
+                if (evaluation == null) return;
+                logger.LogSessionEvaluated(evaluation);
+                var store = AppBootstrap.Instance?.LogStore;
+                if (store != null) await store.FlushAsync(ct);
+                Debug.Log($"[TrainingSceneRoot] 대화 AI 평가 저장: 적절성 {evaluation.appropriateness}, 자연스러움 {evaluation.naturalness}");
+            }
+            catch (System.OperationCanceledException) { }
+            catch (System.Exception e) { Debug.LogWarning($"[TrainingSceneRoot] 대화 AI 평가 실패(리포트는 기존 계산): {e.Message}"); }
+        }
 
         private void HandleToolCall(DialogueTool tool, string npcText, string[] args)
         {

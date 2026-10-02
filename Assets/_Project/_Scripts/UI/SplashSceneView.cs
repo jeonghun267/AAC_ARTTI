@@ -77,6 +77,7 @@ namespace Artti.UI
                 fadeOverlay.color = c;
             }
             if (bgm != null && bgm.clip != null) bgm.volume = bgmVolume * (1f - fadeOut);
+            BgmPlayer.SetDip(fadeOut);   // 변경점: 앱 배경음악(BgmPlayer)도 암전 동안 잠깐 줄였다가 메인에서 다시 커진다
 
             float logo = Ease((t - LogoStart) / LogoDur);
             if (logoGroup != null) logoGroup.alpha = logo;

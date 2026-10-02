@@ -9,6 +9,7 @@ using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 using Artti.AAC;
+using Artti.Common;
 
 namespace Artti.Training
 {
@@ -17,7 +18,7 @@ namespace Artti.Training
         private readonly string _apiKey;
         // dialogue_tools.json의 "function_declarations" 배열 원문(JSON 문자열). 호출부에서 TextAsset으로 읽어 주입.
         private readonly string _functionDeclarationsJson;
-        private const string ApiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+        // 변경점: 모델·주소는 GeminiConfig에서(2026-10-02 gemini-3.5-flash-lite로 바꿈)
 
         // functionDeclarationsJson을 비우면 function calling 없이 일반 텍스트 응답으로 폴백.
         // 자유 대화(도구 흐름)를 쓰려면 반드시 dialogue_tools.json의 function_declarations 배열을 주입할 것.
@@ -140,7 +141,9 @@ namespace Artti.Training
                     ["role"] = "user",
                     ["parts"] = new JArray { new JObject { ["text"] = userPrompt ?? string.Empty } }
                 }
-            }
+            },
+            // 변경점: 대화는 바로 답해야 해서 '생각'을 가장 적게(말 뜻 맞추기는 3초 제한)
+            ["generationConfig"] = new JObject { ["thinkingConfig"] = GeminiConfig.MinimalThinking() }
         };
 
         // HTTP 왕복 공통부. 성공 시 응답 본문 원문, 실패 시 null.
@@ -152,7 +155,7 @@ namespace Artti.Training
                 return null;
             }
 
-            using (var request = new UnityWebRequest($"{ApiUrl}?key={_apiKey}", "POST"))
+            using (var request = new UnityWebRequest($"{GeminiConfig.GenerateUrl}?key={_apiKey}", "POST"))
             {
                 byte[] bodyRaw = Encoding.UTF8.GetBytes(body.ToString(Formatting.None));
                 request.uploadHandler = new UploadHandlerRaw(bodyRaw);

@@ -127,6 +127,9 @@ namespace Artti.Report
         public string clarityHeard;
         public bool spoken;           // 변경점: 음성 입력 턴(음성 버튼, 카드 탭+STT). 버튼/상품 탭은 false
         public string heardText;      // 음성 입력 턴의 STT 인식 원문 (명료도 기록 여부와 무관)
+        // 변경점(대화 모드 리포트): 턴 시각(응답 속도·대화 기록 시각)과, 이 사용자 턴 뒤에 다시 말하기 요청이 왔는지
+        public long timestampMs;
+        public bool rejected;
     }
 
     public class ReportStep
@@ -141,6 +144,7 @@ namespace Artti.Report
         public ReportSessionSummary summary;
         public List<ReportStep> steps = new List<ReportStep>();
         public List<string> needsPractice = new List<string>(); // objectiveId
+        public ConversationEvaluation evaluation;               // 변경점: 대화 모드 AI 평가(없으면 null)
     }
 
     // JSONL 로그(JsonAppendLogStore 산출물)를 레포트 화면 데이터로 가공.
@@ -157,6 +161,7 @@ namespace Artti.Report
         static readonly string EvSessionAbandoned = AACEventType.SessionAbandoned.ToString();
         static readonly string EvTtsPlayed        = AACEventType.TtsPlayed.ToString();
         static readonly string EvSessionEnded     = AACEventType.SessionEnded.ToString();
+        static readonly string EvSessionEvaluated = AACEventType.SessionEvaluated.ToString();
 
         public ReportDataService(string filePath)
         {
@@ -503,6 +508,7 @@ namespace Artti.Report
             var detail = new ReportSessionDetail { summary = BuildSummary(sessionId, events) };
             ReportStep current = null;
             string lastObjective = null;
+            ReportTurn lastUserTurn = null;
 
             foreach (var ev in events)
             {
@@ -514,15 +520,18 @@ namespace Artti.Report
                 }
                 else if (ev.eventType == EvTtsPlayed)
                 {
-                    AddTurn(detail, ref current, isUser: false, ParseNpcText(ev.payloadJson));
+                    var npc = AddTurn(detail, ref current, isUser: false, ParseNpcText(ev.payloadJson));
+                    if (npc != null) npc.timestampMs = ev.timestampUnixMs;
                 }
                 else if (ev.eventType == EvCardSelected)
                 {
                     var turn = AddTurn(detail, ref current, isUser: true, ParseUserText(ev.payloadJson));
                     if (turn != null)
                     {
+                        turn.timestampMs = ev.timestampUnixMs;
                         turn.spoken = IsSpokenSource(ev.payloadJson);
                         if (turn.spoken) turn.heardText = ParseSttText(ev.payloadJson);
+                        lastUserTurn = turn;
                     }
                     // 변경점: 서버 발화 정확도가 있으면 방금 추가한 사용자 턴에 붙인다(이유 설명용 목표/들린 문장 포함).
                     if (turn != null
@@ -534,10 +543,20 @@ namespace Artti.Report
                         turn.clarityHeard = ParseSttText(ev.payloadJson);
                     }
                 }
+                else if (ev.eventType == EvSessionEvaluated)
+                {
+                    try
+                    {
+                        var e = JsonUtility.FromJson<ConversationEvaluation>(ev.payloadJson);
+                        if (e != null && e.IsValid) detail.evaluation = e;   // 여러 번이면 마지막 것
+                    }
+                    catch { /* 깨진 평가는 무시 -> 기존 계산 */ }
+                }
                 else if (ev.eventType == EvStepRetry)
                 {
                     var step = detail.steps.LastOrDefault(s => s.objectiveId == (ev.objectiveId ?? "")) ?? current;
                     if (step != null) step.retryCount++;
+                    if (lastUserTurn != null) lastUserTurn.rejected = true;   // 방금 한 말을 다시 해 달라고 했다
                 }
             }
 

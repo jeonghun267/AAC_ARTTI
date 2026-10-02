@@ -7,6 +7,9 @@ namespace Artti.Common
     public static class ApiKeyLoader
     {
         public const string GeminiApi    = "GEMINI_API_KEY";
+        public const string GeminiModel  = "GEMINI_MODEL";     // 변경점: 비우면 GeminiConfig.DefaultModel
+        public const string OpenAiApi    = "OPENAI_API_KEY";   // 변경점: OpenAI(대화 평가 등)
+        public const string OpenAiModel  = "OPENAI_MODEL";     // 비우면 OpenAiChatClient.DefaultModel
         public const string GoogleSttApi = "GOOGLE_STT_API_KEY";
         public const string GoogleTtsApi = "GOOGLE_TTS_API_KEY";
         // 변경점: 서버PC STT 서버 설정. 주소는 TrainingSceneRoot Inspector(Stt Server Url)가 비어 있을 때만 쓴다.

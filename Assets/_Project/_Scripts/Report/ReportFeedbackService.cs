@@ -7,6 +7,7 @@ using Newtonsoft.Json;        // CLAUDE.md: LLM 응답 파싱은 Newtonsoft 사�
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
+using Artti.Common;   // 변경점: GeminiConfig
 
 namespace Artti.Report
 {
@@ -16,8 +17,7 @@ namespace Artti.Report
     public class ReportFeedbackService
     {
         private readonly string _apiKey;
-        private const string ApiUrl =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+        // 변경점: 모델·주소는 GeminiConfig에서(2026-10-02 gemini-3.5-flash-lite)
 
         public class Feedback
         {
@@ -86,13 +86,13 @@ namespace Artti.Report
                     ["temperature"] = 0.8,
                     ["maxOutputTokens"] = 1024,           // 잘림 방지 (JSON 끊김 오류 해결)
                     ["responseMimeType"] = "application/json",
-                    ["thinkingConfig"] = new JObject { ["thinkingBudget"] = 0 } // 2.5-flash 사고 토큰이 출력 예산 먹는 것 방지
+                    ["thinkingConfig"] = GeminiConfig.MinimalThinking() // 사고 토큰이 출력 예산 먹는 것 방지(3.x는 thinkingBudget을 거절)
                 }
             };
 
             string jsonBody = body.ToString(Formatting.None);
 
-            using (var request = new UnityWebRequest($"{ApiUrl}?key={_apiKey}", "POST"))
+            using (var request = new UnityWebRequest($"{GeminiConfig.GenerateUrl}?key={_apiKey}", "POST"))
             {
                 request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
                 request.downloadHandler = new DownloadHandlerBuffer();

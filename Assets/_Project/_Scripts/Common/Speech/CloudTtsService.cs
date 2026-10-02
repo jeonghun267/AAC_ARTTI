@@ -28,9 +28,21 @@ namespace Artti.Common.Speech
             Debug.Log($"[CloudTTS] init. keyTail=...{tail} len={(apiKey?.Length ?? 0)}");
         }
 
+        // 재생을 시작하면 바로 돌아온다(끝날 때까지 기다리지 않는다). 끝을 기다릴 쪽은 AudioSource.isPlaying을 본다
         public async UniTask SpeakAsync(string text, CancellationToken ct = default)
         {
-            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(_apiKey)) return;
+            var clip = await SynthesizeAsync(text, ct);
+            if (clip != null && _audioSource != null)
+            {
+                _audioSource.clip = clip;
+                _audioSource.Play();
+            }
+        }
+
+        // 변경점: 음성 만들기만(재생 없이). 실패하면 null. 리포트 확인 메뉴가 소리가 실제로 오는지 볼 때도 쓴다
+        public async UniTask<AudioClip> SynthesizeAsync(string text, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(_apiKey)) return null;
 
             var req = new TtsRequest
             {
@@ -51,33 +63,28 @@ namespace Artti.Common.Speech
             {
                 await request.SendWebRequest().WithCancellation(ct);
             }
-            catch (OperationCanceledException) { return; }
+            catch (OperationCanceledException) { return null; }
             catch (UnityWebRequestException e)
             {
                 Debug.LogWarning($"[CloudTTS] HTTP {(int)e.ResponseCode}: {e.Error}\nbody: {e.Text}");
-                return;
+                return null;
             }
 
             if (request.result != UnityWebRequest.Result.Success)
             {
                 Debug.LogWarning($"[CloudTTS] HTTP error: {request.error}\n{request.downloadHandler.text}");
-                return;
+                return null;
             }
 
             var resp = JsonUtility.FromJson<TtsResponse>(request.downloadHandler.text);
             if (resp == null || string.IsNullOrEmpty(resp.audioContent))
             {
                 Debug.LogWarning("[CloudTTS] empty audioContent");
-                return;
+                return null;
             }
 
             byte[] pcm = Convert.FromBase64String(resp.audioContent);
-            var clip = PcmToAudioClip(pcm, SampleRate);
-            if (clip != null && _audioSource != null)
-            {
-                _audioSource.clip = clip;
-                _audioSource.Play();
-            }
+            return PcmToAudioClip(pcm, SampleRate);
         }
 
         // 변경점: ?. 는 파괴된 Unity 오브젝트를 걸러내지 못한다(씬 종료 시 OnDestroy 순서에 따라 AudioSource가 먼저 파괴됨).

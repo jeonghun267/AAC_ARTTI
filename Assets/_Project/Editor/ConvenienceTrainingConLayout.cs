@@ -19,7 +19,8 @@ namespace Artti.Editor
     // - 좌표는 시안 그림 px(좌상단 기준, y 아래 +). 캔버스(1536x1024 Expand) 단위 = 시안 px x (1024/1086).
     //   왼쪽 열은 화면 왼쪽, 오른쪽 열은 화면 오른쪽, 가운데(배너·점원·상품·말하기)는 화면 가운데에 붙어 폰(20:9)에서도 겹치지 않는다.
     // - 시안에 없는 그림(빈 말풍선, 아이콘, 주황 선택 버튼, 상품 칸)은 Art_Source/ui_training_con/make_derived.py가 만든다.
-    public static class ConvenienceTrainingConLayout
+    // - 완료 화면(ending 시안)은 ConvenienceTrainingConLayout.Ending.cs (Apply 끝에서 함께 다시 만든다)
+    public static partial class ConvenienceTrainingConLayout
     {
         const string Dir = "Assets/_Project/Art/UI/TrainingCon/";
         const string Der = Dir + "derived/";
@@ -337,6 +338,7 @@ namespace Artti.Editor
             var keyboardModal = BuildKeyboardModal(canvas);
             var tour = BuildOnboarding(canvas);
             var welcome = BuildWelcome(canvas);
+            ApplyEnding(canvasGo);   // 변경점: 완료 화면(ending 시안)도 같은 메뉴·빌더에서 다시 만든다
             var completion = canvas.Find("CompletionRoot");
             if (completion != null) completion.SetAsLastSibling();
 
