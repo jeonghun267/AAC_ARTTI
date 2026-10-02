@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using Artti.UI;
 
 // 이 스크립트는 OrderPanel 오브젝트에 붙이세요.
 // OrderPanel이 켜지면 → 온도(TempPanel)부터 시작.
@@ -34,16 +35,39 @@ public class OrderManager : MonoBehaviour
     [Tooltip("최종 주문 문장을 보여줄 텍스트. 필요 없으면 비워두세요.")]
     [SerializeField] private TMP_Text orderText;
 
+    // 변경점: 주문하기 시안(한 화면에 온도/메뉴/사이즈를 모두 두고 '주문 완료하기'로 말하기)
+    [Header("한 화면 모드 (주문하기 시안)")]
+    [Tooltip("켜면 단계 패널을 숨기지 않고, 사이즈를 골라도 바로 말하지 않는다. '주문 완료하기'를 눌러야 주문 문장을 말한다. 음료는 고정 메뉴라 Gemini로 받지 않는다.")]
+    [SerializeField] private bool singlePage = false;
+    [SerializeField] private Button completeButton;
+
     // 현재 선택값
     private string selectedTemp = "";
     private string selectedDrink = "";
     private string selectedSize = "";
 
     private bool hasGeneratedDrinks = false;
+    private OrderChoiceView[] choices = System.Array.Empty<OrderChoiceView>();
+
+    void Awake()
+    {
+        choices = GetComponentsInChildren<OrderChoiceView>(true);
+        if (completeButton != null) completeButton.onClick.AddListener(CompleteOrder);
+    }
+
+    void OnDestroy()
+    {
+        if (completeButton != null) completeButton.onClick.RemoveListener(CompleteOrder);
+    }
 
     void OnEnable()
     {
         ResetSelection();
+        if (singlePage)
+        {
+            RefreshChoices();
+            return;
+        }
         GoToTemp();                                  // 온도 단계부터 시작
         if (regenerateEveryTime || !hasGeneratedDrinks)
             GenerateDrinks();                        // 음료는 미리 받아둠(다음 단계에서 바로 보이게)
@@ -55,6 +79,33 @@ public class OrderManager : MonoBehaviour
         selectedDrink = "";
         selectedSize = "";
         if (orderText != null) orderText.text = "";
+    }
+
+    // 변경점: 한 화면 모드에서 고른 카드만 선택 표시
+    private void RefreshChoices()
+    {
+        foreach (var choice in choices)
+        {
+            if (choice == null) continue;
+            string picked = choice.Group == OrderChoiceGroup.Temperature ? selectedTemp
+                : choice.Group == OrderChoiceGroup.Drink ? selectedDrink : selectedSize;
+            choice.SetSelected(!string.IsNullOrEmpty(picked) && choice.Value == picked);
+        }
+    }
+
+    // 변경점: '주문 완료하기' 버튼. 아직 안 고른 단계가 있으면 그 단계를 말해 준다.
+    public void CompleteOrder()
+    {
+        string missing = string.IsNullOrEmpty(selectedTemp) ? "온도를 골라주세요"
+            : string.IsNullOrEmpty(selectedDrink) ? "메뉴를 선택해주세요"
+            : string.IsNullOrEmpty(selectedSize) ? "사이즈를 골라주세요" : null;
+        if (missing != null)
+        {
+            Debug.Log($"[Order] 주문 완료 전: {missing}");
+            if (ttsManager != null) ttsManager.Speak(missing);
+            return;
+        }
+        TrySpeakOrder();
     }
 
     // ───────── 단계 전환 ─────────
@@ -90,6 +141,7 @@ public class OrderManager : MonoBehaviour
     {
         selectedTemp = temp;
         Debug.Log($"[Order] 온도 선택: {temp}");
+        if (singlePage) { RefreshChoices(); return; }
         GoToMenu();                                  // 다음 단계: 음료
     }
 
@@ -103,6 +155,7 @@ public class OrderManager : MonoBehaviour
     {
         selectedSize = size;
         Debug.Log($"[Order] 사이즈 선택: {size}");
+        if (singlePage) { RefreshChoices(); return; }   // 한 화면 모드는 '주문 완료하기'에서 말한다
         TrySpeakOrder();                             // 마지막 단계: 문장 출력
     }
 
@@ -111,6 +164,7 @@ public class OrderManager : MonoBehaviour
     {
         selectedDrink = drink;
         Debug.Log($"[Order] 음료 선택: {drink}");
+        if (singlePage) { RefreshChoices(); return; }
         GoToSize();                                  // 다음 단계: 사이즈
     }
 

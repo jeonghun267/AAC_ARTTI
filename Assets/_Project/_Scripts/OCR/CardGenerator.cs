@@ -27,6 +27,7 @@ public class CardGenerator : MonoBehaviour
     [SerializeField] private string fallbackPlace = "";
 
     private bool hasGenerated = false;
+    private const string GreetingCategory = "인사";
 
     // 패널이 SetActive(true)로 켜질 때 자동 호출됨
     void OnEnable()
@@ -55,6 +56,12 @@ public class CardGenerator : MonoBehaviour
             ? $"지금은 {GetTimeOfDay()} 시간대야. 그 시간에 어울리는 표현을 포함해줘. "
             : "";
 
+        // 변경점: 인사 패널은 인사말이 바로 필요한 말이므로 인사말 금지 문장을 빼고, 다른 상황(주문·결제)만 막는다.
+        //   결제/편의 등 다른 패널은 예전처럼 인사말도 넣지 않는다.
+        string otherSituationRule = category == GreetingCategory
+            ? "주문이나 결제 같은 다른 상황의 표현은 절대 넣지 마. "
+            : "인사말이나(예: '안녕하세요', '안녕히 계세요') 다른 상황의 표현은 절대 넣지 마. ";
+
         // 3) 최종 프롬프트
         string prompt =
             "발달장애인이 사용하는 AAC 의사소통 앱이야. " +
@@ -62,7 +69,7 @@ public class CardGenerator : MonoBehaviour
             $"이 사람이 '{category}' 상황에서 직접 말할 수 있는 짧은 한국어 문장 {cardCount}개를 만들어줘. " +
             timeContext +
             $"오직 '{category}' 행동에 직접 필요한 말만 만들어. " +
-            "인사말이나(예: '안녕하세요', '안녕히 계세요') 다른 상황의 표현은 절대 넣지 마. " +
+            otherSituationRule +
             "각 문장은 12자 이내의 쉽고 공손한 1인칭 표현이어야 해. " +
             "문장끼리 의미가 겹치면 안 돼. 같은 뜻을 다른 말로 바꾼 중복(예: '결제해주세요'와 '계산해주세요')은 금지야. " +
             "각 카드는 서로 다른 의도(요청·질문·확인·감사 등)를 담아 다양하게 만들어줘. " +
@@ -98,6 +105,7 @@ public class CardGenerator : MonoBehaviour
         foreach (Transform child in cardParent)
             Destroy(child.gameObject);
 
+        int index = 0;
         foreach (string phrase in phrases)
         {
             if (string.IsNullOrWhiteSpace(phrase)) continue;
@@ -107,6 +115,9 @@ public class CardGenerator : MonoBehaviour
 
             TMP_Text label = card.GetComponentInChildren<TMP_Text>(true);
             if (label != null) label.text = phrase;
+            // 변경점: 모양(아이콘/색)이 있는 카드 템플릿이면 문장에 맞춰 바꾼다
+            if (card.TryGetComponent<Artti.UI.AACPhraseCardView>(out var view)) view.Show(phrase, index);
+            index++;
 
             Button btn = card.GetComponent<Button>();
             if (btn != null)

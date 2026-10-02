@@ -26,7 +26,6 @@ namespace Artti.Editor
         const string ListenPath = Dir + "94.png";
         const string HelpPath = Dir + "95.png";
         const string HintPath = Dir + "96.png";
-        const string ChipPath = Dir + "97.png";   // 분류 칩(네온 유리 막대)
         const string RoundedPath = "Assets/_Project/Art/UI/RoundedRect.png";   // 모서리 반지름 44(1:1)
 
         static readonly Vector2 BoardSize = new Vector2(1536f, 1024f);
@@ -43,14 +42,18 @@ namespace Artti.Editor
         static readonly Rect CoordBar = Rect.MinMaxRect(548f, 710f, 1024f, 795f);
         static readonly Rect LatText = Rect.MinMaxRect(616f, 726f, 772f, 778f);   // 조준 아이콘 ~ 가운데 세로줄
         static readonly Rect LonText = Rect.MinMaxRect(850f, 726f, 1016f, 778f);  // 핀 아이콘 오른쪽
-        static readonly Rect IconBox = Rect.MinMaxRect(1100f, 362f, 1164f, 426f);
         // 분류 칩 = 97 그림(네온 테두리 유리 막대, 본체 1962x300 약 6.5:1). 아이콘 칸 오른쪽 ~ 안쪽 칸 오른쪽 끝, 아이콘과 같은 가운데 높이(394)
-        static readonly Rect ChipBox = Rect.MinMaxRect(1176f, 371f, 1474f, 417f);
-        static readonly Vector2 ChipSize = new Vector2(2078f, 757f);
-        static readonly Rect ChipBody = Rect.MinMaxRect(58f, 222f, 2020f, 522f);
+        // 변경점: 아이콘 칸과 큰 이름을 없애고 칩(지점 이름)을 그 자리 왼쪽 끝에 크게 둔다. 칩 폭은 실행 중 이름 길이에 맞춰 바뀐다(오른쪽 끝 ChipBox.xMax까지).
+        static readonly Rect ChipBox = Rect.MinMaxRect(1100f, 374f, 1478f, 430f);   // 오른쪽 = 최대 폭(안쪽 테두리에서 10px 띄움)
         const float ChipAlpha = 1f;      // 그림 그대로(필요하면 낮춰 뒤가 비치게)
-        static readonly Rect NameBox = Rect.MinMaxRect(1100f, 436f, 1476f, 498f);
-        static readonly Rect DescBox = Rect.MinMaxRect(1100f, 504f, 1476f, 614f);
+        // 변경점: 분류 칩 그림 = 97(네온 유리 막대)을 1024 폭으로 줄인 9-slice 그림. 칩 폭이 장소 이름 길이에 따라 바뀐다(Art_Source/ui_arfield/make_result_chip.py)
+        const string ChipSlicedPath = Dir + "derived/97_chip.png";
+        static readonly Vector2 ChipSlicedSize = new Vector2(1024f, 373f);
+        static readonly Rect ChipSlicedBody = Rect.MinMaxRect(28.6f, 109.4f, 995.4f, 257.2f);
+        // 9-slice 가장자리(그림 px): 양끝 = 둥근 부분 + 빛, 위/아래 = 둥근 모서리(반지름 약 50) + 빛. 두 줄로 높아져도 모서리가 그대로다
+        const float ChipCapPx = 128f, ChipCapTopPx = 165f, ChipCapBottomPx = 168f;
+        const float ChipPadding = 26f, ChipMinWidth = 120f, ChipFontMax = 30f, ChipFontMin = 18f;
+        static readonly Rect DescBox = Rect.MinMaxRect(1100f, 452f, 1476f, 600f);   // 칩 바로 아래
         const float RowX0 = 1086f, RowX1 = 1488f, RowTop = 632f, RowH = 51f, RowTextX = 1160f, RowTextW = 282f;
 
         // 위쪽 머리
@@ -203,52 +206,15 @@ namespace Artti.Editor
             // ===== 카드 3: 인식 결과 =====
             Place(c3, board, Card3, boardRect);
             CardHeader(c3, Card3, "인식 결과", "사진을 분석한 결과입니다.");
-            var iconSurface = Need(c3, "CategoryIconSurface");
-            if (iconSurface != null)
-            {
-                Place(iconSurface, c3, IconBox, Card3);
-                if (iconSurface.TryGetComponent<Image>(out var isImg)) { isImg.type = Image.Type.Sliced; isImg.pixelsPerUnitMultiplier = 44f / 14f; }
-            }
-            if (aacImage != null)
-            {
-                var ar = (RectTransform)aacImage.transform;
-                Place(ar, c3, new Rect(IconBox.x + 6f, IconBox.y + 6f, IconBox.width - 12f, IconBox.height - 12f), Card3);
-                aacImage.preserveAspect = true;
-            }
-
             var chip = (RectTransform)badge.transform;
-            Place(chip, c3, ChipBox, Card3);
             DisableOutline(chip);
             // 변경점: 칩 그림 = 97. OcrTestController가 이 Image에 분류별 색을 칠하는데, 97에 색이 곱해지면 탁해지므로
             //   이 Image는 끄고(연결은 그대로) 자식 Visual에 97을 그대로 그린다.
             badge.enabled = false;
-            Visual(chip, ChipPath, ChipBody, ChipSize);
-            if (chip.Find("Visual") is RectTransform chipVisual && chipVisual.TryGetComponent<Image>(out var chipImg))
-                chipImg.color = new Color(1f, 1f, 1f, ChipAlpha);
             var chipTextRt = FindDeep(chip, "ChipText") ?? NewRect("ChipText", chip);
-            Stretch(chipTextRt);
-            chipTextRt.offsetMin = new Vector2(24f, 0f);
-            chipTextRt.offsetMax = new Vector2(-12f, 0f);
             var chipText = GetOrAdd<TextMeshProUGUI>(chipTextRt);
             chipText.font = nameText.font;
-            Style(chipTextRt, 26f, true, TextWhite, TextAlignmentOptions.MidlineLeft).text = "장소";   // 자리 표시(실행하면 분류로)
-            chipTextRt.SetAsLastSibling();
-
-            var nameRt = (RectTransform)nameText.transform;   // 예전엔 칩 안 글자. 이제 큰 이름
-            Place(nameRt, c3, NameBox, Card3);
-            var nameTmp = Style(nameRt, 44f, true, TextWhite, TextAlignmentOptions.MidlineLeft);
-            nameTmp.enableAutoSizing = true;
-            nameTmp.fontSizeMin = 24f;
-            nameTmp.fontSizeMax = 44f;
-
-            var descRt = (RectTransform)descText.transform;
-            Place(descRt, c3, DescBox, Card3);
-            var descTmp = Style(descRt, 19f, false, TextBody, TextAlignmentOptions.TopLeft);
-            descTmp.textWrappingMode = TextWrappingModes.Normal;
-            descTmp.enableAutoSizing = true;
-            descTmp.fontSizeMin = 13f;
-            descTmp.fontSizeMax = 19f;
-            descTmp.lineSpacing = 6f;
+            PlaceNameCard(c3, chip, chipText, aacImage, nameText, descText);
 
             // 아래 세 줄(아이콘과 > 는 93에 그려져 있다). 줄 전체가 누르는 칸.
             var rows = FindDeep(c3, "InfoRows") ?? NewRect("InfoRows", c3);
@@ -310,6 +276,118 @@ namespace Artti.Editor
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             Debug.Log("[ARFieldResultLayout] 결과 화면 HJ 시안 적용 완료 - 다른 패널/연결은 그대로");
+        }
+
+        // 변경점: 인식 결과 카드 위쪽만 다시 맞춘다(결과 화면 전체 Fix를 다시 돌리지 않아도 되게).
+        //   칩/큰 이름/아이콘은 ARResultView 연결, 설명 글은 OcrTestController 연결에서 찾는다.
+        [MenuItem("Artti/Fix/ARField - Result Place Name Chip (result card only)")]
+        public static void ApplyChipOnly()
+        {
+            if (EditorApplication.isPlaying) { Debug.LogWarning("[ARFieldResultLayout] Play 모드에서는 실행하지 않는다."); return; }
+            var scene = EditorSceneManager.GetActiveScene();
+            if (scene.path != ScenePaths.ARField)
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+                scene = EditorSceneManager.OpenScene(ScenePaths.ARField, OpenSceneMode.Single);
+            }
+            var view = Object.FindFirstObjectByType<ARResultView>(FindObjectsInactive.Include);
+            var controller = Object.FindFirstObjectByType<OcrTestController>(FindObjectsInactive.Include);
+            if (view == null || controller == null) { Debug.LogError("[ARFieldResultLayout] ARResultView/OcrTestController 없음 - 결과 화면 Fix(HJ Design)를 먼저 실행"); return; }
+            var so = new SerializedObject(view);
+            var chip = so.FindProperty("chip").objectReferenceValue as GameObject;
+            var chipText = so.FindProperty("chipText").objectReferenceValue as TMP_Text;
+            var nameText = so.FindProperty("nameText").objectReferenceValue as TMP_Text;
+            var icon = so.FindProperty("iconImage").objectReferenceValue as Image;
+            var descText = new SerializedObject(controller).FindProperty("descriptionText").objectReferenceValue as TMP_Text;
+            if (chip == null || chipText == null || descText == null) { Debug.LogError("[ARFieldResultLayout] 칩/설명 글 연결이 비어 있음"); return; }
+            var c3 = (RectTransform)chip.transform.parent;
+            PlaceNameCard(c3, (RectTransform)chip.transform, chipText, icon, nameText, descText);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Debug.Log("[ARFieldResultLayout] 칩 완료 - 아이콘/큰 이름 숨김, 칩에 지점 이름(길이에 맞춰 폭이 바뀜)");
+        }
+
+        // 변경점: 인식 결과 카드 위쪽 = 지점 이름 칩 + 설명. 흰 아이콘 칸, 분류 아이콘, 큰 이름은 끈다(지우지 않음, 다른 코드 연결은 그대로).
+        static void PlaceNameCard(RectTransform c3, RectTransform chip, TMP_Text chipText, Image aacImage, TMP_Text nameText, TMP_Text descText)
+        {
+            var iconSurface = FindDeep(c3, "CategoryIconSurface");
+            if (iconSurface != null) iconSurface.gameObject.SetActive(false);
+            if (aacImage != null) aacImage.gameObject.SetActive(false);
+            if (nameText != null) nameText.gameObject.SetActive(false);
+
+            var descRt = (RectTransform)descText.transform;
+            Place(descRt, c3, DescBox, Card3);
+            var descTmp = Style(descRt, 19f, false, TextBody, TextAlignmentOptions.TopLeft);
+            descTmp.textWrappingMode = TextWrappingModes.Normal;
+            descTmp.enableAutoSizing = true;
+            descTmp.fontSizeMin = 13f;
+            descTmp.fontSizeMax = 19f;
+            descTmp.lineSpacing = 6f;
+
+            Place(chip, c3, ChipBox, Card3);
+            SetupChip(chip, chipText, descRt);   // 칩이 두 줄로 높아지면 설명 칸 위쪽도 같이 내려간다
+        }
+
+        // 변경점: 분류 칩 = 97 그림(9-slice: 양끝 둥근 부분은 그대로, 가운데만 늘어남) + 장소 이름.
+        //   칩 크기는 실행 중 TextChipAutoWidth가 이름 길이에 맞춰 바꾼다(왼쪽 위 고정, 오른쪽으로 ChipBox 끝까지,
+        //   넘치면 띄어쓰기에서 두 줄로 바꾸고 아래로 높아진다. below = 같이 내릴 칸).
+        internal static void SetupChip(RectTransform chip, TMP_Text chipText, RectTransform below = null)
+        {
+            float k = ChipBox.height / ChipSlicedBody.height;   // 그림 px -> 보드 px(높이 기준이라 둥근 끝이 찌그러지지 않는다)
+            var visual = FindDeep(chip, "Visual") ?? NewRect("Visual", chip);
+            visual.gameObject.SetActive(true);
+            visual.SetAsFirstSibling();
+            // 칩(막대 본체) 크기를 따라 늘어나고, 빛 번짐만큼 사방으로 넘친다
+            visual.anchorMin = Vector2.zero;
+            visual.anchorMax = Vector2.one;
+            visual.pivot = new Vector2(0.5f, 0.5f);
+            visual.localScale = Vector3.one;
+            visual.offsetMin = new Vector2(-ChipSlicedBody.xMin * k, -(ChipSlicedSize.y - ChipSlicedBody.yMax) * k);
+            visual.offsetMax = new Vector2((ChipSlicedSize.x - ChipSlicedBody.xMax) * k, ChipSlicedBody.yMin * k);
+            var img = GetOrAdd<Image>(visual);
+            img.sprite = LoadChipSprite();
+            img.type = Image.Type.Sliced;
+            img.fillCenter = true;
+            img.pixelsPerUnitMultiplier = 1f / k;   // 9-slice 가장자리 그림 px -> 보드 px(x k)
+            img.preserveAspect = false;
+            img.color = new Color(1f, 1f, 1f, ChipAlpha);
+            img.raycastTarget = false;
+
+            var textRt = (RectTransform)chipText.transform;
+            Stretch(textRt);
+            textRt.offsetMin = new Vector2(ChipPadding, 0f);
+            textRt.offsetMax = new Vector2(-ChipPadding, 0f);
+            Style(textRt, ChipFontMax, true, TextWhite, TextAlignmentOptions.Center).text = "장소";   // 자리 표시(실행하면 장소 이름으로)
+            textRt.SetAsLastSibling();
+
+            var fit = GetOrAdd<TextChipAutoWidth>(chip);
+            var so = new SerializedObject(fit);
+            so.FindProperty("label").objectReferenceValue = chipText;
+            so.FindProperty("padding").floatValue = ChipPadding;
+            so.FindProperty("minWidth").floatValue = ChipMinWidth;
+            so.FindProperty("maxWidth").floatValue = ChipBox.width;
+            so.FindProperty("fontMax").floatValue = ChipFontMax;
+            so.FindProperty("fontMin").floatValue = ChipFontMin;
+            so.FindProperty("baseHeight").floatValue = ChipBox.height;
+            so.FindProperty("below").objectReferenceValue = below;
+            if (below != null)
+            {
+                so.FindProperty("belowBaseY").floatValue = below.anchoredPosition.y;
+                so.FindProperty("belowBaseHeight").floatValue = below.sizeDelta.y;
+            }
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static Sprite LoadChipSprite()
+        {
+            LoadSprite(ChipSlicedPath, 1024);
+            var border = new Vector4(ChipCapPx, ChipCapBottomPx, ChipCapPx, ChipCapTopPx);   // 왼쪽, 아래, 오른쪽, 위
+            if (AssetImporter.GetAtPath(ChipSlicedPath) is TextureImporter ti && ti.spriteBorder != border)
+            {
+                ti.spriteBorder = border;
+                ti.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Sprite>(ChipSlicedPath);
         }
 
         // ===== 도우미 =====

@@ -54,15 +54,49 @@ public class NaverStaticMapController : MonoBehaviour
             return;
         }
 
-        Rect imageRect = mapImage.rectTransform.rect;
-        int width = Mathf.Clamp(Mathf.RoundToInt(imageRect.width), 1, 1024);
-        int height = Mathf.Clamp(Mathf.RoundToInt(imageRect.height), 1, 1024);
-        if (width == 1 || height == 1) { width = 600; height = 420; }
+        var (width, height) = MapSize();
         string url = BuildUrl(userLatitude, userLongitude, storeLatitude, storeLongitude,
                               placeName, width, height);
         Debug.Log("[NaverMap] 지도 요청 시작");
         mapRequest = StartCoroutine(DownloadMap(url));
     }
+
+    // 변경점: 매장 좌표가 없을 때(카카오 검색 실패 등) 내 위치만 가운데 두고 지도를 보여 준다
+    public void UpdateUserOnlyMap(double userLatitude, double userLongitude)
+    {
+        Debug.Log($"[NaverMap] 내 위치만 표시: {userLatitude:F6}, {userLongitude:F6}");
+        ShowPlaceholder();
+        ShowUserCoordinates(userLatitude, userLongitude);
+        if (!IsCoordinateValid(userLatitude, userLongitude)) return;
+        if (mapImage == null || string.IsNullOrWhiteSpace(naverClientId) || string.IsNullOrWhiteSpace(naverClientSecret))
+        {
+            Debug.LogWarning("[NaverMap] 지도 요청 실패: MapImage 또는 NAVER 인증 정보가 없습니다.");
+            return;
+        }
+
+        var (width, height) = MapSize();
+        string url = StaticMapUrl + $"?w={width}&h={height}&format=png&scale=2&lang=ko&level={UserOnlyLevel}" +
+                     "&center=" + userLongitude.ToString("R", CultureInfo.InvariantCulture) + "," +
+                     userLatitude.ToString("R", CultureInfo.InvariantCulture) +
+                     "&markers=" + UnityWebRequest.EscapeURL(UserMarker(userLatitude, userLongitude));
+        mapRequest = StartCoroutine(DownloadMap(url));
+    }
+
+    private const int UserOnlyLevel = 16;   // 내 위치만 보일 때 확대 단계(동네 골목 정도)
+
+    private (int width, int height) MapSize()
+    {
+        Rect imageRect = mapImage.rectTransform.rect;
+        int width = Mathf.Clamp(Mathf.RoundToInt(imageRect.width), 1, 1024);
+        int height = Mathf.Clamp(Mathf.RoundToInt(imageRect.height), 1, 1024);
+        if (width == 1 || height == 1) { width = 600; height = 420; }
+        return (width, height);
+    }
+
+    private static string UserMarker(double latitude, double longitude) =>
+        "type:t|size:mid|color:Blue|pos:" +
+        longitude.ToString("R", CultureInfo.InvariantCulture) + " " +
+        latitude.ToString("R", CultureInfo.InvariantCulture) + "|label:내 위치";
 
     public void ShowPlaceholder()
     {
@@ -124,9 +158,7 @@ public class NaverStaticMapController : MonoBehaviour
                                    int width, int height)
     {
         // NAVER 문서: markers만 지정하고 center/level을 생략하면 두 마커를 담도록 자동 조정됩니다.
-        string userMarker = "type:t|size:mid|color:Blue|pos:" +
-            userLongitude.ToString("R", CultureInfo.InvariantCulture) + " " +
-            userLatitude.ToString("R", CultureInfo.InvariantCulture) + "|label:내 위치";
+        string userMarker = UserMarker(userLatitude, userLongitude);
         string storeMarker = "type:t|size:mid|color:Red|pos:" +
             storeLongitude.ToString("R", CultureInfo.InvariantCulture) + " " +
             storeLatitude.ToString("R", CultureInfo.InvariantCulture) + "|label:" +

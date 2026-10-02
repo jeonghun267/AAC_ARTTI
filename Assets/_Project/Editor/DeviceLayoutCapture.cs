@@ -229,7 +229,11 @@ namespace Artti.Editor
             if (view != null)
             {
                 var so = new SerializedObject(view);
-                if (so.FindProperty("chipText").objectReferenceValue is TMPro.TMP_Text chip) chip.text = "카페";
+                // 변경점: 칩 = 지점 이름(긴 이름으로 칩이 두 줄로 늘어나는지 확인)
+                const string chipSample = "메가커피 폴리텍인천캠퍼스점";   // 두 줄로 바뀌는 긴 이름
+                if (so.FindProperty("chip").objectReferenceValue is GameObject chipGo && chipGo.TryGetComponent<Artti.UI.TextChipAutoWidth>(out var fit))
+                    fit.SetText(chipSample);
+                else if (so.FindProperty("chipText").objectReferenceValue is TMPro.TMP_Text chip) chip.text = chipSample;
             }
         }
 

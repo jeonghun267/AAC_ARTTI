@@ -12,6 +12,7 @@ using Artti.Common;
 /// </summary>
 public class KakaoLocalSearcher : MonoBehaviour
 {
+    private const int BrandRadiusMeters = 1000;   // 브랜드 카페는 먼저 이 반경 안에서 찾는다
     // 변경점: 키를 코드에서 제거. .env의 KAKAO_REST_API_KEY를 읽는다 (빌드 시 Resources/api_keys.txt로 복사됨)
     private static string RestApiKey => ApiKeyLoader.Get(ApiKeyLoader.KakaoRestApi);
     private const string BASE_URL = "https://dapi.kakao.com/v2/local/search/category.json";
@@ -23,6 +24,9 @@ public class KakaoLocalSearcher : MonoBehaviour
 
     public KakaoDocument SelectedPlace { get; private set; }
 
+    // 변경점: 새 사진을 인식하기 전에 이전 사진의 지점을 지운다(GPS가 없어 검색을 건너뛸 때 이전 지점이 남지 않게)
+    public void ClearSelection() => SelectedPlace = null;
+
     public static bool IsMegaCoffeeOcr(string ocrText, string matchedKeyword)
     {
         if (LatestMenuController.IsMegaCoffee(matchedKeyword)) return true;
@@ -33,6 +37,15 @@ public class KakaoLocalSearcher : MonoBehaviour
                normalized.Contains("MEGAMGCCOFFEE") || normalized.Contains("MEGACOFFEE") ||
                Regex.IsMatch(ocrText, @"(?<![A-Z])MEGA(?![A-Z])", RegexOptions.IgnoreCase) ||
                Regex.IsMatch(ocrText, @"(?<![가-힣])메가(?![가-힣])");
+    }
+
+    public static string GetRecognizedCoffeeBrand(string ocrText, string matchedKeyword)
+    {
+        if (IsMegaCoffeeOcr(ocrText, matchedKeyword)) return LatestMenuController.MegaCoffeeBrand;
+        if (LatestMenuController.IsTenPercentCoffee(matchedKeyword) ||
+            LatestMenuController.IsTenPercentCoffee(ocrText))
+            return LatestMenuController.TenPercentCoffeeBrand;
+        return null;
     }
 
     /// <summary>
@@ -48,9 +61,10 @@ public class KakaoLocalSearcher : MonoBehaviour
                                       string recognizedBrand = null)
     {
         SelectedPlace = null;
-        bool isMegaCoffee = recognizedBrand == "메가MGC커피";
-        Debug.Log(isMegaCoffee ? "[PlaceSearch] OCR 브랜드 = 메가MGC커피" :
-                                "[PlaceSearch] 브랜드 없음 - 기존 주변 검색 사용");
+        bool hasRecognizedBrand = recognizedBrand == LatestMenuController.MegaCoffeeBrand ||
+                                  recognizedBrand == LatestMenuController.TenPercentCoffeeBrand;
+        Debug.Log(hasRecognizedBrand ? $"[PlaceSearch] OCR 브랜드 = {recognizedBrand}" :
+                                      "[PlaceSearch] 브랜드 없음 - 기존 주변 검색 사용");
 
         // 변경점: 키가 없으면 요청하지 않고 실패 처리 (401 반복 방지)
         string apiKey = RestApiKey;
@@ -61,9 +75,9 @@ public class KakaoLocalSearcher : MonoBehaviour
             yield break;
         }
 
-        if (isMegaCoffee)
+        if (hasRecognizedBrand)
         {
-            yield return StartCoroutine(SearchMegaCoffee(lat, lon, apiKey, onSuccess, onFail));
+            yield return StartCoroutine(SearchBrandCoffee(lat, lon, apiKey, recognizedBrand, onSuccess, onFail));
             yield break;
         }
 
@@ -130,15 +144,52 @@ public class KakaoLocalSearcher : MonoBehaviour
         }
     }
 
-    private IEnumerator SearchMegaCoffee(double lat, double lon, string apiKey,
-                                         Action<KeywordMatch> onSuccess, Action onFail)
+    private IEnumerator SearchBrandCoffee(double lat, double lon, string apiKey, string recognizedBrand,
+                                          Action<KeywordMatch> onSuccess, Action onFail)
     {
         Debug.Log("[PlaceSearch] 브랜드 우선 검색 실행");
-        string url = KEYWORD_URL + "?query=" + UnityWebRequest.EscapeURL("메가MGC커피") +
+        string searchKeyword = recognizedBrand == LatestMenuController.TenPercentCoffeeBrand
+            ? "텐퍼센트커피" : "메가MGC커피";
+
+        KakaoDocument nearest = null;
+        yield return StartCoroutine(RequestNearestBrand(lat, lon, apiKey, searchKeyword, recognizedBrand,
+                                                        BrandRadiusMeters, found => nearest = found));
+
+        // 변경점: 1km 안에 없으면 거리 제한 없이 가장 가까운 지점을 쓴다.
+        //   매장 앞이 아닌 곳(시연장 등)에서 간판 사진을 찍어도 결과 화면 지도에 내 위치와 지점이 나오게.
+        if (nearest == null)
+        {
+            Debug.LogWarning($"[PlaceSearch] 1km 내 {recognizedBrand} 카페 후보 없음 - 거리 제한 없이 가장 가까운 지점 검색");
+            yield return StartCoroutine(RequestNearestBrand(lat, lon, apiKey, searchKeyword, recognizedBrand,
+                                                            0, found => nearest = found));
+        }
+
+        if (nearest == null)
+        {
+            Debug.LogWarning($"[PlaceSearch] {recognizedBrand} 카페 후보 없음 - OCR 결과 사용");
+            onFail?.Invoke();
+            yield break;
+        }
+
+        SelectedPlace = nearest;
+        Debug.Log($"[PlaceSearch] 최종 선택 = {nearest.place_name}, distance = {nearest.distance}m");
+        Debug.Log($"[KakaoLocal] SelectedPlace = {nearest.place_name}");
+        Debug.Log($"[KakaoLocal] x = {nearest.x}");
+        Debug.Log($"[KakaoLocal] y = {nearest.y}");
+        onSuccess?.Invoke(new KeywordMatch("카페", GetDescription("카페"),
+                                          GetImageName("카페"), nearest.place_name));
+    }
+
+    // 변경점: 브랜드 카페 키워드 검색 한 번. radius가 0이면 거리 제한 없이(카카오가 가까운 순으로 정렬) 찾는다.
+    private IEnumerator RequestNearestBrand(double lat, double lon, string apiKey, string searchKeyword,
+                                            string recognizedBrand, int radius, Action<KakaoDocument> onFound)
+    {
+        string url = KEYWORD_URL + "?query=" + UnityWebRequest.EscapeURL(searchKeyword) +
                      "&category_group_code=CE7" +
                      "&x=" + lon.ToString("R", CultureInfo.InvariantCulture) +
                      "&y=" + lat.ToString("R", CultureInfo.InvariantCulture) +
-                     "&radius=1000&sort=distance&size=15";
+                     (radius > 0 ? "&radius=" + radius : string.Empty) +
+                     "&sort=distance&size=15";
 
         using var request = UnityWebRequest.Get(url);
         request.SetRequestHeader("Authorization", $"KakaoAK {apiKey}");
@@ -147,7 +198,6 @@ public class KakaoLocalSearcher : MonoBehaviour
         if (request.result != UnityWebRequest.Result.Success)
         {
             Debug.LogWarning($"[PlaceSearch] 브랜드 검색 실패: HTTP {request.responseCode}, {request.error}");
-            onFail?.Invoke();
             yield break;
         }
 
@@ -162,12 +212,14 @@ public class KakaoLocalSearcher : MonoBehaviour
                     string.IsNullOrWhiteSpace(candidate.place_name)) continue;
 
                 string name = candidate.place_name.ToUpperInvariant();
-                if (!name.Contains("메가MGC") && !name.Contains("메가커피") &&
-                    !name.Contains("MEGA")) continue;
+                bool matchesBrand = recognizedBrand == LatestMenuController.TenPercentCoffeeBrand
+                    ? LatestMenuController.IsTenPercentCoffee(candidate.place_name)
+                    : name.Contains("메가MGC") || name.Contains("메가커피") || name.Contains("MEGA");
+                if (!matchesBrand) continue;
 
                 if (!float.TryParse(candidate.distance, NumberStyles.Float,
                                     CultureInfo.InvariantCulture, out float distance) ||
-                    distance > 1000f) continue;
+                    float.IsNaN(distance) || distance < 0f || (radius > 0 && distance > radius)) continue;
 
                 Debug.Log($"[PlaceSearch] 후보 = {candidate.place_name}, distance = {candidate.distance}");
                 if (distance < nearestDistance)
@@ -177,21 +229,7 @@ public class KakaoLocalSearcher : MonoBehaviour
                 }
             }
         }
-
-        if (nearest == null)
-        {
-            Debug.LogWarning("[PlaceSearch] 1km 내 메가MGC커피 카페 후보 없음 - OCR 결과 사용");
-            onFail?.Invoke();
-            yield break;
-        }
-
-        SelectedPlace = nearest;
-        Debug.Log($"[PlaceSearch] 최종 선택 = {nearest.place_name}");
-        Debug.Log($"[KakaoLocal] SelectedPlace = {nearest.place_name}");
-        Debug.Log($"[KakaoLocal] x = {nearest.x}");
-        Debug.Log($"[KakaoLocal] y = {nearest.y}");
-        onSuccess?.Invoke(new KeywordMatch("카페", GetDescription("카페"),
-                                          GetImageName("카페"), nearest.place_name));
+        onFound?.Invoke(nearest);
     }
 
     /// <summary>
