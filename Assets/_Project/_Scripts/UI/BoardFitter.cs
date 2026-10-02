@@ -15,15 +15,19 @@ namespace Artti.UI
         // 보드 좌상단 기준(px, y 아래가 +)
         [SerializeField] private Rect safeRect;
         [SerializeField] private float safeMargin = 4f;
+        // 변경점: 켜면 덮기(cover)와 상관없이 safeRect가 화면(여백 safeMargin)에 꽉 차게 맞춘다.
+        //   보드 그림 가장자리는 화면 밖으로 잘려도 되고, 그림 속 틀을 화면에 크게 보이고 싶을 때 쓴다(AR 도움 화면).
+        [SerializeField] private bool fillSafeRect;
 
         private RectTransform _rt;
         private DrivenRectTransformTracker _tracker;
 
-        public void Setup(Vector2 size, Rect safe, float margin)
+        public void Setup(Vector2 size, Rect safe, float margin, bool fillSafe = false)
         {
             designSize = size;
             safeRect = safe;
             safeMargin = margin;
+            fillSafeRect = fillSafe;
             UpdateRect();
         }
 
@@ -58,7 +62,7 @@ namespace Artti.UI
             if (safeRect.width > 0f && safeRect.height > 0f)
             {
                 float fit = Mathf.Min((p.x - 2f * safeMargin) / safeRect.width, (p.y - 2f * safeMargin) / safeRect.height);
-                s = Mathf.Min(s, fit);
+                s = fillSafeRect ? fit : Mathf.Min(s, fit);
                 // safeRect 가운데를 화면 가운데로, 단 보드가 화면을 덮는 방향으로는 보드 끝이 화면 안으로 들어오지 않게
                 var local = new Vector2(safeRect.center.x - designSize.x * 0.5f, designSize.y * 0.5f - safeRect.center.y);
                 pos = -local * s;

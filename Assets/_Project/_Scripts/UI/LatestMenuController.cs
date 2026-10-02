@@ -35,6 +35,8 @@ public sealed class LatestMenuCardView
 [DisallowMultipleComponent]
 public sealed class LatestMenuController : MonoBehaviour
 {
+    public const string MegaCoffeeBrand = "메가MGC커피";
+    public const string TenPercentCoffeeBrand = "텐퍼센트 커피";
     [SerializeField] private LatestMenuCardView[] cards = new LatestMenuCardView[4];
 
     [Header("Mega MGC Coffee Menu Images")]
@@ -43,10 +45,16 @@ public sealed class LatestMenuController : MonoBehaviour
     [SerializeField] private Sprite goldenappleBlackteaImage;
     [SerializeField] private Sprite bamgogumaBreadImage;
 
+    [Header("Ten Percent Coffee Menu Images")]
+    [SerializeField] private Sprite saltyGlazedLatteImage;
+    [SerializeField] private Sprite avocadoBananaFrecinoImage;
+    [SerializeField] private Sprite thickCoffeeBingsuImage;
+    [SerializeField] private Sprite dirtyPeanutLatteImage;
+
     [Header("Store Price")]
     [SerializeField] private MegaStorePriceLoader storePriceLoader;
 
-    // UI 표시용 고정 가을 시즌 메뉴 데이터입니다. 가격은 확인 전까지 임의로 지정하지 않습니다.
+    // UI 표시용 고정 가을 시즌 메뉴 데이터입니다. 가격은 사용자가 지정한 표시 금액입니다.
     [SerializeField] private List<LatestMenuItem> testMenus = CreateInitialMenus();
 
     private string _lastEvaluatedPlaceName = string.Empty;
@@ -69,10 +77,10 @@ public sealed class LatestMenuController : MonoBehaviour
     {
         return new List<LatestMenuItem>
         {
-            new LatestMenuItem("하우스밀크 라떼", "하우스밀크와 에스프레소가 어우러진 부드러운 라떼", "매장별 가격 상이", housemilkLatteImage),
-            new LatestMenuItem("무카페인 오르조라떼", "오르조와 우유가 어우러진 무카페인 라떼", "매장별 가격 상이", orzoLatteImage),
-            new LatestMenuItem("저당 골든애플 블랙티", "사과와 블랙티를 조합한 저당 티 음료", "매장별 가격 상이", goldenappleBlackteaImage),
-            new LatestMenuItem("밤고구마단호박팥크림치즈빵", "고구마·밤·단호박·팥과 크림치즈를 담은 시즌 디저트", "매장별 가격 상이", bamgogumaBreadImage)
+            new LatestMenuItem("하우스밀크 라떼", "하우스밀크와 에스프레소가 어우러진 부드러운 라떼", "4,000원", housemilkLatteImage),
+            new LatestMenuItem("무카페인 오르조라떼", "오르조와 우유가 어우러진 무카페인 라떼", "3,800원", orzoLatteImage),
+            new LatestMenuItem("저당 골든애플 블랙티", "사과와 블랙티를 조합한 저당 티 음료", "4,000원", goldenappleBlackteaImage),
+            new LatestMenuItem("밤고구마단호박팥크림치즈빵", "고구마·밤·단호박·팥과 크림치즈를 담은 시즌 디저트", "4,700원", bamgogumaBreadImage)
         };
     }
 
@@ -97,6 +105,13 @@ public sealed class LatestMenuController : MonoBehaviour
             return;
         }
 
+        if (IsTenPercentCoffee(placeName))
+        {
+            ShowTenPercentMenu();
+            Debug.Log("[LatestMenu] 텐퍼센트 커피 감지 - 최신 메뉴 표시");
+            return;
+        }
+
         HideMenus();
         Debug.Log($"[LatestMenu] 지원하지 않는 브랜드: {placeName}");
     }
@@ -111,6 +126,19 @@ public sealed class LatestMenuController : MonoBehaviour
         SetMenus(testMenus);
     }
 
+    public void ShowTenPercentMenu()
+    {
+        // 사용자가 제공한 표시용 메뉴/가격입니다. 실시간 시즌 메뉴나 지점별 가격 조회가 아닙니다.
+        testMenus = new List<LatestMenuItem>
+        {
+            new LatestMenuItem("솔티 글레이즈드 라떼", "솔티 글레이즈드 풍미의 라떼", "3,800원", saltyGlazedLatteImage),
+            new LatestMenuItem("아보카도 바나나 프레치노", "아보카도와 바나나를 담은 프레치노", "5,000원", avocadoBananaFrecinoImage),
+            new LatestMenuItem("꾸덕 커피 빙수", "꾸덕한 커피 빙수 메뉴", "5,300원", thickCoffeeBingsuImage),
+            new LatestMenuItem("더티땅콩라떼", "고소한 땅콩 풍미의 라떼", "3,900원", dirtyPeanutLatteImage)
+        };
+        SetMenus(testMenus);
+    }
+
     public void HideMenus()
     {
         SetMenus(null);
@@ -118,6 +146,9 @@ public sealed class LatestMenuController : MonoBehaviour
 
     public void UpdatePrices(StoreMenuPrice[] prices)
     {
+        // 늦게 도착한 메가커피 가격 응답으로 텐퍼센트 표시 가격을 변경하지 않습니다.
+        if (IsTenPercentCoffee(_lastEvaluatedPlaceName)) return;
+
         if (prices == null || testMenus == null || cards == null)
         {
             return;
@@ -203,6 +234,26 @@ public sealed class LatestMenuController : MonoBehaviour
             || normalized == "메가"
             || normalized == "MEGA";
     }
+    public static bool IsTenPercentCoffee(string placeName)
+    {
+        if (string.IsNullOrWhiteSpace(placeName)) return false;
+
+        // 간판의 TENPERCENT COFFEE 표기와 한글 지점명을 같은 브랜드로 처리합니다.
+        string normalized = System.Text.RegularExpressions.Regex.Replace(
+            placeName.ToUpperInvariant(), @"\s+", string.Empty);
+        return normalized.Contains("텐퍼센트")
+            || normalized.Contains("TENPERCENT")
+            || normalized.Contains("10%COFFEE")
+            || normalized.Contains("10PERCENTCOFFEE");
+    }
+
+    public static string GetSupportedBrandName(string placeName)
+    {
+        if (IsMegaCoffee(placeName)) return MegaCoffeeBrand;
+        if (IsTenPercentCoffee(placeName)) return TenPercentCoffeeBrand;
+        return null;
+    }
+
     public void SetMenus(List<LatestMenuItem> menus)
     {
         if (cards == null)

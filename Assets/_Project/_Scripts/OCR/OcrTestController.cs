@@ -222,13 +222,30 @@ public class OcrTestController : MonoBehaviour
 
         KeywordMatch finalMatch = null;
         KeywordMatch ocrMatch = _dict.Match(ocrText);
-        string recognizedBrand = KakaoLocalSearcher.IsMegaCoffeeOcr(ocrText, ocrMatch?.MatchedKeyword)
-            ? "메가MGC커피" : null;
+        string recognizedBrand = KakaoLocalSearcher.GetRecognizedCoffeeBrand(ocrText, ocrMatch?.MatchedKeyword);
+        if (recognizedBrand != null)
+        {
+            // Kakao 실패 시에도 일반 COFFEE 키워드 대신 인식된 브랜드를 유지합니다.
+            // 내부 카테고리는 기존 주문/AAC 흐름에서 사용하는 카페 그대로입니다.
+            ocrMatch = new KeywordMatch("카페", "커피와 음료를 파는 곳입니다.", "AAC/cafe", recognizedBrand);
+        }
+
+        // 변경점: GPS가 준비되기 전에 사진 인식이 끝나면 좌표 0,0으로 검색해 매장을 못 찾았다.
+        //   최대 8초 기다렸다가 최신 좌표로 검색하고, 그래도 좌표가 없으면 카카오 위치 검색은 건너뛴다.
+        if (!HasValidGps())
+        {
+            SetStatus("위치 확인 중...");
+            yield return WaitForGps(8f);
+        }
+        bool hasGps = HasValidGps();
+        if (kakaoSearcher != null) kakaoSearcher.ClearSelection();
+        if (hasGps) GPSManager.UpdateCoords();
+        else Debug.LogWarning("[OcrTest] GPS 좌표가 없어 카카오 위치 검색을 건너뜁니다.");
 
         // ============================================================
         // Plan A: 카카오 좌표 기반 검색
         // ============================================================
-        if (kakaoSearcher != null)
+        if (kakaoSearcher != null && hasGps)
         {
             bool kakaoFinished = false;
 
@@ -325,9 +342,7 @@ public class OcrTestController : MonoBehaviour
         LoadCapturedImage(imagePath);
 
         if (categoryText != null)
-            categoryText.text = LatestMenuController.IsMegaCoffee(finalPlaceName)
-                ? "메가MGC커피"
-                : match.Category;
+            categoryText.text = LatestMenuController.GetSupportedBrandName(finalPlaceName) ?? match.Category;
 
         if (categoryBadgeImage != null && _categoryColors.TryGetValue(match.Category, out Color color))
             categoryBadgeImage.color = color;
@@ -373,6 +388,16 @@ public class OcrTestController : MonoBehaviour
             Debug.LogWarning("[ResultMap] NaverStaticMapController 참조가 없습니다.");
     }
 
+    private static bool HasValidGps() =>
+        GPSManager.IsReady && NaverStaticMapController.IsCoordinateValid(GPSManager.Latitude, GPSManager.Longitude);
+
+    private static IEnumerator WaitForGps(float seconds)
+    {
+        float deadline = Time.realtimeSinceStartup + seconds;
+        while (Time.realtimeSinceStartup < deadline && !HasValidGps())
+            yield return new WaitForSecondsRealtime(0.25f);
+    }
+
     private IEnumerator UpdateResultMapWhenReady(KakaoDocument selectedPlace)
     {
         if (!GPSManager.IsReady ||
@@ -412,7 +437,9 @@ public class OcrTestController : MonoBehaviour
             !double.TryParse(selectedPlace.y, NumberStyles.Float, CultureInfo.InvariantCulture, out double storeLatitude) ||
             !NaverStaticMapController.IsCoordinateValid(storeLatitude, storeLongitude))
         {
-            Debug.LogWarning("[ResultMap] Kakao에서 선택된 매장 좌표가 없어 지도 요청을 건너뜁니다.");
+            // 변경점: 매장 좌표가 없어도 내 위치만이라도 지도에 표시한다
+            Debug.LogWarning("[ResultMap] Kakao에서 선택된 매장 좌표가 없어 내 위치만 지도에 표시합니다.");
+            naverStaticMapController.UpdateUserOnlyMap(userLatitude, userLongitude);
             yield break;
         }
 

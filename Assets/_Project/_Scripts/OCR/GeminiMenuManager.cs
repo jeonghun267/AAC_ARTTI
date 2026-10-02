@@ -2,11 +2,13 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
+using Artti.Common;
 
 public class GeminiMenuManager : MonoBehaviour
 {
     [Header("API 설정")]
-    [SerializeField] private string apiKey = "..."; // 여기에 키 입력
+    // 변경점: 비워 두면 .env(에디터) / Resources/api_keys.txt(빌드)의 GEMINI_API_KEY를 쓴다(훈련 모드와 같은 방식, 키를 씬에 남기지 않음)
+    [SerializeField] private string apiKey = "";
 
     [System.Serializable]
     public class DynamicListWrapper { public List<string> options; }
@@ -22,9 +24,23 @@ public class GeminiMenuManager : MonoBehaviour
         StartCoroutine(RequestGeminiList(prompt, onComplete));
     }
 
+    // 변경점: Inspector 키가 있으면 그것, 없으면 ApiKeyLoader의 GEMINI_API_KEY
+    private string ResolveApiKey()
+    {
+        if (!string.IsNullOrWhiteSpace(apiKey) && apiKey != "...") return apiKey.Trim();
+        return ApiKeyLoader.Get(ApiKeyLoader.GeminiApi);
+    }
+
     private IEnumerator RequestGeminiList(string prompt, System.Action<List<string>> onComplete)
     {
-        string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={apiKey}";
+        string key = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            Debug.LogError("[Gemini] API 키 없음 - 에디터는 프로젝트 루트 .env, 빌드는 Resources/api_keys.txt에 GEMINI_API_KEY를 넣으세요 (Artti/Copy .env to Resources)");
+            onComplete?.Invoke(null);
+            yield break;
+        }
+        string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={key}";
 
         // 역슬래시 먼저, 그다음 따옴표/줄바꿈 순서로 이스케이프
         string safePrompt = prompt.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", " ");
