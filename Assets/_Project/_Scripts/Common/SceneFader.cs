@@ -27,6 +27,7 @@ namespace Artti.Common
         private GraphicRaycaster _raycaster;
         private CanvasGroup _group;
         private bool _busy;
+        private bool _dipMusic;   // 변경점: 음악 씬(스플래시·메인·프로필)끼리 오갈 때만 배경음악을 같이 줄였다 키운다
 
         public static bool IsBusy => _instance != null && _instance._busy;
 
@@ -96,10 +97,11 @@ namespace Artti.Common
         {
             var ct = this.GetCancellationTokenOnDestroy();
             _busy = true;
+            _dipMusic = BgmPlayer.IsMusicScene(SceneManager.GetActiveScene().name) && BgmPlayer.IsMusicScene(sceneName);
             SetVisible(true);
             try
             {
-                if (fromBlack) _group.alpha = 1f;
+                if (fromBlack) { _group.alpha = 1f; if (_dipMusic) BgmPlayer.SetDip(1f); }
                 else await FadeTo(1f, OutSeconds, ct);
 
                 SceneManager.LoadScene(sceneName);
@@ -123,6 +125,7 @@ namespace Artti.Common
                 t += Mathf.Min(Time.unscaledDeltaTime, MaxFrameStep);
                 float k = Mathf.Clamp01(t / seconds);
                 _group.alpha = Mathf.Lerp(from, target, k * k * (3f - 2f * k));
+                if (_dipMusic) BgmPlayer.SetDip(_group.alpha);   // 변경점: 배경음악도 화면이 어두워지는 만큼 줄었다가 밝아지면 다시 커진다
             }
         }
     }

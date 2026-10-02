@@ -13,9 +13,10 @@ namespace Artti.Common
         const string ClipPath = "Audio/BGM/Unity_BGM";
         const float Volume = 0.45f;
         const float DuckedVolume = 0.12f;      // 목소리 미리듣기처럼 말소리가 나는 동안
-        const float DipVolume = 0.15f;         // 화면이 어두워지는 전환(스플래시 끝) 동안 잠깐
-        const float FadeInSeconds = 1.2f;
+        const float DipVolume = 0.15f;         // 화면이 어두워지는 전환(SceneFader, 스플래시 끝) 동안 잠깐
+        const float FadeInSeconds = 1.2f;      // 다시 커질 때(전환 뒤 '진입' 느낌도 이 속도)
         const float FadeOutSeconds = 0.6f;
+        const float DipDownSeconds = 0.2f;     // 전환 암전(0.22초)이 짧아 줄일 때는 빠르게
         const float MaxFrameStep = 1f / 30f;   // 씬 로드 직후 긴 프레임에 페이드가 통째로 건너뛰지 않게
 
         static readonly string[] MusicScenes =
@@ -25,7 +26,7 @@ namespace Artti.Common
 
         static BgmPlayer _instance;
         static bool _ducked;
-        static float _dip;   // 0~1. 다음 씬으로 바뀌면 0으로 돌아가 음악이 다시 커진다(진입 느낌)
+        static float _dip;   // 0~1. 전환 화면이 어두운 정도. 새 씬이 밝아지면 0으로 돌아가 음악이 다시 커진다(진입 느낌)
 
         private AudioSource _source;
         private bool _wanted;
@@ -48,22 +49,25 @@ namespace Artti.Common
             Apply(SceneManager.GetActiveScene().name);   // 첫 씬은 activeSceneChanged가 오지 않는다
         }
 
+        // 배경음악이 나오는 씬인지(SceneFader가 음악 씬끼리 오갈 때만 줄였다 키우려고 묻는다)
+        public static bool IsMusicScene(string sceneName) => Array.IndexOf(MusicScenes, sceneName) >= 0;
+
         // 말소리가 나는 동안 음악을 작게(켜기) / 원래대로(끄기)
         public static void SetDucked(bool ducked) => _ducked = ducked;
 
-        // 변경점: 화면이 어두워지는 정도(0~1)만큼 음악을 잠깐 줄인다. 스플래시 끝 암전에서 부른다.
+        // 변경점: 화면이 어두워지는 정도(0~1)만큼 음악을 잠깐 줄인다. SceneFader 전환과 스플래시 끝 암전에서 부른다.
         public static void SetDip(float amount) => _dip = Mathf.Clamp01(amount);
 
         private static void OnActiveSceneChanged(Scene from, Scene to) => Apply(to.name);
 
         private static void Apply(string sceneName)
         {
-            bool wanted = Array.IndexOf(MusicScenes, sceneName) >= 0;
+            bool wanted = IsMusicScene(sceneName);
             if (!wanted && _instance == null) return;   // 음악 씬에 간 적이 없으면 만들지 않는다
             var player = Ensure();
             if (player == null) return;
             player._wanted = wanted;
-            _dip = 0f;   // 새 씬이 밝아지면서 음악도 다시 커진다
+            if (!SceneFader.IsBusy) _dip = 0f;   // 페이드 전환 중이면 SceneFader가 밝아지는 만큼 풀어 준다(AR 바로 전환 등은 여기서)
             if (!wanted) _ducked = false;   // 미리듣기 중에 씬을 떠나도 줄인 상태가 남지 않게
             if (wanted && !player._source.isPlaying)
             {
@@ -105,7 +109,7 @@ namespace Artti.Common
                 if (!_wanted && _source.isPlaying && current <= 0f) _source.Pause();
                 return;
             }
-            float seconds = target > current ? FadeInSeconds : FadeOutSeconds;
+            float seconds = target > current ? FadeInSeconds : _dip > 0f ? DipDownSeconds : FadeOutSeconds;
             float step = Volume / seconds * Mathf.Min(Time.unscaledDeltaTime, MaxFrameStep);
             _source.volume = Mathf.MoveTowards(current, target, step);
         }
