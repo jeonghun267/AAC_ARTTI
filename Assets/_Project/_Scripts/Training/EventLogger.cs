@@ -21,6 +21,9 @@ namespace Artti.Training
             _sessionId = Guid.NewGuid().ToString();
         }
 
+        // 변경점: 완료 화면이 레포트 기록에서 이번 세션 결과를 찾을 때 쓴다
+        public string SessionId => _sessionId;
+
         // payload: "mode:accuracy" / "mode:conversation" — 레포트에서 두 모드 기록을 구분하기 위함
         public void LogScenarioEntered(TrainingMode mode = TrainingMode.Accuracy)
         {
@@ -32,6 +35,13 @@ namespace Artti.Training
         public void LogSessionEnded(string status)
         {
             Log(AACEventType.SessionEnded, payload: status);
+        }
+
+        // 변경점: 대화 모드 AI 평가(응답 적절성·대화 자연스러움·잘한 점·다음에 해 볼 점)
+        public void LogSessionEvaluated(Artti.Report.ConversationEvaluation evaluation)
+        {
+            if (evaluation == null) return;
+            Log(AACEventType.SessionEvaluated, payload: JsonUtility.ToJson(evaluation));
         }
 
         public void LogSessionAbandoned(string objectiveId)

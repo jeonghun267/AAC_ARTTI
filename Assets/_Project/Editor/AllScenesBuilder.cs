@@ -27,6 +27,8 @@ namespace Artti.Editor
                 MainSceneBuilder.Build();
                 TrainingHubSceneBuilder.Build();
                 ConvenienceTrainingSceneBuilder.Build();
+                ConversationReportSceneBuilder.Build();   // 변경점: 대화 모드 리포트 (손배치 없는 새 씬)
+                AccuracyReportSceneBuilder.Build();       // 변경점: 정확도 모드 리포트 (손배치 없는 새 씬)
                 // ARFieldScene은 손배치 씬(커밋이 원본) — 일괄 빌드에서 제외. 필요 시 개별 메뉴(확인 다이얼로그)로만
 
                 Debug.Log("[AllScenesBuilder] 7개 씬 빌드 + Build Settings 등록 완료");
@@ -58,6 +60,8 @@ namespace Artti.Editor
                 ScenePaths.ARStore,
                 ScenePaths.RecordDetail,
                 ScenePaths.ProfileSettings,   // 변경점: 프로필 설정 화면 (SceneFader.Load("ProfileSettingsScene"))
+                ScenePaths.ConversationReport,   // 변경점: 대화 모드 리포트 (SceneFader.Load("ConversationReportScene"))
+                ScenePaths.AccuracyReport,   // 변경점: 정확도 모드 리포트 (SceneFader.Load("AccuracyReportScene"))
             };
             var list = new EditorBuildSettingsScene[scenes.Length];
             for (int i = 0; i < scenes.Length; i++)

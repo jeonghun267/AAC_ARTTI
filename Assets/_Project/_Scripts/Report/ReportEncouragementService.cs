@@ -6,6 +6,7 @@ using Newtonsoft.Json;        // CLAUDE.md: LLM 응답 파싱은 Newtonsoft 사�
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
+using Artti.Common;   // 변경점: GeminiConfig
 
 namespace Artti.Report
 {
@@ -15,8 +16,7 @@ namespace Artti.Report
     public class ReportEncouragementService
     {
         private readonly string _apiKey;
-        private const string ApiUrl =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+        // 변경점: 모델·주소는 GeminiConfig에서(2026-10-02 gemini-3.5-flash-lite)
 
         // 완료율이 이 값 이상이면 "잘함"으로 보고 톤/연출을 강하게(full_motion 환영).
         private const float HighScoreThreshold = 0.7f;
@@ -95,13 +95,15 @@ namespace Artti.Report
                 ["generationConfig"] = new JObject
                 {
                     ["temperature"] = 0.9,
-                    ["maxOutputTokens"] = 80
+                    ["maxOutputTokens"] = 80,
+                    // 변경점: 2.5-flash 사고 토큰이 출력 예산(80)을 먹어 "테스트"처럼 이름만 오고 잘리던 것 방지
+                    ["thinkingConfig"] = GeminiConfig.MinimalThinking()
                 }
             };
 
             string jsonBody = body.ToString(Formatting.None);
 
-            using (var request = new UnityWebRequest($"{ApiUrl}?key={_apiKey}", "POST"))
+            using (var request = new UnityWebRequest($"{GeminiConfig.GenerateUrl}?key={_apiKey}", "POST"))
             {
                 request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
                 request.downloadHandler = new DownloadHandlerBuffer();
@@ -219,12 +221,13 @@ namespace Artti.Report
                 {
                     ["temperature"] = 0.9,
                     ["maxOutputTokens"] = 160,
-                    ["responseMimeType"] = "application/json"
+                    ["responseMimeType"] = "application/json",
+                    ["thinkingConfig"] = GeminiConfig.MinimalThinking()   // 변경점: 사고 토큰이 출력 예산을 먹어 JSON이 끊기던 것 방지
                 }
             };
 
             string jsonBody = body.ToString(Formatting.None);
-            using (var request = new UnityWebRequest($"{ApiUrl}?key={_apiKey}", "POST"))
+            using (var request = new UnityWebRequest($"{GeminiConfig.GenerateUrl}?key={_apiKey}", "POST"))
             {
                 request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
                 request.downloadHandler = new DownloadHandlerBuffer();
@@ -310,12 +313,13 @@ namespace Artti.Report
                 ["generationConfig"] = new JObject
                 {
                     ["temperature"] = 0.8,
-                    ["maxOutputTokens"] = 160
+                    ["maxOutputTokens"] = 160,
+                    ["thinkingConfig"] = GeminiConfig.MinimalThinking()   // 변경점: 사고 토큰이 출력 예산을 먹어 잘리던 것 방지
                 }
             };
 
             string jsonBody = body.ToString(Formatting.None);
-            using (var request = new UnityWebRequest($"{ApiUrl}?key={_apiKey}", "POST"))
+            using (var request = new UnityWebRequest($"{GeminiConfig.GenerateUrl}?key={_apiKey}", "POST"))
             {
                 request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(jsonBody));
                 request.downloadHandler = new DownloadHandlerBuffer();

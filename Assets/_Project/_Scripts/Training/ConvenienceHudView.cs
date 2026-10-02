@@ -6,6 +6,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using Artti.Common;
+using Artti.Report;
 using Artti.UI;
 
 namespace Artti.Training
@@ -56,21 +57,34 @@ namespace Artti.Training
         [SerializeField] private TMP_Text thinkingText;
         [SerializeField] private TMP_Text thinkingDots;
 
+        // 변경점(ending 시안): 완료 화면 = 모드별 배경(정확도 1.png / 대화 11.png) + 점수 판 + 기록 판 3개 + 버튼 5개.
+        //   숫자와 문구는 TrainingResult(레포트와 같은 기록에서 계산)로 채운다.
         [Header("완료 화면")]
         [SerializeField] private GameObject completionRoot;
-        [SerializeField] private TMP_Text completionScenarioText;
-        [SerializeField] private TMP_Text completionDurationText;
-        [SerializeField] private TMP_Text completionStepsText;
-        [SerializeField] private TMP_Text completionProfileNameText;
+        [SerializeField] private Image completionBackground;
+        [SerializeField] private Sprite accuracyBackgroundSprite;
+        [SerializeField] private Sprite conversationBackgroundSprite;
+        [SerializeField] private TMP_Text completionScoreText;
+        [SerializeField] private Image[] completionStars;
+        [SerializeField] private Sprite starOnSprite;
+        [SerializeField] private Sprite starOffSprite;
+        [SerializeField] private TMP_Text completionSummaryText;
+        [SerializeField] private TMP_Text completionAccuracyText;
+        [SerializeField] private TMP_Text completionAccuracyNote;
+        [SerializeField] private TMP_Text completionExpressionText;
+        [SerializeField] private TMP_Text completionExpressionNote;
+        // 새 기록 판: 최고 기록이면 '새 기록' '최고 점수!'가 그려진 그림, 아니면 글자를 지운 그림 + 제목·큰 글자(TMP)
+        [SerializeField] private Image completionRecordCard;
+        [SerializeField] private Sprite recordBestSprite;
+        [SerializeField] private Sprite recordPlainSprite;
+        [SerializeField] private TMP_Text completionRecordTitle;
+        [SerializeField] private TMP_Text completionRecordHeadline;
+        [SerializeField] private TMP_Text completionRecordNote;
         [SerializeField] private Button retryBtn;
         [SerializeField] private Button hubBtn;
         [SerializeField] private Button homeBtn;
-        [SerializeField] private Button completionHistoryBtn;
-        [SerializeField] private Button completionTopHomeBtn;
-        [SerializeField] private Button completionHelpBtn;
-        [SerializeField] private GameObject completionHelpPanel;
-        [SerializeField] private Button completionHelpCloseBtn;
-        [SerializeField] private RectTransform confettiRoot;
+        [SerializeField] private Button completionReportBtn;
+        [SerializeField] private Button completionQuitBtn;
 
         public event Action OnExitRequested;
         public event Action OnReplayRequested;
@@ -79,6 +93,7 @@ namespace Artti.Training
         public event Action OnGoHome;
         public event Action OnGoReport;
         public event Action OnGoFieldMode;
+        public event Action OnQuitApp;
 
         private enum ExitTarget { Hub, FieldMode }
         private ExitTarget _exitTarget = ExitTarget.Hub;
@@ -105,7 +120,10 @@ namespace Artti.Training
         const float PraiseHoldSeconds = 1.1f;
         static readonly Vector2 LabelAnchorLeft = new Vector2(0f, 0.5f);   // 왼쪽 정렬 글자는 왼쪽 가운데 기준으로 커진다
         static readonly Vector2 Center = new Vector2(0.5f, 0.5f);
-        static readonly string[] ScoreStarNames = { "ScoreStar_1", "ScoreStar_2", "ScoreStar_3", "ScoreStar_4", "ScoreStar_5" };
+        // 완료 화면 요소 경로(completionRoot 기준). 배경을 따라 크기가 바뀌는 무대(Stage) 아래에 있다
+        const string EndingStage = "Background/Stage";
+        static readonly string[] EndingStatCards = { "AccuracyCard", "ExpressionCard", "RecordCard" };
+        static readonly string[] EndingButtons = { "RetryButton", "NextScenarioButton", "HomeButton" };
 
         private int _objectiveIndex = -1;
         private string _objectiveLabel;
@@ -126,15 +144,12 @@ namespace Artti.Training
             if (retryBtn != null) retryBtn.onClick.AddListener(() => OnRetrySession?.Invoke());
             if (hubBtn != null) hubBtn.onClick.AddListener(() => OnGoHub?.Invoke());
             if (homeBtn != null) homeBtn.onClick.AddListener(() => OnGoHome?.Invoke());
-            if (completionHistoryBtn != null) completionHistoryBtn.onClick.AddListener(() => OnGoReport?.Invoke());
-            if (completionTopHomeBtn != null) completionTopHomeBtn.onClick.AddListener(() => OnGoHome?.Invoke());
-            if (completionHelpBtn != null) completionHelpBtn.onClick.AddListener(() => UIPopupMotion.Open(completionHelpPanel));
-            if (completionHelpCloseBtn != null) completionHelpCloseBtn.onClick.AddListener(() => UIPopupMotion.Close(completionHelpPanel));
+            if (completionReportBtn != null) completionReportBtn.onClick.AddListener(() => OnGoReport?.Invoke());
+            if (completionQuitBtn != null) completionQuitBtn.onClick.AddListener(() => OnQuitApp?.Invoke());
 
             // 변경점: 누르면 살짝 작아졌다 돌아오는 탭 피드백 (점원 말풍선 = 다시 듣기 버튼은 말풍선 연출과 겹쳐 제외)
             AttachPress(pauseBtn, pauseConfirmBtn, pauseCancelBtn, retryBtn, hubBtn, homeBtn,
-                completionHistoryBtn, completionTopHomeBtn, completionHelpBtn, completionHelpCloseBtn,
-                exitBtn, fieldModeBtn);
+                completionReportBtn, completionQuitBtn, exitBtn, fieldModeBtn);
             if (stepLabel != null)
             {
                 _labelHome = stepLabel.rectTransform.anchoredPosition;
@@ -143,7 +158,6 @@ namespace Artti.Training
 
             SetActiveSafe(pauseModal, false);
             SetActiveSafe(completionRoot, false);
-            SetActiveSafe(completionHelpPanel, false);
             SetActiveSafe(thinkingRoot, false);
             SetActiveSafe(userBubble, false);
         }
@@ -167,9 +181,6 @@ namespace Artti.Training
                 int n = 1 + Mathf.FloorToInt(_dotsTime * 2.5f) % 3;
                 thinkingDots.text = new string('.', n);
             }
-
-            if (completionRoot != null && completionRoot.activeSelf && confettiRoot != null)
-                AnimateConfetti();
 
             // 진행 배: 물 위에서 살짝 흔들린다(자리는 SetBoat가 정한 _boatBase)
             if (_boatPlaced)
@@ -382,52 +393,90 @@ namespace Artti.Training
             _praiseRoutine = StartCoroutine(HidePraiseAfter(seconds));
         }
 
-        public void ShowCompletion(string scenarioName, string durationText, string stepsText)
+        public void ShowCompletion(TrainingResult result)
         {
-            if (completionScenarioText != null) completionScenarioText.text = scenarioName;
-            if (completionDurationText != null) completionDurationText.text = durationText;
-            if (completionStepsText != null) completionStepsText.text = stepsText;
-            if (completionProfileNameText != null)
-            {
-                string nickname = AppBootstrap.Instance?.ProfileManager?.ActiveProfile?.nickname;
-                completionProfileNameText.text = string.IsNullOrWhiteSpace(nickname) ? "김연영님" : $"{nickname}님";
-            }
+            if (result == null) return;
+            ApplyCompletion(result);
             SetActiveSafe(thinkingRoot, false);
             SetActiveSafe(completionRoot, true);
             PlayCompletionEntrance();
         }
 
-        // 변경점: 완료 화면 등장 — 한 번만, 1초 안에 차례로: 전체 페이드 -> 배지 톡 -> 제목 내려옴 -> 점원 올라옴
-        //   -> 별 하나씩 -> 색종이 톡톡 -> 아래 버튼 올라옴. 끝난 뒤 반복되는 움직임은 없다.
-        //   완료 화면은 요소들이 한 부모 아래 나란히 있어, 스스로 완결된 요소(배지·별·버튼 등)만 움직이고 나머지는 페이드만 한다.
+        // 연출 없이 값만 채운다(에디터 캡처 메뉴도 이것을 부른다)
+        private void ApplyCompletion(TrainingResult result)
+        {
+            if (completionBackground != null)
+            {
+                var bg = result.mode == TrainingMode.Conversation ? conversationBackgroundSprite : accuracyBackgroundSprite;
+                if (bg != null) completionBackground.sprite = bg;
+            }
+
+            // 점수 판: "100점"(점은 작게) + 점수만큼 켜진 별. 기록이 없으면 "완료!"와 별 5개
+            SetText(completionScoreText, result.hasRecord ? $"{result.score}<size=60%>점</size>" : "완료!");
+            if (completionStars != null)
+            {
+                int lit = result.hasRecord ? result.stars : completionStars.Length;
+                for (int i = 0; i < completionStars.Length; i++)
+                {
+                    var sprite = i < lit ? starOnSprite : starOffSprite;
+                    if (completionStars[i] != null && sprite != null) completionStars[i].sprite = sprite;
+                }
+            }
+            SetText(completionSummaryText, TrainingResultLabels.Summary(result));
+
+            SetText(completionAccuracyText, TrainingResultLabels.AccuracyValue(result));
+            SetText(completionAccuracyNote, TrainingResultLabels.AccuracyNote(result));
+            SetText(completionExpressionText, TrainingResultLabels.ExpressionValue(result));
+            SetText(completionExpressionNote, TrainingResultLabels.ExpressionNote(result));
+
+            bool best = TrainingResultLabels.IsBest(result);
+            var recordSprite = best ? recordBestSprite : recordPlainSprite;
+            if (completionRecordCard != null && recordSprite != null) completionRecordCard.sprite = recordSprite;
+            if (completionRecordTitle != null)
+            {
+                completionRecordTitle.text = TrainingResultLabels.LowerTitle;
+                SetActiveSafe(completionRecordTitle.gameObject, !best);
+            }
+            if (completionRecordHeadline != null)
+            {
+                completionRecordHeadline.text = result.hasRecord ? TrainingResultLabels.LowerHeadline(result) : "-";
+                SetActiveSafe(completionRecordHeadline.gameObject, !best);
+            }
+            SetText(completionRecordNote, TrainingResultLabels.RecordNote(result));
+        }
+
+        // 변경점: 완료 화면 등장 — 한 번만, 1초 남짓 안에 차례로: 전체 페이드 -> 제목 내려옴 -> 점수 판 톡 -> 별 하나씩
+        //   -> 기록 판 올라옴 -> 색종이 톡톡 -> 아래 버튼 올라옴. 끝난 뒤 반복되는 움직임은 없다.
         private void PlayCompletionEntrance()
         {
             if (completionRoot == null || _completionShown) return;
             _completionShown = true;
             var root = completionRoot.transform;
+            var stage = root.Find(EndingStage);
             var ct = this.GetCancellationTokenOnDestroy();
 
             UIFx.FadeGroup(UIFx.Group(root), 0f, 1f, 0f, 0.35f, ct).Forget();
-            PopIn(root.Find("CompletionBadge"), 0.15f, 0.45f, ct);
-            MoveIn(root.Find("CompletionTitle"), new Vector2(0f, 24f), 0.25f, 0.4f, ct);
-            MoveIn(root.Find("CompletionClerkClip/CompletionClerk"), new Vector2(0f, -70f), 0.1f, 0.5f, ct);
-            MoveIn(root.Find("SpeechBubble"), new Vector2(0f, -10f), 0.45f, 0.35f, ct);
-            MoveIn(root.Find("Speech"), new Vector2(0f, -10f), 0.45f, 0.35f, ct);   // 말풍선 그림과 같은 값으로 함께 움직인다
-            for (int i = 0; i < ScoreStarNames.Length; i++)
-                PopIn(root.Find(ScoreStarNames[i]), 0.5f + i * 0.08f, 0.3f, ct);
+            if (stage == null) return;
+            MoveIn(stage.Find("Title"), new Vector2(0f, 24f), 0.1f, 0.4f, ct);
+            MoveIn(stage.Find("Subtitle"), new Vector2(0f, 16f), 0.2f, 0.35f, ct);
+            PopIn(stage.Find("ScoreCard"), 0.2f, 0.4f, ct);
+            if (completionStars != null)
+                for (int i = 0; i < completionStars.Length; i++)
+                    if (completionStars[i] != null) PopIn(completionStars[i].transform, 0.5f + i * 0.08f, 0.3f, ct);
+            for (int i = 0; i < EndingStatCards.Length; i++)
+                MoveIn(stage.Find(EndingStatCards[i]), new Vector2(0f, -30f), 0.45f + i * 0.08f, 0.4f, ct);
 
             int confetti = 0;
-            for (int i = 0; i < root.childCount; i++)
+            for (int i = 0; i < stage.childCount; i++)
             {
-                var child = root.GetChild(i);
+                var child = stage.GetChild(i);
                 if (!child.name.StartsWith("Confetti", StringComparison.Ordinal)) continue;
-                PopIn(child, 0.2f + confetti * 0.06f, 0.35f, ct);
+                PopIn(child, 0.25f + confetti * 0.06f, 0.35f, ct);
                 confetti++;
             }
 
-            MoveIn(root.Find("RetryButton"), new Vector2(0f, -36f), 0.7f, 0.4f, ct);
-            MoveIn(root.Find("NextScenarioButton"), new Vector2(0f, -36f), 0.78f, 0.4f, ct);
-            MoveIn(root.Find("HomeButton"), new Vector2(0f, -36f), 0.86f, 0.4f, ct);
+            for (int i = 0; i < EndingButtons.Length; i++)
+                MoveIn(stage.Find(EndingButtons[i]), new Vector2(0f, -36f), 0.75f + i * 0.08f, 0.4f, ct);
         }
 
         private static void PopIn(Transform t, float delay, float dur, CancellationToken ct)
@@ -458,26 +507,6 @@ namespace Artti.Training
             yield return new WaitForSeconds(sec);
             SetActiveSafe(thinkingRoot, false);
             _praiseRoutine = null;
-        }
-
-        // 컨페티: confettiRoot 자식 사각형들을 인덱스 기반 의사난수로 낙하 + 좌우 흔들림 + 회전 (2~3초 주기 반복)
-        private void AnimateConfetti()
-        {
-            float w = confettiRoot.rect.width;
-            float h = confettiRoot.rect.height;
-            int count = confettiRoot.childCount;
-            for (int i = 0; i < count; i++)
-            {
-                var child = confettiRoot.GetChild(i) as RectTransform;
-                if (child == null) continue;
-                float speed = 0.35f + 0.13f * (i % 4);                 // 한 사이클 2~3초
-                float phase = i * 0.617f;
-                float t = (Time.time * speed + phase) % 1f;
-                float x = (((i * 0.137f) + 0.07f) % 1f - 0.5f) * w + Mathf.Sin(Time.time * 2f + i) * 30f;
-                float y = (0.5f - t) * (h + 60f);
-                child.anchoredPosition = new Vector2(x, y);
-                child.localRotation = Quaternion.Euler(0, 0, Time.time * (90f + i * 17f) % 360f);
-            }
         }
 
         private static void SetActiveSafe(GameObject go, bool on)

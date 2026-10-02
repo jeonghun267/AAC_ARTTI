@@ -139,6 +139,7 @@ namespace Artti.UI
             UIFx.Cancel(ref _previewCts);
             UIFx.Cancel(ref _savedCts);
             _tts?.StopAll();
+            BgmPlayer.SetDucked(false);   // 변경점: 미리듣기 중에 화면을 떠나도 음악이 작은 채로 남지 않게
         }
 
         // ===== 대상 사용자 =====
@@ -320,6 +321,7 @@ namespace Artti.UI
         private void SetPreviewPlaying(bool playing)
         {
             _previewing = playing;
+            BgmPlayer.SetDucked(playing);   // 변경점: 미리듣기 목소리가 배경음악에 묻히지 않게
             if (previewIdle != null) previewIdle.SetActive(!playing);
             if (previewPlaying != null) previewPlaying.SetActive(playing);
         }

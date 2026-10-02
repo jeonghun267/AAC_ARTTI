@@ -38,6 +38,12 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/_Project/Scenes/ProfileSettingsScene.unity
     guid: ba6017e4b8e6774418cd03151a921f0f
+  - enabled: 1
+    path: Assets/_Project/Scenes/ConversationReportScene.unity
+    guid: eaaa8b1fb34ba7d46b497863226b37db
+  - enabled: 1
+    path: Assets/_Project/Scenes/AccuracyReportScene.unity
+    guid: 7fef388c482eb0b4288c37b056d16f9d
   m_configObjects:
     UnityEditor.XR.ARCore.ARCoreSettings: {fileID: 11400000, guid: 38b31ef2b9811aa4abd1d3981ae23429,
       type: 2}

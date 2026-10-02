@@ -20,7 +20,9 @@ namespace Artti.AAC.Logging
         SessionAbandoned,
         TtsPlayed,
         // 레포트 화면용 추가 (PLAN 8.4의 14종 외): payloadJson에 completed 등 상태 기록
-        SessionEnded
+        SessionEnded,
+        // 변경점: 대화 모드 한 번이 끝난 뒤 Gemini 평가(payloadJson = ConversationEvaluation JSON)
+        SessionEvaluated
     }
 
     [Serializable]
