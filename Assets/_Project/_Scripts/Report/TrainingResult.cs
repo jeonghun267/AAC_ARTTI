@@ -1,4 +1,4 @@
-using System.Linq;
+using System.Collections.Generic;
 using Artti.Common;
 using UnityEngine;
 
@@ -21,7 +21,7 @@ namespace Artti.Report
         public int durationSeconds;
 
         public bool hasRecord;         // false = 기록이 없다(프로필 없이 바로 실행). 점수 칸들은 빈 값으로 보인다
-        public int score;              // 0..100 = 진행·말하기·발음·대답 속도 중 있는 값의 평균 (TrainingResultCalculator.ScoreOf)
+        public int score;              // 0..100 = 단계별 말하기 점수의 평균. 버튼으로 답한 턴은 0점
         public int stars;              // 1..5
         public int accuracyPct = -1;   // 음성 발화의 서버 명료도 평균(재시도 포함). 음성으로 말하지 않았으면 -1
         public int goodExpressions;    // 사용자가 전한 표현 중 명료도 기준을 넘었거나(측정 안 됨 포함) 카드·상품으로 전한 수
@@ -64,37 +64,72 @@ namespace Artti.Report
             return result;
         }
 
-        // 변경점(사용자 요청 2026-10-03, "100점은 더미 데이터 같다"): 예전 점수는 단계 평가만 봐서 버튼으로 바로 진행하면 늘 100점이었다.
-        //   이제 이번 훈련 기록에서 아래 값 중 있는 것의 평균(0~100)
-        //   - 진행: 단계 평가(바로 성공 1, 한 번 다시 0.5, 두 번 이상 0)의 평균
-        //   - 말하기: 내가 한 말 중 목소리로 말한 비율(버튼·상품을 누른 말은 0)
-        //   - 발음: 목소리로 한 말의 명료도 평균(재시도 포함). 측정된 말이 없으면 뺀다
-        //   - 대답 속도: 점원 말 뒤 대답까지 걸린 시간 점수(리포트와 같은 계산). 잴 수 없으면 뺀다
+        // 변경점(사용자 요청 2026-10-03): 버튼만으로 끝낸 훈련은 0점. 음성·버튼을 섞으면 각 단계 안에서 턴 점수를 평균한다.
+        //   음성 턴: 말하기 시도 40 + 발음 최대 40 + 진행 최대 15 + 응답 속도 최대 5.
+        //   진행은 재시도 0/1/2회 이상에 따라 15/7.5/0. 거절된 턴은 진행·속도 가산점이 없다.
+        //   발음·시간 측정이 없으면 해당 가산점은 0(측정값을 지어내거나 다른 항목에 재배분하지 않는다).
+        //   버튼·상품·키보드 입력은 0점이지만 평균의 분모에 들어간다. 일상 대화는 시나리오 채점에서 제외한다.
+        //   단계마다 같은 배점이라 한 단계의 반복 발화로 다른 단계 몫을 채울 수 없다. 편의점의 미진입 단계도 0점.
+        private const float SpeakingPoints = 40f;
+        private const float ClarityPoints = 40f;
+        private const float ProgressPoints = 15f;
+        private const float SpeedPoints = 5f;
+
+        private sealed class StepScore
+        {
+            public int retries;
+            public int answers;
+            public float points;
+        }
+
         public static int ScoreOf(ReportRecordDetail report, ReportSessionDetail detail)
         {
-            int progress = Mathf.RoundToInt(report.successRate * 100f);
-            if (detail == null) return progress;
+            if (report == null || detail == null || detail.steps.Count == 0) return 0;
 
-            int userTurns = 0, spokenTurns = 0, claritySum = 0, clarityN = 0, speedSum = 0, speedN = 0;
-            long lastNpcMs = 0;
-            foreach (var t in detail.steps.SelectMany(s => s.turns))
+            // 같은 단계에 다시 진입해도 배점은 늘지 않는다. 재시도 수는 모든 기록에서 먼저 모은다.
+            var scores = new Dictionary<string, StepScore>();
+            foreach (var step in detail.steps)
             {
-                if (!t.isUser) { lastNpcMs = t.timestampMs; continue; }
-                userTurns++;
-                if (t.spoken) spokenTurns++;
-                if (t.clarityPct >= 0) { claritySum += t.clarityPct; clarityN++; }
-                if (lastNpcMs > 0 && t.timestampMs >= lastNpcMs)
-                {
-                    speedSum += ModeReportMath.SpeedScore((t.timestampMs - lastNpcMs) / 1000.0);
-                    speedN++;
-                }
-                lastNpcMs = 0;   // 대답 하나만 잰다(리포트와 같게)
+                if (!scores.TryGetValue(step.objectiveId ?? "", out var score))
+                    scores.Add(step.objectiveId ?? "", score = new StepScore());
+                score.retries += Mathf.Max(0, step.retryCount);
             }
-            return ModeReportMath.Average(
-                progress,
-                userTurns > 0 ? Mathf.RoundToInt(100f * spokenTurns / userTurns) : -1,
-                clarityN > 0 ? Mathf.RoundToInt(claritySum / (float)clarityN) : -1,
-                speedN > 0 ? Mathf.RoundToInt(speedSum / (float)speedN) : -1);
+
+            long lastNpcMs = 0;
+            // 기록 순서대로 읽어 단계가 바뀌기 직전에 나온 점원 질문도 다음 응답에 연결한다.
+            foreach (var step in detail.steps)
+            {
+                var score = scores[step.objectiveId ?? ""];
+                float progress = score.retries == 0 ? 1f : score.retries == 1 ? 0.5f : 0f;
+                foreach (var turn in step.turns)
+                {
+                    if (!turn.isUser) { lastNpcMs = turn.timestampMs; continue; }
+                    long promptMs = lastNpcMs;
+                    lastNpcMs = 0;   // 버튼·거절·일상 대화도 점원 질문에 대한 첫 응답을 소비한다
+                    if (turn.freeSpeech || string.IsNullOrWhiteSpace(turn.text)) continue;
+                    score.answers++;
+                    if (!turn.spoken || string.IsNullOrWhiteSpace(turn.heardText)) continue;
+
+                    float points = SpeakingPoints;
+                    if (turn.clarityPct >= 0)
+                        points += ClarityPoints * Mathf.Clamp(turn.clarityPct, 0, 100) / 100f;
+                    if (!turn.rejected)
+                    {
+                        points += ProgressPoints * progress;
+                        if (promptMs > 0 && turn.timestampMs >= promptMs)
+                            points += SpeedPoints * ModeReportMath.SpeedScore((turn.timestampMs - promptMs) / 1000.0) / 100f;
+                    }
+                    score.points += points;
+                }
+            }
+
+            float total = 0f;
+            foreach (var score in scores.Values)
+                if (score.answers > 0) total += score.points / score.answers;
+            int steps = scores.Count;
+            if (report.scenarioId == Artti.AAC.ScenarioIds.Convenience)
+                steps = Mathf.Max(steps, ConversationReportBuilder.ScenarioSteps);
+            return Mathf.Clamp(Mathf.RoundToInt(total / steps), 0, 100);
         }
 
         // 변경점(사용자 요청 2026-10-03): 별 = 점수 구간. 90 이상 5개, 70 이상 4개, 50 이상 3개, 30 이상 2개, 그 아래 1개.
