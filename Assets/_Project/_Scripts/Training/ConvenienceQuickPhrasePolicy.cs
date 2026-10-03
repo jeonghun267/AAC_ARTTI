@@ -101,9 +101,9 @@ namespace Artti.Training
             {
                 case "greeting":
                     return CompleteCurrent("greeting",
-                        "네, 물 준비해 드릴게요.\n‘계산할게요’라고 직접 말해볼까요?\n어려우면 대화 힌트를 눌러도 돼요.", YesNoCards, "물");
+                        "네, 물 준비해 드릴게요.\n‘계산할게요’라고 직접 말해볼까요?\n어려우면 왼쪽 버튼을 눌러도 돼요.", YesNoCards, "물");
                 case "select_items":
-                    return Stay("네, 물도 담아드릴게요.\n‘계산할게요’라고 직접 말해볼까요?\n어려우면 대화 힌트를 눌러도 돼요.", YesNoCards, "물");
+                    return Stay("네, 물도 담아드릴게요.\n‘계산할게요’라고 직접 말해볼까요?\n어려우면 왼쪽 버튼을 눌러도 돼요.", YesNoCards, "물");
                 case "extras":
                     return Stay("네, 물도 함께 준비할게요. 봉투 필요하세요?", YesNoCards, "물");
                 case "checkout":

@@ -99,6 +99,35 @@ namespace Artti.EditorTests.Report
             Assert.That(d.week[todayIndex], Is.EqualTo(80));
         }
 
+        // 변경점(사용자 요청 2026-10-03): '전체 보기'에서 목소리로 한 내 말은 모범 발음과 내 발음을 같이 보여 준다.
+        //   일상 대화처럼 화면 문장이 아닌 자유 발화는 내 발음만, 버튼으로 한 말은 문장 그대로
+        [Test]
+        public void Transcript_ShowsModelAndHeard_ForSpokenLines()
+        {
+            long t0 = Ms(DateTime.Now.Date.AddHours(10));
+            Ev("s1", AACEventType.ScenarioEntered, t0, payload: "mode:conversation");
+            Ev("s1", AACEventType.ObjectiveEntered, t0, "select_items");
+            Ev("s1", AACEventType.CardSelected, t0 + 1000, payload: "guided_voice:물 주세요|stt:무 주세요|clarity:50:red:물 주세요");
+            Ev("s1", AACEventType.CardSelected, t0 + 2000, payload: "guided_voice:카드로 할게요|stt:가드로 할게요");
+            Ev("s1", AACEventType.CardSelected, t0 + 3000, payload: "guided_voice_free:오늘 더워요|stt:오늘 더워요");
+            Ev("s1", AACEventType.CardSelected, t0 + 4000, payload: "product_water:물 주세요");
+
+            var lines = ConversationReportBuilder.Transcript(Service(), "s1").lines;
+
+            Assert.That(lines[0].model, Is.EqualTo("물 주세요"), "목표 문장");
+            Assert.That(lines[1].model, Is.EqualTo("카드로 할게요"), "목표가 없으면 알아들은 화면 문장");
+            Assert.That(lines[2].spoken, Is.True);
+            Assert.That(lines[2].model, Is.Null, "자유 발화는 모범 발음 없음");
+            Assert.That(lines[3].model, Is.Null, "버튼으로 한 말");
+
+            var shown = ConversationReportLabels.HistoryText(lines[0]);
+            Assert.That(shown, Does.Contain("모범 발음").And.Contain("물 주세요"));
+            Assert.That(shown, Does.Contain("내 발음").And.Contain("무 주세요"));
+            Assert.That(shown.Split('\n').Length, Is.EqualTo(2));
+            Assert.That(ConversationReportLabels.HistoryText(lines[2]), Does.Not.Contain("모범 발음").And.Contain("오늘 더워요"));
+            Assert.That(ConversationReportLabels.HistoryText(lines[3]), Is.EqualTo("물 주세요"));
+        }
+
         [Test]
         public void Today_ComparesWithYesterday()
         {

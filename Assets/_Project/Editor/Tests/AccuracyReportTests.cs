@@ -177,7 +177,7 @@ namespace Artti.EditorTests.Report
             Ev(AACEventType.ScenarioEntered, t0, payload: "mode:accuracy");
             Ev(AACEventType.ObjectiveEntered, t0, "select_items");
             Ev(AACEventType.CardSelected, t0 + 3000, payload: "guided_voice:주세요|stt:주세요|clarity:38:red:사과 주세요");
-            Ev(AACEventType.CardSelected, t0 + 9000, payload: "guided_voice:네|stt:네");
+            Ev(AACEventType.CardSelected, t0 + 9000, payload: "quick_phrase:감사합니다|stt:감사합니다");
             Ev(AACEventType.SessionEnded, t0 + 30000, payload: "completed");
             var lines = new List<string>();
             foreach (var ev in _events) lines.Add(JsonUtility.ToJson(ev));
@@ -185,7 +185,29 @@ namespace Artti.EditorTests.Report
 
             var d = AccuracyReportBuilder.Build(new ReportDataService(_path), ReportPeriod.All, now);
 
-            Assert.That(d.modelSentences, Is.EqualTo(new[] { "사과 주세요", "네" }));
+            Assert.That(d.modelSentences, Is.EqualTo(new[] { "사과 주세요", "감사합니다" }), "버튼으로 한 말은 화면 문장 그대로");
+        }
+
+        // 변경점(사용자 요청 2026-10-03, '가끔 이상한 모범 발음'): 목표 문장이 없는 음성 발화(잘못 알아들었을 수 있음)는 빼고,
+        //   띄어쓰기·문장 부호만 다른 같은 문장은 한 번만 읽는다
+        [Test]
+        public void ModelSentence_SkipsUntargetedVoice_AndMergesSpacingVariants()
+        {
+            var now = DateTime.Now;
+            long t0 = Ms(now.Date.AddHours(9));
+            Ev(AACEventType.ScenarioEntered, t0, payload: "mode:accuracy");
+            Ev(AACEventType.ObjectiveEntered, t0, "select_items");
+            Ev(AACEventType.CardSelected, t0 + 3000, payload: "guided_voice:무 주 새요|stt:무 주 새요");
+            Ev(AACEventType.CardSelected, t0 + 6000, payload: "guided_voice:물 주세요|stt:물 주세요|clarity:90:green:물 주세요");
+            Ev(AACEventType.CardSelected, t0 + 9000, payload: "quick_phrase:물주세요.|stt:물주세요.");
+            Ev(AACEventType.SessionEnded, t0 + 30000, payload: "completed");
+            var lines = new List<string>();
+            foreach (var ev in _events) lines.Add(JsonUtility.ToJson(ev));
+            File.WriteAllLines(_path, lines);
+
+            var d = AccuracyReportBuilder.Build(new ReportDataService(_path), ReportPeriod.All, now);
+
+            Assert.That(d.modelSentences, Is.EqualTo(new[] { "물 주세요" }));
         }
 
         // 변경점: 서버 명료도가 없을 때(기기 STT) 리포트용 추정치

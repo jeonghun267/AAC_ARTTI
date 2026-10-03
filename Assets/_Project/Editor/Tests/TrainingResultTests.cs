@@ -70,19 +70,33 @@ namespace Artti.EditorTests.Report
             return new ReportDataService(_path);
         }
 
+        // 버튼만 눌러 끝낸 훈련(인사·작별 둘 다 버튼)
+        private string LogTapOnlySession()
+        {
+            var logger = new EventLogger(_store, "test_profile", "convenience");
+            logger.LogScenarioEntered(TrainingMode.Accuracy);
+            logger.LogObjectiveEntered("greeting");
+            logger.LogCardSelected("quick_phrase", "안녕하세요");
+            logger.LogObjectiveEntered("farewell");
+            logger.LogCardSelected("quick_phrase", "감사합니다");
+            logger.LogSessionEnded("completed");
+            return logger.SessionId;
+        }
+
         private TrainingResult Result(string sessionId, TrainingMode mode = TrainingMode.Accuracy) =>
             TrainingResultCalculator.Build(BuildService(), sessionId, Pass, mode, "편의점", 90);
 
+        // 점수 = 진행·말하기·발음·대답 속도 중 있는 값의 평균 (이 테스트 기록에는 점원 말이 없어 대답 속도는 빠진다)
         [Test]
-        public void FirstPerfectSession_ScoresFullAndIsFirstRecord()
+        public void FirstSession_ScoresFromProgressSpeechAndClarity_AndIsFirstRecord()
         {
             var id = LogSession(TrainingMode.Accuracy, 90);
 
             var r = Result(id);
 
             Assert.That(r.hasRecord, Is.True);
-            Assert.That(r.score, Is.EqualTo(100));
-            Assert.That(r.stars, Is.EqualTo(5));
+            Assert.That(r.score, Is.EqualTo(80), "진행 100, 말하기 50(두 말 중 하나만 목소리), 발음 90");
+            Assert.That(r.stars, Is.EqualTo(4));
             Assert.That(r.accuracyPct, Is.EqualTo(90));
             Assert.That(r.goodExpressions, Is.EqualTo(2), "음성 90%와 버튼 탭 둘 다 잘한 표현");
             Assert.That(r.record, Is.EqualTo(RecordState.First));
@@ -93,28 +107,28 @@ namespace Artti.EditorTests.Report
         public void RetriedStep_LowersScore_AndLowClarityIsNotCounted()
         {
             LogSession(TrainingMode.Accuracy, 90);
-            var id = LogSession(TrainingMode.Accuracy, 40, 80);   // 인사 단계 한 번 다시 -> 0.5, 작별 1 -> 75점
+            var id = LogSession(TrainingMode.Accuracy, 40, 80);   // 인사 단계 한 번 다시 -> 0.5, 작별 1 -> 진행 75
 
             var r = Result(id);
 
-            Assert.That(r.score, Is.EqualTo(75));
-            Assert.That(r.stars, Is.EqualTo(4));
+            Assert.That(r.score, Is.EqualTo(67), "진행 75, 말하기 67(세 말 중 둘), 발음 60");
+            Assert.That(r.stars, Is.EqualTo(3));
             Assert.That(r.accuracyPct, Is.EqualTo(60), "재시도 포함 음성 발화 평균 (40+80)/2");
             Assert.That(r.goodExpressions, Is.EqualTo(2), "기준(60) 미달 40%는 빼고 80%와 버튼 탭");
             Assert.That(r.record, Is.EqualTo(RecordState.Lower));
-            Assert.That(r.previousBest, Is.EqualTo(100));
+            Assert.That(r.previousBest, Is.EqualTo(80));
             Assert.That(TrainingResultLabels.IsBest(r), Is.False);
         }
 
         [Test]
         public void HigherAndTie_ComparedWithPreviousBest()
         {
-            LogSession(TrainingMode.Accuracy, 40, 80);            // 75점
-            var higher = LogSession(TrainingMode.Accuracy, 90);   // 100점
+            LogSession(TrainingMode.Accuracy, 40, 80);            // 67점
+            var higher = LogSession(TrainingMode.Accuracy, 90);   // 80점
             Assert.That(Result(higher).record, Is.EqualTo(RecordState.Higher));
-            Assert.That(TrainingResultLabels.RecordNote(Result(higher)), Does.Contain("25점"));
+            Assert.That(TrainingResultLabels.RecordNote(Result(higher)), Does.Contain("13점"));
 
-            var tie = LogSession(TrainingMode.Accuracy, 95);      // 100점 = 지난 최고
+            var tie = LogSession(TrainingMode.Accuracy, 90);      // 80점 = 지난 최고
             Assert.That(Result(tie).record, Is.EqualTo(RecordState.Tie));
         }
 
@@ -141,13 +155,26 @@ namespace Artti.EditorTests.Report
             Assert.That(TrainingResultLabels.Summary(r), Is.EqualTo("편의점 · 정확도 모드 · 1분 안에 마쳤어요"));
         }
 
+        // 변경점(사용자 요청 2026-10-03): 버튼만 눌러 끝내도 늘 100점이던 문제 — 목소리로 한 말이 없으면 말하기 0이 들어간다
+        [Test]
+        public void TapOnlySession_IsNotFullScore()
+        {
+            var r = Result(LogTapOnlySession());
+
+            Assert.That(r.score, Is.EqualTo(50), "진행 100, 말하기 0, 발음은 잴 말이 없어 뺀다");
+            Assert.That(r.stars, Is.EqualTo(3));
+            Assert.That(TrainingResultLabels.AccuracyValue(r), Is.EqualTo("-"));
+        }
+
         [TestCase(100, 5)]
-        [TestCase(81, 5)]
-        [TestCase(80, 4)]
-        [TestCase(61, 4)]
-        [TestCase(60, 3)]
-        [TestCase(21, 2)]
-        [TestCase(20, 1)]
+        [TestCase(90, 5)]
+        [TestCase(89, 4)]
+        [TestCase(70, 4)]
+        [TestCase(69, 3)]
+        [TestCase(50, 3)]
+        [TestCase(49, 2)]
+        [TestCase(30, 2)]
+        [TestCase(29, 1)]
         [TestCase(0, 1)]
         public void Stars_FollowScoreBands(int score, int stars)
         {

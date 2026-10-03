@@ -84,7 +84,6 @@ public class OcrTestController : MonoBehaviour
     private void OnDestroy()
     {
         DisposeCurrentTexture();
-        Artti.Common.BgmPlayer.SetHeld(false);   // 변경점: 현장모드를 떠나면 배경음악 요청을 거둔다
     }
 
     private IEnumerator LoadDictionaryRoutine()
@@ -137,7 +136,6 @@ public class OcrTestController : MonoBehaviour
     private void OnPickImageClicked()
     {
         if (!CanProcess()) return;
-        Artti.Common.BgmPlayer.SetHeld(false);   // 변경점: 갤러리를 고르면 배경음악을 끈다
 
         GPSManager.UpdateCoords();
         SetStatus($"📍 위도: {GPSManager.Latitude:F6}\n경도: {GPSManager.Longitude:F6}\n갤러리를 여는 중...");
@@ -160,7 +158,6 @@ public class OcrTestController : MonoBehaviour
     private void OnTakePhotoClicked()
     {
         if (!CanProcess()) return;
-        Artti.Common.BgmPlayer.SetHeld(false);   // 변경점: 사진(카메라)을 고르면 배경음악을 끈다
 
         GPSManager.UpdateCoords();
         SetStatus($"📍 위도: {GPSManager.Latitude:F6}\n경도: {GPSManager.Longitude:F6}\n카메라를 여는 중...");
@@ -194,7 +191,6 @@ public class OcrTestController : MonoBehaviour
         if (string.IsNullOrEmpty(path))
         {
             SetStatus("취소되었습니다 (" + source + ").");
-            Artti.Common.BgmPlayer.SetHeld(true);   // 변경점: 고르기를 취소해 첫 화면에 남으면 배경음악을 다시 튼다
             return;
         }
 
@@ -306,7 +302,6 @@ public class OcrTestController : MonoBehaviour
         _isProcessing = false;
         Debug.LogError("[OcrTest] OCR error: " + message);
         SetStatus("[ERROR] OCR: " + message);
-        Artti.Common.BgmPlayer.SetHeld(true);   // 변경점: 인식 실패로 첫 화면에 남으면 배경음악을 다시 튼다
     }
 
     // ============================================================
@@ -322,7 +317,6 @@ public class OcrTestController : MonoBehaviour
         }
         if (homePanel != null) homePanel.SetActive(true);
         if (resultPanel != null) resultPanel.SetActive(false);
-        Artti.Common.BgmPlayer.SetHeld(true);   // 변경점: 갤러리·사진을 고르기 전 첫 화면에서는 배경음악(메인에서 이어서)
     }
 
     private void ShowResultPanel(KeywordMatch match, string imagePath)

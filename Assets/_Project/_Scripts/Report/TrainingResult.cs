@@ -1,3 +1,4 @@
+using System.Linq;
 using Artti.Common;
 using UnityEngine;
 
@@ -20,7 +21,7 @@ namespace Artti.Report
         public int durationSeconds;
 
         public bool hasRecord;         // false = 기록이 없다(프로필 없이 바로 실행). 점수 칸들은 빈 값으로 보인다
-        public int score;              // 0..100 = 레포트 단계 평가(바로 성공 1, 한 번 다시 0.5, 두 번 이상 0)의 평균
+        public int score;              // 0..100 = 진행·말하기·발음·대답 속도 중 있는 값의 평균 (TrainingResultCalculator.ScoreOf)
         public int stars;              // 1..5
         public int accuracyPct = -1;   // 음성 발화의 서버 명료도 평균(재시도 포함). 음성으로 말하지 않았으면 -1
         public int goodExpressions;    // 사용자가 전한 표현 중 명료도 기준을 넘었거나(측정 안 됨 포함) 카드·상품으로 전한 수
@@ -44,7 +45,7 @@ namespace Artti.Report
             if (report == null || detail == null || report.steps.Count == 0) return result;
 
             result.hasRecord = true;
-            result.score = ScoreOf(report);
+            result.score = ScoreOf(report, detail);
             result.stars = StarsFor(result.score);
             result.accuracyPct = report.avgClarityPct;
             foreach (var step in detail.steps)
@@ -57,16 +58,48 @@ namespace Artti.Report
                 if (!past.completed || past.sessionId == sessionId || past.scenarioId != report.scenarioId) continue;
                 var pastReport = service.GetRecordReport(past.sessionId);
                 if (pastReport == null || pastReport.steps.Count == 0) continue;
-                result.previousBest = Mathf.Max(result.previousBest, ScoreOf(pastReport));
+                result.previousBest = Mathf.Max(result.previousBest, ScoreOf(pastReport, service.GetDetail(past.sessionId)));
             }
             result.record = Compare(result.score, result.previousBest);
             return result;
         }
 
-        public static int ScoreOf(ReportRecordDetail report) => Mathf.RoundToInt(report.successRate * 100f);
+        // 변경점(사용자 요청 2026-10-03, "100점은 더미 데이터 같다"): 예전 점수는 단계 평가만 봐서 버튼으로 바로 진행하면 늘 100점이었다.
+        //   이제 이번 훈련 기록에서 아래 값 중 있는 것의 평균(0~100)
+        //   - 진행: 단계 평가(바로 성공 1, 한 번 다시 0.5, 두 번 이상 0)의 평균
+        //   - 말하기: 내가 한 말 중 목소리로 말한 비율(버튼·상품을 누른 말은 0)
+        //   - 발음: 목소리로 한 말의 명료도 평균(재시도 포함). 측정된 말이 없으면 뺀다
+        //   - 대답 속도: 점원 말 뒤 대답까지 걸린 시간 점수(리포트와 같은 계산). 잴 수 없으면 뺀다
+        public static int ScoreOf(ReportRecordDetail report, ReportSessionDetail detail)
+        {
+            int progress = Mathf.RoundToInt(report.successRate * 100f);
+            if (detail == null) return progress;
 
-        // 100~81 = 5개, 80~61 = 4개 ... 20 이하 = 1개. 끝까지 해냈으면 별은 적어도 1개
-        public static int StarsFor(int score) => Mathf.Clamp(Mathf.CeilToInt(score / 20f), 1, 5);
+            int userTurns = 0, spokenTurns = 0, claritySum = 0, clarityN = 0, speedSum = 0, speedN = 0;
+            long lastNpcMs = 0;
+            foreach (var t in detail.steps.SelectMany(s => s.turns))
+            {
+                if (!t.isUser) { lastNpcMs = t.timestampMs; continue; }
+                userTurns++;
+                if (t.spoken) spokenTurns++;
+                if (t.clarityPct >= 0) { claritySum += t.clarityPct; clarityN++; }
+                if (lastNpcMs > 0 && t.timestampMs >= lastNpcMs)
+                {
+                    speedSum += ModeReportMath.SpeedScore((t.timestampMs - lastNpcMs) / 1000.0);
+                    speedN++;
+                }
+                lastNpcMs = 0;   // 대답 하나만 잰다(리포트와 같게)
+            }
+            return ModeReportMath.Average(
+                progress,
+                userTurns > 0 ? Mathf.RoundToInt(100f * spokenTurns / userTurns) : -1,
+                clarityN > 0 ? Mathf.RoundToInt(claritySum / (float)clarityN) : -1,
+                speedN > 0 ? Mathf.RoundToInt(speedSum / (float)speedN) : -1);
+        }
+
+        // 변경점(사용자 요청 2026-10-03): 별 = 점수 구간. 90 이상 5개, 70 이상 4개, 50 이상 3개, 30 이상 2개, 그 아래 1개.
+        //   (예전 올림 방식은 81점도 별 5개라 점수와 안 맞아 보였다.) 끝까지 해냈으면 별은 적어도 1개
+        public static int StarsFor(int score) => score >= 90 ? 5 : score >= 70 ? 4 : score >= 50 ? 3 : score >= 30 ? 2 : 1;
 
         public static RecordState Compare(int score, int previousBest)
         {

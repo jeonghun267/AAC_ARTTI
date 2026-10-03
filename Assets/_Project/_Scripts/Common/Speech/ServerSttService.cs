@@ -698,7 +698,9 @@ namespace Artti.Common.Speech
                     hasClarity = hasClarity,
                     clarityPercent = hasClarity ? clarityPct : 0,
                     clarityLight = hasClarity ? light : null,
-                    clarityTarget = hasClarity ? (echoed ?? target) : null
+                    // 변경점: 목표 문장은 앱이 보낸 화면 문장을 먼저 쓴다(서버가 돌려준 값은 다듬어진 형태일 수 있어
+                    //   리포트 모범 발음이 이상하게 읽힐 수 있다). 앱 문장이 없을 때만 서버 값
+                    clarityTarget = hasClarity ? (!string.IsNullOrWhiteSpace(target) ? target : echoed) : null
                 };
                 return result;
             }

@@ -22,7 +22,7 @@ namespace Artti.Editor
         {
             ("사과", "/sa-gwa/", "ㅅ 발음 약함", "'사'의 초성 ㅅ이 약하게 발음되었어요."),
             ("초콜릿", "/cho-kol-lit/", "ㅊ 발음 불명확", "'초'의 ㅊ 발음이 부정확했어요."),
-            ("학교", "/hak-gyo/", "받침 처리 불안정", "'학'의 받침 ㄱ이 약하게 들렸어요."),
+            ("계산할게요", "/gye-san-hal-ge-yo/", "받침 처리 불안정", "'할'의 받침 ㄹ이 약하게 들렸어요."),   // 긴 단어(칸 맞춤 확인용)
         };
 
         // 모범 발음 듣기: 파형 자리(시안 px), 음절 칸 수, 단어 구분선 수
@@ -115,6 +115,11 @@ namespace Artti.Editor
                 var desc = Label("Description", row, ro, sample.desc, font, 14.5f, SubInk, false, 1299, 1534, y0 + 62,
                     TextAlignmentOptions.MidlineLeft);
                 desc.overflowMode = TextOverflowModes.Ellipsis;
+                // 변경점(사용자 요청 2026-10-03, '발음 불명확' 칩과 겹침): 단어 칸은 98px뿐이라 "계산할게요" 같은 5글자 단어와
+                //   긴 로마자가 오른쪽 칩·설명 위로 넘쳤다. 칸에 맞게 글자를 줄이고, 그래도 길면 말줄임
+                FitInBox(word, 14f);
+                FitInBox(roman, 10f);
+                FitInBox(tag, 10f);
                 var play = HitBox("Play", row, ro, Rect.MinMaxRect(1540, yc - 23, 1586, yc + 23));
                 var playIcon = Img("Icon", play, new Vector2(1540, yc - 23), ArtDer + "icon_play.png", Rect.MinMaxRect(1537, yc - 26, 1589, yc + 26), 256);
                 rows[i] = (row.gameObject, syl, word, roman, tag, desc, play.GetComponent<Button>(), playIcon);
@@ -218,6 +223,15 @@ namespace Artti.Editor
                 acc += lengths[i];
                 separators[i].anchoredPosition = new Vector2(WaveX0 + (WaveX1 - WaveX0) * acc / total - originX, separators[i].anchoredPosition.y);
             }
+        }
+
+        // 한 줄 글자가 칸 폭을 넘으면 minSize까지 줄이고, 그래도 넘치면 말줄임(…)
+        static void FitInBox(TMP_Text text, float minSize)
+        {
+            text.enableAutoSizing = true;
+            text.fontSizeMax = text.fontSize;
+            text.fontSizeMin = minSize;
+            text.overflowMode = TextOverflowModes.Ellipsis;
         }
 
         [MenuItem("Artti/Debug/Capture AccuracyReportScene - Tab + Phone + 4x3")]
