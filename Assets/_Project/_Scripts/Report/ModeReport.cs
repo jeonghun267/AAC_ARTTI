@@ -10,6 +10,16 @@ namespace Artti.Report
     // 두 리포트가 같이 쓰는 기간·점수 계산
     public static class ModeReportMath
     {
+        // 글자·숫자만 남긴 문장(띄어쓰기·문장 부호만 다른 같은 문장을 하나로 본다)
+        public static string Compact(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (var c in s)
+                if (char.IsLetterOrDigit(c)) sb.Append(c);
+            return sb.ToString();
+        }
+
         // 기간과 비교 기간(오늘 -> 어제, 이번 주 -> 지난주). 전체 탭은 비교 기간이 없다(hasPrevious = false)
         public static void Range(ReportPeriod period, DateTime today, out DateTime from, out DateTime to,
                                  out DateTime prevFrom, out DateTime prevTo, out bool hasPrevious)

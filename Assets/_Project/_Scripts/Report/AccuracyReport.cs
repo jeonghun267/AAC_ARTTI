@@ -84,14 +84,26 @@ namespace Artti.Report
                 if (detail == null) continue;
                 foreach (var t in detail.steps.SelectMany(st => st.turns))
                 {
-                    if (!t.isUser || string.IsNullOrWhiteSpace(t.text)) continue;
-                    // 변경점: 음성 발화의 text는 인식기가 알아들은 원문이라 중간에 끊기면("주세요"만) 모범 발음도 짧게 읽었다.
-                    //   목표 문장(명료도 기준)이 있으면 그 문장을 바른 발음으로 읽는다
-                    var text = (!string.IsNullOrWhiteSpace(t.clarityTarget) ? t.clarityTarget : t.text).Trim();
-                    if (seen.Add(text)) list.Add(text);
+                    var text = ModelSentenceOf(t);
+                    if (text == null) continue;
+                    // 변경점: 띄어쓰기·문장 부호만 다른 같은 문장("물 주세요" / "물주세요.")은 한 번만
+                    if (seen.Add(ModeReportMath.Compact(text))) list.Add(text);
                 }
             }
             return list;
+        }
+
+        // 내 말 한 턴의 모범 발음 문장. 없으면 null
+        //   변경점: 음성 발화의 text는 인식기가 알아들은 원문이라 중간에 끊기면("주세요"만) 모범 발음도 짧게 읽었다.
+        //   목표 문장(명료도 기준)이 있으면 그 문장을 바른 발음으로 읽는다.
+        //   변경점(사용자 요청 2026-10-03, '가끔 이상한 모범 발음'): 목표 문장이 없는 음성 발화는 잘못 알아들은 말일 수 있어 뺀다.
+        //   버튼·상품으로 한 말은 화면 문장 그대로라 쓴다
+        public static string ModelSentenceOf(ReportTurn t)
+        {
+            if (t == null || !t.isUser) return null;
+            if (!string.IsNullOrWhiteSpace(t.clarityTarget)) return t.clarityTarget.Trim();
+            if (t.spoken || string.IsNullOrWhiteSpace(t.text)) return null;
+            return t.text.Trim();
         }
 
         public static AccuracyMetrics Measure(ReportDataService service, IList<ReportSessionSummary> sessions)

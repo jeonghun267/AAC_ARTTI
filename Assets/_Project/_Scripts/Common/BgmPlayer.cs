@@ -27,7 +27,6 @@ namespace Artti.Common
         static BgmPlayer _instance;
         static bool _ducked;
         static float _dip;   // 0~1. 전환 화면이 어두운 정도. 새 씬이 밝아지면 0으로 돌아가 음악이 다시 커진다(진입 느낌)
-        static bool _held;   // 변경점: 음악 씬이 아니어도 틀어 달라는 요청(현장모드 첫 화면: 갤러리·사진을 고르기 전)
 
         private AudioSource _source;
         private bool _wanted;
@@ -40,7 +39,6 @@ namespace Artti.Common
             _instance = null;
             _ducked = false;
             _dip = 0f;
-            _held = false;
             SceneManager.activeSceneChanged -= OnActiveSceneChanged;
         }
 
@@ -60,20 +58,11 @@ namespace Artti.Common
         // 변경점: 화면이 어두워지는 정도(0~1)만큼 음악을 잠깐 줄인다. SceneFader 전환과 스플래시 끝 암전에서 부른다.
         public static void SetDip(float amount) => _dip = Mathf.Clamp01(amount);
 
-        // 변경점: 음악 씬이 아닌 화면에서도 틀기(켜기) / 그만(끄기). 현장모드 첫 화면이 보이는 동안 켜고, 갤러리·사진을 고르면 끈다.
-        //   그 씬을 떠날 때 꼭 끈다(OnDestroy). 다른 곳으로 가면 서서히 줄어 멈추고, 다시 켜면 멈춘 곳부터 나온다
-        public static void SetHeld(bool held)
-        {
-            if (_held == held) return;
-            _held = held;
-            Apply(SceneManager.GetActiveScene().name);
-        }
-
         private static void OnActiveSceneChanged(Scene from, Scene to) => Apply(to.name);
 
         private static void Apply(string sceneName)
         {
-            bool wanted = IsMusicScene(sceneName) || _held;
+            bool wanted = IsMusicScene(sceneName);
             if (!wanted && _instance == null) return;   // 음악 씬에 간 적이 없으면 만들지 않는다
             var player = Ensure();
             if (player == null) return;

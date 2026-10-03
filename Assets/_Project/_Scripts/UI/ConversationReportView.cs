@@ -265,8 +265,10 @@ namespace Artti.UI
             float padL = tr.offsetMin.x, padB = tr.offsetMin.y, padR = -tr.offsetMax.x, padT = -tr.offsetMax.y;
             float maxBubble = user ? width - timeWidth - 8f - userLeftMargin : width - npcBubbleX - timeWidth - 10f;
             float maxText = Mathf.Max(40f, maxBubble - padL - padR);
-            row.text.text = line.text;
-            var pref = row.text.GetPreferredValues(line.text, maxText, 0f);
+            // 변경점: 목소리로 한 내 말은 모범 발음 + 내 발음 두 줄(ConversationReportLabels.HistoryText)
+            var shown = ConversationReportLabels.HistoryText(line);
+            row.text.text = shown;
+            var pref = row.text.GetPreferredValues(shown, maxText, 0f);
             float w = Mathf.Min(pref.x, maxText) + padL + padR;
             float h = Mathf.Max(rowMinHeight, pref.y + padT + padB);
             row.bubble.sizeDelta = new Vector2(w, h);

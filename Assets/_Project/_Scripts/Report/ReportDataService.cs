@@ -127,6 +127,8 @@ namespace Artti.Report
         public string clarityHeard;
         public bool spoken;           // 변경점: 음성 입력 턴(음성 버튼, 카드 탭+STT). 버튼/상품 탭은 false
         public string heardText;      // 음성 입력 턴의 STT 인식 원문 (명료도 기록 여부와 무관)
+        // 변경점: 화면 문장이 아닌 자유 발화(대화 모드의 일상 대화, 못 알아들어 다시 물어본 말). 모범 발음이 없다
+        public bool freeSpeech;
         // 변경점(대화 모드 리포트): 턴 시각(응답 속도·대화 기록 시각)과, 이 사용자 턴 뒤에 다시 말하기 요청이 왔는지
         public long timestampMs;
         public bool rejected;
@@ -530,6 +532,7 @@ namespace Artti.Report
                     {
                         turn.timestampMs = ev.timestampUnixMs;
                         turn.spoken = IsSpokenSource(ev.payloadJson);
+                        turn.freeSpeech = SourceOf(ev.payloadJson) == FreeSpeechSource;
                         if (turn.spoken) turn.heardText = ParseSttText(ev.payloadJson);
                         lastUserTurn = turn;
                     }
@@ -698,14 +701,21 @@ namespace Artti.Report
             return sttIdx >= 0 ? payload.Substring(sttIdx + 5) : null;
         }
 
-        // 변경점: 음성 입력 턴 판별 — payload 앞의 출처 id가 "guided_voice"(음성 버튼) 또는 "card_*"(카드 탭 후 말하기).
-        //   "quick_phrase"(대화 힌트 탭)와 상품 id(상품 탭)는 음성이 아니라 채점 대상이 아니다.
+        // 변경점: 음성 입력 턴 판별 — payload 앞의 출처 id가 "guided_voice"(음성 버튼), "guided_voice_free"(음성 버튼의 자유 발화)
+        //   또는 "card_*"(카드 탭 후 말하기). "quick_phrase"(대화 힌트 탭)와 상품 id(상품 탭)는 음성이 아니라 채점 대상이 아니다.
+        public const string FreeSpeechSource = "guided_voice_free";
+
         static bool IsSpokenSource(string payload)
         {
-            if (string.IsNullOrEmpty(payload)) return false;
+            var source = SourceOf(payload);
+            return source == "guided_voice" || source == FreeSpeechSource || source.StartsWith("card_", StringComparison.Ordinal);
+        }
+
+        static string SourceOf(string payload)
+        {
+            if (string.IsNullOrEmpty(payload)) return "";
             int idx = payload.IndexOf(':');
-            var source = idx >= 0 ? payload.Substring(0, idx) : payload;
-            return source == "guided_voice" || source.StartsWith("card_", StringComparison.Ordinal);
+            return idx >= 0 ? payload.Substring(0, idx) : payload;
         }
 
         static string StripClarity(string payload)

@@ -36,6 +36,9 @@ namespace Artti.Report
         public long timeMs;
         public bool spoken;     // 목소리로 한 말(아니면 카드·상품을 눌러서 한 말)
         public string heard;    // 목소리로 한 말의 음성 인식 원문(AI 평가에 넘긴다)
+        // 변경점(사용자 요청 2026-10-03): 목소리로 한 말의 모범 발음(바르게 말한 문장). 목표 문장이 기록돼 있으면 그 문장,
+        //   아니면 알아들은 문장. 화면 문장이 아닌 자유 발화(일상 대화 등)와 버튼으로 한 말은 null
+        public string model;
     }
 
     // 대화 한 번의 모든 말(오래된 것부터). '전체 보기' 창과 대화 기록 판이 쓴다
@@ -106,6 +109,9 @@ namespace Artti.Report
                 result.lines.Add(new ConversationLine
                 {
                     isUser = t.isUser, text = t.text, timeMs = t.timestampMs, spoken = t.spoken, heard = t.heardText,
+                    model = t.isUser && t.spoken && !t.freeSpeech
+                        ? (!string.IsNullOrWhiteSpace(t.clarityTarget) ? t.clarityTarget.Trim() : t.text)
+                        : null,
                 });
             return result;
         }
@@ -250,6 +256,21 @@ namespace Artti.Report
             if (t == null || t.lines.Count == 0) return "";
             var start = DateTimeOffset.FromUnixTimeMilliseconds(t.startMs).ToLocalTime().DateTime;
             return $"{ModeReportText.Date(start)} {ModeReportText.Time(t.startMs)} · 말 {t.lines.Count}개";
+        }
+
+        // 변경점(사용자 요청 2026-10-03): '전체 보기' 말풍선 글자. 목소리로 한 내 말은 모범 발음과 내 발음(알아들은 그대로)을 같이 보여 준다.
+        //   점원 말·버튼으로 한 말은 문장 그대로. 자유 발화(모범 발음 없음)는 내 발음만
+        public const string ModelLabelColor = "#9CC0FF";
+        public const string HeardLabelColor = "#FFB8CB";
+
+        public static string HistoryText(ConversationLine line)
+        {
+            if (line == null) return "";
+            if (!line.isUser || !line.spoken) return line.text ?? "";
+            var heard = !string.IsNullOrWhiteSpace(line.heard) ? line.heard.Trim() : line.text ?? "";
+            var heardRow = $"<size=80%><color={HeardLabelColor}>내 발음</color></size>  {heard}";
+            if (string.IsNullOrWhiteSpace(line.model)) return heardRow;
+            return $"<size=80%><color={ModelLabelColor}>모범 발음</color></size>  {line.model}\n{heardRow}";
         }
 
         // AI 평가가 있으면: AI가 말한 잘한 점 -> 지표 칭찬 한 줄 -> AI가 말한 다음에 해 볼 점 (빈 칸은 규칙 문장으로 채운다)

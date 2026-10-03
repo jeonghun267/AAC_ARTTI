@@ -996,7 +996,7 @@ namespace Artti.Training
                 {
                     _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
                     _dialogueManager.RegisterFailure();
-                    SpeakNpc("괜찮아요. 오른쪽 말하기 문장을 보고 다시 말해볼까요?", isFallback: true);
+                    SpeakNpc("괜찮아요. 왼쪽 문장을 보고 다시 말해볼까요?", isFallback: true);   // 변경점: 문장 버튼은 왼쪽에 있다
                     return;
                 }
 
@@ -1017,7 +1017,8 @@ namespace Artti.Training
                 //   (DialogueManager.RegisterFailure는 부르지 않는다: 실패 4회면 시나리오가 강제 종료된다)
                 if (utterance == null)
                 {
-                    _eventLogger?.LogCardSelected("guided_voice", spoken.text, spoken);
+                    // 변경점: 못 알아들은 말은 자유 발화로 기록한다(리포트 '전체 보기'에서 모범 발음 없이 내 발음만)
+                    _eventLogger?.LogCardSelected(Artti.Report.ReportDataService.FreeSpeechSource, spoken.text, spoken);
                     hud?.SetUserUtterance(spoken.text);
                     _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
                     _lastToolSpoke = true;
@@ -1034,7 +1035,8 @@ namespace Artti.Training
             // 변경점: 일상 대화는 점원이 자연스럽게 받아 주고 지금 단계로 부드럽게 돌아온다(단계 진행·장바구니 변화 없음)
             if (smallTalk)
             {
-                RunDashboardTurn("guided_voice", "음성으로 말하기", utterance, false, null, spoken, smallTalk: true).Forget();
+                RunDashboardTurn("guided_voice", "음성으로 말하기", utterance, false, null, spoken, smallTalk: true,
+                    logSourceId: Artti.Report.ReportDataService.FreeSpeechSource).Forget();
                 return;
             }
 
@@ -1043,8 +1045,9 @@ namespace Artti.Training
             //   예전에는 대화 힌트처럼 AI에게만 넘겨 과자가 장바구니에 안 들어갈 수 있었다. "물 주세요"는 기존 정책(ResolveWater) 그대로
             if (!isWater && dashboardView != null && dashboardView.TryFindProduct(utterance, out var productId, out var productName))
             {
+                // 변경점: 목소리로 한 상품 요청은 음성 턴으로 기록한다(상품 id로 기록하면 리포트가 버튼을 누른 것으로 본다)
                 RunDashboardTurn(productId, productName, utterance, true,
-                    IsConvenienceItemSelectionStep() ? productName : null, spoken).Forget();
+                    IsConvenienceItemSelectionStep() ? productName : null, spoken, logSourceId: "guided_voice").Forget();
                 return;
             }
             bool captureWater = IsConvenienceItemSelectionStep() && isWater;
@@ -1278,7 +1281,8 @@ namespace Artti.Training
             bool isProduct,
             string capturedItemName = null,
             SttResult? spoken = null,
-            bool smallTalk = false)
+            bool smallTalk = false,
+            string logSourceId = null)   // 변경점: 기록에 남길 출처 id(없으면 sourceId). 음성 턴 구분용
         {
             if (_dashboardTurnBusy || _freeTalkActive || _sessionCompleted || !_useGemini
                 || string.IsNullOrWhiteSpace(utterance)) return;
@@ -1299,7 +1303,7 @@ namespace Artti.Training
                     await SpeakCardAsync(utterance, SpeechToken);
 
                 // 변경점: 음성 턴이면 STT 결과(명료도 포함)를, 탭 턴이면 문장만 기록한다.
-                _eventLogger?.LogCardSelected(sourceId, utterance, spoken ?? new SttResult { text = utterance });
+                _eventLogger?.LogCardSelected(logSourceId ?? sourceId, utterance, spoken ?? new SttResult { text = utterance });
                 _dialogueManager.HandleUserTurn(null, utterance);
 
                 // 다섯 개 고정 대화 힌트는 현재 단계와 장바구니 상태를 함께 보고 판정한다.
@@ -1433,7 +1437,7 @@ namespace Artti.Training
                         ? DialogueTool.MarkObjectiveComplete
                         : DialogueTool.PresentCards,
                     ObjectiveId = enteringItemSelection ? "greeting" : null,
-                    NpcSpeech = $"네, {capturedItemName.Trim()} 준비해 드릴게요.\n‘계산할게요’라고 직접 말해볼까요?\n어려우면 대화 힌트를 눌러도 돼요.",
+                    NpcSpeech = $"네, {capturedItemName.Trim()} 준비해 드릴게요.\n‘계산할게요’라고 직접 말해볼까요?\n어려우면 왼쪽 버튼을 눌러도 돼요.",
                     CardIds = new[] { "card_cvs_yes", "card_cvs_no" },
                 };
             }
@@ -1600,10 +1604,12 @@ namespace Artti.Training
 
         // 변경점(ending 시안): 완료 화면 — 점수·별·정확도·잘한 표현·최고 기록을 레포트와 같은 기록(JSONL)에서 계산한다.
         //   기록이 없으면(프로필 없이 바로 실행) 점수 칸은 빈 값으로 보인다.
+        // 변경점(사용자 요청 2026-10-03): 점원 말이 다 끝난 뒤에 완료 화면을 띄운다.
+        //   예전에는 마지막 인사가 나오는 중에 "정말 잘했어요"가 끼어들어 인사를 끊고, 완료 화면도 바로 덮였다.
+        //   순서: 기록 저장(flush)과 점수 계산 -> 점원의 마지막 말이 끝날 때까지 기다림 -> "정말 잘했어요" -> 끝나면 완료 화면
         private async UniTaskVoid ShowCompletionScreenAsync(CancellationToken ct)
         {
             var elapsed = System.DateTimeOffset.UtcNow - _sessionStartUtc;
-            SpeakNpc("정말 잘했어요! 다음에도 함께해요.");
 
             Artti.Report.ReportDataService service = null;
             var store = AppBootstrap.Instance?.LogStore;
@@ -1624,6 +1630,15 @@ namespace Artti.Training
             var result = Artti.Report.TrainingResultCalculator.Build(service, _eventLogger?.SessionId,
                 accuracyClarityMinPercent, _mode, Artti.Report.ReportLabels.ScenarioName(scenarioId),
                 Mathf.RoundToInt((float)elapsed.TotalSeconds));
+
+            try
+            {
+                await WaitSpeechIdleAsync(ct);   // 점원의 마지막 말(인사)
+                SpeakNpc("정말 잘했어요! 다음에도 함께해요.");
+                await WaitSpeechIdleAsync(ct);
+            }
+            catch (System.OperationCanceledException) { return; }
+            if (ct.IsCancellationRequested || hud == null) return;
             hud.ShowCompletion(result);
         }
 
