@@ -70,6 +70,22 @@ public class TTSManager : MonoBehaviour
 #endif
     }
 
+    // 변경점: 지금 읽는 중인지(안드로이드 TextToSpeech.isSpeaking). 에디터에서는 소리를 내지 않으므로 늘 false.
+    //   배경음(ARFieldBgmPlayer)이 '설명 듣기' 동안 멈췄다가 다시 나올 때 쓴다.
+    public bool IsSpeaking
+    {
+        get
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!isInitialized || ttsObject == null) return false;
+            try { return ttsObject.Call<bool>("isSpeaking"); }
+            catch (System.Exception) { return false; }
+#else
+            return false;
+#endif
+        }
+    }
+
 #if UNITY_ANDROID && !UNITY_EDITOR
     private class TTSOnInitListener : AndroidJavaProxy
     {

@@ -1,6 +1,7 @@
 # AR 현장모드 결과 화면(HJ 92~96 시안)에서 쓰는 파생 이미지를 만든다.
 #   결과: Assets/_Project/Art/UI/Home/HJ/derived/
 #     93_board.png   93(세 패널이 그려진 배경)의 가장자리를 투명하게 녹인 것.
+#                    변경점: 인식 결과 카드 아래 세 줄 오른쪽의 '>'는 지운다(세 줄은 누를 수 없는 글이라). CHEVRON_ROWS 참고.
 #                    화면이 3:2보다 넓으면(폰 20:9) 보드를 줄여 위아래(제목/버튼)가 안 잘리게 하고,
 #                    남는 좌우는 92(패널 없는 같은 배경)가 채운다. 이음매가 안 보이게 좌우는 넓게, 위아래는 조금만 녹인다.
 #     back_ring.png  뒤로 가기 버튼: LED 원 테두리(프로필 등록 LED 테두리와 같은 심/빛) + 흰 화살표.
@@ -19,6 +20,16 @@ FEATHER_X = 120   # 좌우 녹이는 폭(px, 93 기준 1536 폭)
 FEATHER_Y = 24    # 위아래 녹이는 폭
 im = np.array(Image.open(os.path.join(HJ, '93.png')).convert('RGBA')).astype(float)
 H, W = im.shape[:2]
+
+# 변경점: 세 줄의 '>'(x 1457~1466, 줄마다 높이 약 19) 지우기. 빛 번짐까지 덮는 칸을 줄마다 칸 왼쪽/오른쪽 바로 바깥 색으로
+#   가로로 이어 칠한다(어두운 판 위라 자국이 남지 않고, 지나가는 가로선은 그대로 이어진다).
+CHEVRON_X = (1449, 1474)
+CHEVRON_ROWS = [(641, 671), (692, 722), (743, 774)]
+cx0, cx1 = CHEVRON_X
+for cy0, cy1 in CHEVRON_ROWS:
+    left, right = im[cy0:cy1 + 1, cx0 - 1], im[cy0:cy1 + 1, cx1 + 1]
+    t = ((np.arange(cx0, cx1 + 1) - (cx0 - 1)) / (cx1 + 2 - cx0))[None, :, None]
+    im[cy0:cy1 + 1, cx0:cx1 + 1] = left[:, None, :] * (1 - t) + right[:, None, :] * t
 x = np.arange(W)
 y = np.arange(H)
 ax = np.clip(np.minimum(x, W - 1 - x) / FEATHER_X, 0, 1)
