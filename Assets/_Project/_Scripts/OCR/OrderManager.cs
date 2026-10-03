@@ -40,6 +40,9 @@ public class OrderManager : MonoBehaviour
     [Tooltip("켜면 단계 패널을 숨기지 않고, 사이즈를 골라도 바로 말하지 않는다. '주문 완료하기'를 눌러야 주문 문장을 말한다. 음료는 고정 메뉴라 Gemini로 받지 않는다.")]
     [SerializeField] private bool singlePage = false;
     [SerializeField] private Button completeButton;
+    // 변경점: 2번 메뉴 칸. 켜질 때 도움 화면 최신 메뉴(사진/이름)로 카드를 채운다. 비우면 씬에 놓인 음료 버튼 그대로.
+    [Tooltip("한 화면 모드의 메뉴 카드 목록(OrderMenuListView). 지금 가게(PlaceContext)의 최신 메뉴로 채운다.")]
+    [SerializeField] private OrderMenuListView menuList;
 
     // 현재 선택값
     private string selectedTemp = "";
@@ -65,6 +68,12 @@ public class OrderManager : MonoBehaviour
         ResetSelection();
         if (singlePage)
         {
+            // 변경점: 메뉴 카드를 지금 가게 메뉴로 다시 채우고, 새로 만든 카드까지 선택 표시 목록에 넣는다
+            if (menuList != null)
+            {
+                menuList.Rebuild(this, PlaceContext.PlaceName);
+                choices = GetComponentsInChildren<OrderChoiceView>(true);
+            }
             RefreshChoices();
             return;
         }
@@ -93,12 +102,12 @@ public class OrderManager : MonoBehaviour
         }
     }
 
-    // 변경점: '주문 완료하기' 버튼. 아직 안 고른 단계가 있으면 그 단계를 말해 준다.
+    // 변경점: '주문 완료하기' 버튼. 아직 안 고른 단계가 있으면 그 단계를 말해 준다(화면 순서: 1 사이즈, 2 메뉴, 3 온도).
     public void CompleteOrder()
     {
-        string missing = string.IsNullOrEmpty(selectedTemp) ? "온도를 골라주세요"
+        string missing = string.IsNullOrEmpty(selectedSize) ? "사이즈를 골라주세요"
             : string.IsNullOrEmpty(selectedDrink) ? "메뉴를 선택해주세요"
-            : string.IsNullOrEmpty(selectedSize) ? "사이즈를 골라주세요" : null;
+            : string.IsNullOrEmpty(selectedTemp) ? "온도를 골라주세요" : null;
         if (missing != null)
         {
             Debug.Log($"[Order] 주문 완료 전: {missing}");
