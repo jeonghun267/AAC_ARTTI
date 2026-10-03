@@ -1,3 +1,4 @@
+using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -10,6 +11,11 @@ public sealed class HelpTextInputController : MonoBehaviour
     [SerializeField] private TTSManager ttsManager;
     // 변경점: 입력창 오른쪽 지우기(X) 버튼
     [SerializeField] private Button clearButton;
+
+    // 변경점: 문장을 읽은 뒤 알린다(도움 화면 채팅창이 보낸 문장 목록에 남긴다)
+    public event Action<string> Spoken;
+
+    public TMP_InputField InputField => messageInputField;
 
     private void Awake()
     {
@@ -75,6 +81,7 @@ public sealed class HelpTextInputController : MonoBehaviour
         ttsManager.Speak(message);
         messageInputField.text = string.Empty;
         messageInputField.ActivateInputField();
+        Spoken?.Invoke(message);
     }
 
     private void HandleSubmit(string _)

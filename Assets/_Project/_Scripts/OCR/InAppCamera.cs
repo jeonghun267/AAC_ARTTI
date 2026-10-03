@@ -139,6 +139,70 @@ public class InAppCamera : MonoBehaviour
         // 하단 중앙 원형 셔터 (진짜 카메라 셔터 느낌: 흰 링 + 갭 + 흰 중심)
         var shoot = CreateShutterButton(canvasGo.transform);
         shoot.onClick.AddListener(OnShoot);
+
+        // 변경점: 좌측 상단 뒤로 가기(다른 화면과 같은 파란 원 화살표). 누르면 촬영 취소(onResult(null)) 후 사진 추가 화면으로.
+        var back = CreateBackButton(canvasGo.transform);
+        back.onClick.AddListener(OnBack);
+    }
+
+    private void OnBack()
+    {
+        if (_busy) return;
+        _busy = true;
+        Finish(null);
+    }
+
+    // 변경점: 뒤로 가기 그림 = Resources/UI/ui_camera_back(Art_Source/ui_arfield/make_aac_greeting_art.py가 만든다).
+    //   그림 폭의 BackRingRatio가 원 지름이고 나머지는 빛 번짐이라, 누름 칸은 그림보다 조금 작은 정사각형.
+    private const string BackIconPath = "UI/ui_camera_back";
+    private const float BackIconSize = 150f, BackHitSize = 130f, BackMargin = 40f;   // 캔버스(1080x1920 기준) 단위
+
+    private static Button CreateBackButton(Transform parent)
+    {
+        var go = new GameObject("Back");
+        go.transform.SetParent(parent, false);
+        var hit = go.AddComponent<Image>();
+        hit.color = new Color(0f, 0f, 0f, 0f);
+        var btn = go.AddComponent<Button>();
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 1f);
+        rt.anchoredPosition = new Vector2(BackMargin, -BackMargin);
+        rt.sizeDelta = new Vector2(BackHitSize, BackHitSize);
+
+        var iconGo = new GameObject("Icon");
+        iconGo.transform.SetParent(go.transform, false);
+        var icon = iconGo.AddComponent<Image>();
+        icon.raycastTarget = false;
+        var irt = iconGo.GetComponent<RectTransform>();
+        irt.anchorMin = irt.anchorMax = irt.pivot = new Vector2(0.5f, 0.5f);
+        irt.anchoredPosition = Vector2.zero;
+        irt.sizeDelta = new Vector2(BackIconSize, BackIconSize);
+
+        var sprite = Resources.Load<Sprite>(BackIconPath);
+        if (sprite != null)
+        {
+            icon.sprite = sprite;
+            icon.preserveAspect = true;
+        }
+        else
+        {
+            // 그림이 없으면 어두운 원 + 흰 화살표 글자로 대신한다
+            Debug.LogWarning("[InAppCamera] 뒤로 가기 그림 없음: Resources/" + BackIconPath);
+            icon.sprite = CircleSprite();
+            icon.color = new Color(0f, 0f, 0f, 0.55f);
+            irt.sizeDelta = new Vector2(BackHitSize, BackHitSize);
+            var label = new GameObject("Arrow").AddComponent<Text>();
+            label.transform.SetParent(iconGo.transform, false);
+            label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            label.text = "←";
+            label.fontSize = 80;
+            label.alignment = TextAnchor.MiddleCenter;
+            label.color = Color.white;
+            label.raycastTarget = false;
+            Stretch(label.rectTransform);
+        }
+        btn.targetGraphic = icon;
+        return btn;
     }
 
     private void OnShoot()

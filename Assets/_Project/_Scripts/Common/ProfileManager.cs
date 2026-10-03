@@ -118,6 +118,7 @@ namespace Artti.Common
             Profiles.RemoveAll(p => p.id == id);
             if (ActiveProfile?.id == id) ActiveProfile = null;
             Save();
+            Artti.UI.ChatHistoryStore.DeleteForUser(id);   // 변경점: 그 사람의 채팅 보낸 문장 목록도 지운다
         }
     }
 }

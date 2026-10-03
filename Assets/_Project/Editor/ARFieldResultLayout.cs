@@ -216,11 +216,10 @@ namespace Artti.Editor
             chipText.font = nameText.font;
             PlaceNameCard(c3, chip, chipText, aacImage, nameText, descText);
 
-            // 아래 세 줄(아이콘과 > 는 93에 그려져 있다). 줄 전체가 누르는 칸.
+            // 아래 세 줄(아이콘은 93에 그려져 있다). 변경점: 누를 수 없는 글(오른쪽 '>'는 93_board에서 지웠다, make_derived.py)
             var rows = FindDeep(c3, "InfoRows") ?? NewRect("InfoRows", c3);
             Place(rows, c3, Rect.MinMaxRect(RowX0, RowTop, RowX1, RowTop + RowH * 3f), Card3);
             var rowTexts = new TMP_Text[3];
-            var rowButtons = new Button[3];
             var rowsRect = Rect.MinMaxRect(RowX0, RowTop, RowX1, RowTop + RowH * 3f);
             string[] sample = { "장소 이름", "장소 관련 의사소통 문구", "도움 카드 보기" };   // 자리 표시(실행하면 ARResultView가 채움)
             for (int i = 0; i < 3; i++)
@@ -228,11 +227,6 @@ namespace Artti.Editor
                 var row = FindDeep(rows, "Row" + i) ?? NewRect("Row" + i, rows);
                 var rowRect = new Rect(RowX0, RowTop + RowH * i, RowX1 - RowX0, RowH);
                 Place(row, rows, rowRect, rowsRect);
-                var hit = GetOrAdd<Image>(row);
-                hit.color = new Color(1f, 1f, 1f, 0f);
-                rowButtons[i] = GetOrAdd<Button>(row);
-                rowButtons[i].targetGraphic = hit;
-                rowButtons[i].transition = Selectable.Transition.None;
                 var label = FindDeep(row, "Label") ?? NewRect("Label", row);
                 Place(label, row, new Rect(RowTextX, rowRect.y, RowTextW, RowH), rowRect);
                 var tmp = GetOrAdd<TextMeshProUGUI>(label);
@@ -244,6 +238,7 @@ namespace Artti.Editor
                 tmp.overflowMode = TextOverflowModes.Ellipsis;   // 아주 긴 지점명은 줄임표(칸 높이 51은 한 줄보다 넉넉)
                 rowTexts[i] = tmp;
             }
+            PlainRows(rows);
 
             // ===== 아래 버튼 / 안내 바 =====
             var listen = Need(panel, "Listencard");
@@ -268,8 +263,7 @@ namespace Artti.Editor
 
             // 칸 채우기(분류 칩, 큰 이름, 세 줄)
             var view = GetOrAdd<ARResultView>(panel);
-            view.Setup(chip.gameObject, chipText, nameText, aacImage, rowTexts, rowButtons, help.GetComponent<Button>(),
-                Object.FindFirstObjectByType<TTSManager>(FindObjectsInactive.Include),
+            view.Setup(chip.gameObject, chipText, nameText, aacImage, rowTexts,
                 Object.FindFirstObjectByType<KakaoLocalSearcher>(FindObjectsInactive.Include));
             EditorUtility.SetDirty(view);
 
@@ -302,9 +296,22 @@ namespace Artti.Editor
             if (chip == null || chipText == null || descText == null) { Debug.LogError("[ARFieldResultLayout] 칩/설명 글 연결이 비어 있음"); return; }
             var c3 = (RectTransform)chip.transform.parent;
             PlaceNameCard(c3, (RectTransform)chip.transform, chipText, icon, nameText, descText);
+            var rows = FindDeep(c3, "InfoRows");
+            if (rows != null) PlainRows(rows);
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
-            Debug.Log("[ARFieldResultLayout] 칩 완료 - 아이콘/큰 이름 숨김, 칩에 지점 이름(길이에 맞춰 폭이 바뀜)");
+            Debug.Log("[ARFieldResultLayout] 칩 완료 - 아이콘/큰 이름 숨김, 칩에 지점 이름(길이에 맞춰 폭이 바뀜), 아래 세 줄은 누를 수 없는 글");
+        }
+
+        // 변경점: 아래 세 줄(Row0~2)을 누를 수 없는 글로. 예전 누름 칸(Button)은 지우고, 투명 칸은 터치를 받지 않게 한다.
+        static void PlainRows(RectTransform rows)
+        {
+            foreach (Transform row in rows)
+            {
+                if (row.TryGetComponent<Button>(out var button)) Object.DestroyImmediate(button);
+                if (row.TryGetComponent<Image>(out var hit)) hit.raycastTarget = false;
+                foreach (var t in row.GetComponentsInChildren<TMP_Text>(true)) t.raycastTarget = false;
+            }
         }
 
         // 변경점: 인식 결과 카드 위쪽 = 지점 이름 칩 + 설명. 흰 아이콘 칸, 분류 아이콘, 큰 이름은 끈다(지우지 않음, 다른 코드 연결은 그대로).

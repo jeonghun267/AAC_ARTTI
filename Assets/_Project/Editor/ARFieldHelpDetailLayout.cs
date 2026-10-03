@@ -40,7 +40,6 @@ namespace Artti.Editor
         static readonly (string path, Rect body) NextIcon = (Generated + "ui_helpdetail_icon_next.png", Rect.MinMaxRect(369f, 371f, 882f, 877f));   // 파란 원 + 오른쪽 화살표
         static readonly (string path, Rect body) ChatIcon = (Generated + "ui_helpdetail_icon_chat.png", Rect.MinMaxRect(337f, 401f, 916f, 884f));
         static readonly (string path, Rect body) ClearIcon = (Generated + "ui_helpdetail_icon_clear.png", Rect.MinMaxRect(418f, 423f, 835f, 845f));
-        static readonly (string path, Rect body) SendIcon = (Generated + "ui_helpdetail_icon_send.png", Rect.MinMaxRect(227f, 330f, 1071f, 1009f));
         // 변경점: 카드 순서(1~4)대로 아이콘 그림과 안내 글
         static readonly string[] CatIconPaths =
         {
@@ -78,6 +77,11 @@ namespace Artti.Editor
         const float CoffeeSize = 46f;
         static readonly Rect MenuListBox = Rect.MinMaxRect(256f, 280f + Ext, 886f, 734f + Ext);
         const float MenuCardH = 98f, MenuCardGap = 16f;
+        // 변경점: 최신 메뉴는 카드 MenuCardCount장을 세로 스크롤 목록에 둔다(데이터가 있는 카드만 보임).
+        //   MenuList = 보이는 칸(뷰포트, 카드 칸보다 MenuScrollPad만큼 넓어 카드 빛이 조금 보인다), MenuContent = 카드들(세로 정렬).
+        const int MenuCardCount = 20;
+        const float MenuScrollPad = 12f;
+        static readonly Vector2Int MenuScrollSoftness = new Vector2Int(8, 20);   // 위아래 끝을 부드럽게 흐리게(스크롤되는 느낌)
         // 메뉴 카드 안(카드 좌상단 기준)
         static readonly Rect SlotBody = Rect.MinMaxRect(10f, 9f, 96f, 89f);
         const float MenuImageInset = 4f, PhotoRadius = 12f;   // 사진(정사각) = 칸 안쪽 정사각형, 둥근 모서리
@@ -99,20 +103,19 @@ namespace Artti.Editor
         const float CatArrowX = 0.893f, CatArrowRing = 0.112f;   // 받은 화살표 원이 그림 속 작은 원(0.106)을 덮게 조금 크게
 
         // 입력 줄: 왼쪽은 최신 메뉴 틀, 오른쪽은 카테고리 카드 끝에 맞춘다
+        // 변경점: 전송 버튼을 없애고 입력창이 줄 전체를 쓴다(말하기는 키보드의 완료/엔터 = 입력창 제출)
         static readonly Rect InputRow = Rect.MinMaxRect(214f, 783f + Ext, 1458f, 875f + Ext);
-        static readonly Rect InputBody = Rect.MinMaxRect(214f, 783f + Ext, 1201f, 875f + Ext);
-        static readonly Rect SendBody = Rect.MinMaxRect(1215f, 783f + Ext, 1458f, 875f + Ext);
-        // 입력 글 칸(본체 비율): 말풍선 아이콘과 세로줄 오른쪽 ~ 지우기(X) 버튼 앞
-        static readonly Vector2 InputTextMin = new Vector2(0.125f, 0.15f), InputTextMax = new Vector2(0.89f, 0.85f);
-        // 변경점: 입력창 왼쪽 말풍선 / 오른쪽 지우기(X)는 받은 아이콘. 자리는 지운 그림 속 아이콘 자리(본체 폭 비율)
-        const float ChatIconX = 0.062f, ChatIconW = 40f;
-        const float ClearX = 0.946f, ClearD = 40f, ClearHit = 60f;
-        // 변경점: 전송 버튼 = 종이비행기 아이콘 + "전송", 둘을 묶어 버튼 가운데에
-        const float SendIconW = 46f, SendGap = 10f, SendTextW = 52f;
+        const float RefInputHeight = 92f;   // 아래 px 값의 기준 입력창 높이(다른 화면은 높이에 비례해 줄인다)
+        // 변경점: 입력창 안 자리는 양끝에서의 px(RefInputHeight 기준). 입력창이 가로로 늘어나도 왼쪽 말풍선/세로줄, 오른쪽 X는 끝에 붙어 있다.
+        //   입력창 그림은 9-slice(왼쪽 ChatCapLeftPx: 둥근 끝 + 말풍선 자리 + 세로줄, 오른쪽 ChatCapRightPx: 둥근 끝 + X 자리, 그림 px).
+        const float InputTextLeft = 123f, InputTextRight = 100f, InputTextBottom = 0.15f, InputTextTop = 0.85f;
+        const float ChatIconOffset = 61f, ChatIconW = 40f;       // 왼쪽 끝 -> 말풍선 가운데
+        const float ClearOffset = 53f, ClearD = 40f, ClearHit = 60f;   // 오른쪽 끝 -> X 가운데
+        const float ChatCapLeftPx = 150f, ChatCapRightPx = 120f;
 
         // ===== 글자 크기(보드 px, 16:10 태블릿에서 약 1.53배로 보인다) =====
         const float MenuTitleSize = 28f, NameMax = 22f, NameMin = 16f, DescSize = 15f, PriceMax = 15f, PriceMin = 11f;
-        const float CatTextSize = 30f, CatSubMax = 14f, CatSubMin = 11f, InputTextSize = 20f, SendTextSize = 24f;
+        const float CatTextSize = 30f, CatSubMax = 14f, CatSubMin = 11f, InputTextSize = 20f;
 
         // ===== 그림 크기와 본체(알파 200 이상, px 좌상단 기준). 본체를 자리에 맞추고 빛 번짐은 밖으로 넘친다 =====
         static readonly Dictionary<string, (Vector2 size, Rect body)> Art = new Dictionary<string, (Vector2, Rect)>
@@ -194,6 +197,7 @@ namespace Artti.Editor
             if (!LatestMenu(parts["LatestMenuArea"])) return;
             if (!Categories(parts["RightCategoryArea"])) return;
             if (!InputRowLayout(parts["TextInputArea"])) return;
+            if (!ChatDrawer(panel, board, parts["TextInputArea"])) return;
             Place(parts["HeadCard"], board, HeadBox, BoardRect);
             Place(parts["HelpBackButton"], board, BackBox, BoardRect);
             BackButton(parts["HelpBackButton"]);
@@ -219,15 +223,39 @@ namespace Artti.Editor
             Place(cup, header, new Rect(CoffeeCenter.x - CoffeeSize * 0.5f, CoffeeCenter.y - CoffeeSize * 0.5f, CoffeeSize, CoffeeSize), Frame);
             Icon(cup, CoffeePath);
 
-            Place(list, area, MenuListBox, Frame);
-            for (int i = 0; i < 4; i++)
+            // 변경점: MenuList = 스크롤 뷰포트, MenuContent = 카드 세로 정렬. 카드는 MenuCardCount장(모자라면 1번 카드를 복제).
+            var viewRect = Rect.MinMaxRect(MenuListBox.xMin - MenuScrollPad, MenuListBox.yMin - MenuScrollPad,
+                MenuListBox.xMax + MenuScrollPad, MenuListBox.yMax + MenuScrollPad);
+            Place(list, area, viewRect, Frame);
+            var content = MenuScroll(list);
+            var first = (content.Find("MenuItemCard_01") ?? list.Find("MenuItemCard_01")) as RectTransform;
+            if (first == null) { Debug.LogError("[ARFieldHelpDetailLayout] MenuList 아래 MenuItemCard_01 없음"); return false; }
+            var cards = new RectTransform[MenuCardCount];
+            for (int i = 0; i < MenuCardCount; i++)
             {
-                var card = Need(list, $"MenuItemCard_0{i + 1}");
-                if (card == null) return false;
-                float y = MenuListBox.y + i * (MenuCardH + MenuCardGap);
-                var cardRect = new Rect(MenuListBox.x, y, MenuListBox.width, MenuCardH);
-                Place(card, list, cardRect, MenuListBox);
+                string cardName = $"MenuItemCard_{i + 1:00}";
+                var found = (content.Find(cardName) ?? list.Find(cardName)) as RectTransform;
+                if (found == null)
+                {
+                    found = (RectTransform)Object.Instantiate(first.gameObject, content).transform;
+                    found.name = cardName;
+                }
+                found.SetParent(content, false);
+                found.SetSiblingIndex(i);
+                found.anchorMin = found.anchorMax = found.pivot = new Vector2(0f, 1f);
+                found.localScale = Vector3.one;
+                found.localRotation = Quaternion.identity;
+                found.sizeDelta = new Vector2(MenuListBox.width, MenuCardH);
+                if (found.TryGetComponent<LayoutElement>(out var le)) le.ignoreLayout = false;
+                cards[i] = found;
+            }
 
+            // 카드 안 자리는 카드 좌상단 기준이라 모든 카드가 같은 cardRect로 계산한다(카드 위치는 MenuContent가 정한다)
+            var cardRect = new Rect(MenuListBox.x, MenuListBox.y, MenuListBox.width, MenuCardH);
+            var views = new (RectTransform card, Image image, TMP_Text name, TMP_Text desc, TMP_Text price, Button button)[MenuCardCount];
+            for (int i = 0; i < MenuCardCount; i++)
+            {
+                var card = cards[i];
                 var cardBg = Need(card, "CardBackground");
                 var slot = Need(card, "MenuImageSlot");
                 // 한 번 실행한 뒤에는 사진이 PhotoMask 안에 있다
@@ -274,7 +302,98 @@ namespace Artti.Editor
                 priceText.enableAutoSizing = true;   // "매장별 가격 상이"도 알약 안에
                 priceText.fontSizeMin = PriceMin;
                 priceText.fontSizeMax = PriceMax;
+                views[i] = (card, image.GetComponent<Image>(), nameText, descText, priceText, CardButton(card, cardBg));
             }
+            return WireLatestMenu(area, views, list.GetComponent<ScrollRect>());
+        }
+
+        // 변경점: 스크롤 뷰포트(MenuList) + 내용(MenuContent). 카드 사이/빈 곳을 끌어도 스크롤되게 뷰포트에 투명 Image를 둔다.
+        static RectTransform MenuScroll(RectTransform list)
+        {
+            var hit = GetOrAdd<Image>(list);
+            hit.sprite = null;
+            hit.color = new Color(1f, 1f, 1f, 0f);
+            hit.raycastTarget = true;
+            var mask = GetOrAdd<RectMask2D>(list);
+            mask.softness = MenuScrollSoftness;
+
+            var content = (RectTransform)list.Find("MenuContent") ?? NewRect("MenuContent", list);
+            content.anchorMin = new Vector2(0f, 1f);
+            content.anchorMax = new Vector2(1f, 1f);
+            content.pivot = new Vector2(0.5f, 1f);
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta = new Vector2(0f, content.sizeDelta.y);
+            content.localScale = Vector3.one;
+            var layout = GetOrAdd<VerticalLayoutGroup>(content);
+            int pad = Mathf.RoundToInt(MenuScrollPad);
+            layout.padding = new RectOffset(pad, pad, pad, pad);
+            layout.spacing = MenuCardGap;
+            layout.childAlignment = TextAnchor.UpperLeft;
+            layout.childControlWidth = layout.childControlHeight = false;
+            layout.childForceExpandWidth = layout.childForceExpandHeight = false;
+            var fitter = GetOrAdd<ContentSizeFitter>(content);
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;   // 보이는 카드 수만큼만 길어진다
+
+            var scroll = GetOrAdd<ScrollRect>(list);
+            scroll.viewport = list;
+            scroll.content = content;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Elastic;
+            scroll.elasticity = 0.1f;
+            scroll.inertia = true;
+            scroll.decelerationRate = 0.135f;
+            scroll.scrollSensitivity = 30f;
+            scroll.horizontalScrollbar = null;
+            scroll.verticalScrollbar = null;
+            EditorUtility.SetDirty(scroll);
+            return content;
+        }
+
+        // 변경점: LatestMenuController에 카드 MenuCardCount장과 스크롤을 연결하고, 메뉴 목록(Inspector)이 비어 있으면 지금 메뉴로 채운다
+        // 변경점: 메뉴 카드 전체를 누름 칸으로(누르면 LatestMenuController가 "메뉴 이름 주세요"를 읽는다).
+        //   카드 그림은 빛 번짐까지 커서 이웃 카드와 겹치므로, 누름 칸은 카드 루트(카드 크기)의 투명 Image 하나만 쓴다.
+        //   카드를 끌면 그대로 목록이 스크롤된다(Button은 끌기를 받지 않아 ScrollRect로 넘어간다).
+        static Button CardButton(RectTransform card, RectTransform cardBg)
+        {
+            foreach (var g in card.GetComponentsInChildren<Graphic>(true))
+                if (g.transform != card) g.raycastTarget = false;
+            var hit = GetOrAdd<Image>(card);
+            hit.sprite = null;
+            hit.color = new Color(1f, 1f, 1f, 0f);
+            hit.raycastTarget = true;
+            var button = GetOrAdd<Button>(card);
+            button.transition = Selectable.Transition.ColorTint;
+            button.targetGraphic = cardBg.GetComponent<Image>();   // 누르는 동안 카드 그림이 살짝 어두워진다
+            EditorUtility.SetDirty(button);
+            return button;
+        }
+
+        static bool WireLatestMenu(RectTransform area, (RectTransform card, Image image, TMP_Text name, TMP_Text desc, TMP_Text price, Button button)[] views, ScrollRect scroll)
+        {
+            var controller = area.GetComponent<LatestMenuController>();
+            if (controller == null) { Debug.LogError("[ARFieldHelpDetailLayout] LatestMenuArea에 LatestMenuController 없음"); return false; }
+            controller.FillMenuListsIfEmpty();
+            var so = new SerializedObject(controller);
+            var cards = so.FindProperty("cards");
+            cards.arraySize = views.Length;
+            for (int i = 0; i < views.Length; i++)
+            {
+                var e = cards.GetArrayElementAtIndex(i);
+                e.FindPropertyRelative("cardRoot").objectReferenceValue = views[i].card.gameObject;
+                e.FindPropertyRelative("menuImage").objectReferenceValue = views[i].image;
+                e.FindPropertyRelative("menuName").objectReferenceValue = views[i].name;
+                e.FindPropertyRelative("menuDescription").objectReferenceValue = views[i].desc;
+                e.FindPropertyRelative("priceText").objectReferenceValue = views[i].price;
+                e.FindPropertyRelative("button").objectReferenceValue = views[i].button;
+            }
+            so.FindProperty("menuScroll").objectReferenceValue = scroll;
+            var tts = Object.FindFirstObjectByType<TTSManager>(FindObjectsInactive.Include);
+            if (tts == null) Debug.LogWarning("[ARFieldHelpDetailLayout] TTSManager 없음 - 메뉴 카드를 눌러도 읽지 않음");
+            so.FindProperty("tts").objectReferenceValue = tts;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(controller);
             return true;
         }
 
@@ -403,35 +522,43 @@ namespace Artti.Editor
         }
 
         static bool InputRowLayout(RectTransform area)
-            => LayoutInputRow(area, (RectTransform)area.parent, BoardRect, InputRow, InputBody, SendBody);
+            => LayoutInputRow(area, (RectTransform)area.parent, BoardRect, InputRow);
 
-        // 변경점: 입력 줄(입력창 + 말풍선/지우기 아이콘 + 전송 버튼) 배치. 인사 화면(ARFieldGreetingLayout)도 같이 쓴다.
-        //   row/inputBody/sendBody는 board 좌표(px). 아이콘/글자 크기는 이 화면 입력창 높이(InputBody) 기준이라 높이에 비례해 맞춘다.
-        internal static bool LayoutInputRow(RectTransform area, RectTransform board, Rect boardRect, Rect row, Rect inputBody, Rect sendBody)
+        // 변경점: 입력 줄 = 입력창 하나(말풍선 아이콘 + 글 + 지우기 X)가 row 전체를 쓴다. 전송 버튼은 끈다(지우지 않음, 연결은 그대로).
+        //   말하기는 키보드의 완료/엔터: 입력창 제출(onSubmit) -> HelpTextInputController가 TTS로 읽는다.
+        //   row는 board 좌표(px). 인사/결제/편의/주문 화면(ARFieldGreetingLayout, ARFieldOrderLayout)도 같이 쓴다.
+        internal static bool LayoutInputRow(RectTransform area, RectTransform board, Rect boardRect, Rect row)
         {
-            float k = inputBody.height / InputBody.height;
+            float k = row.height / RefInputHeight;
             Place(area, board, row, boardRect);
 
             var inputBg = Need(area, "InputBackground");
             var field = inputBg != null ? Need(inputBg, "MessageInputField") : null;
             var viewport = field != null ? Need(field, "InputTextViewport") : null;
-            var send = Need(area, "SendButton");
-            var sendText = send != null ? Need(send, "SendText") : null;
-            if (viewport == null || sendText == null) return false;
+            if (viewport == null) return false;
+            var send = area.Find("SendButton");
+            if (send != null) send.gameObject.SetActive(false);
 
-            // 변경점: 입력창 그림을 그려진 아이콘을 지운 것으로 바꾸고, 그 자리에 받은 말풍선/지우기 아이콘을 올린다
-            var inputImg = inputBg.GetComponent<Image>();
-            if (inputImg != null) inputImg.sprite = LoadSprite(ChatInputCleanPath, 2048);
-            var inputRect = ArtRect(inputBg, inputBody);
+            // 입력창 그림(그려진 아이콘을 지운 것)을 가로 9-slice로: 본체가 row에 맞고 빛 번짐은 밖으로, 양끝은 찌그러지지 않는다
+            var (artSize, artBody) = Art["ui_helpdetail_chat_input_clean"];
+            float ka = row.height / artBody.height;
+            var inputRect = new Rect(row.x - artBody.x * ka, row.y - artBody.y * ka,
+                row.width + (artSize.x - artBody.width) * ka, artSize.y * ka);
             Place(inputBg, area, inputRect, row);
-            Place(field, inputBg, inputBody, inputRect);   // 누르는 칸 = 입력창 본체
+            var inputImg = GetOrAdd<Image>(inputBg);
+            inputImg.sprite = LoadSpriteWithBorder(ChatInputCleanPath, new Vector4(ChatCapLeftPx, 0f, ChatCapRightPx, 0f));
+            inputImg.type = Image.Type.Sliced;
+            inputImg.fillCenter = true;
+            inputImg.pixelsPerUnitMultiplier = 1f / ka;
+            inputImg.preserveAspect = false;
+            Place(field, inputBg, row, inputRect);   // 누르는 칸 = 입력창 본체
 
             var chat = (RectTransform)inputBg.Find("ChatIcon") ?? NewRect("ChatIcon", inputBg);
-            PlaceGiven(chat, inputBg, ChatIcon, new Vector2(inputBody.x + inputBody.width * ChatIconX, inputBody.center.y), ChatIconW * k, inputRect);
+            PlaceGiven(chat, inputBg, ChatIcon, new Vector2(row.xMin + ChatIconOffset * k, row.center.y), ChatIconW * k, inputRect);
 
             // 지우기(X): 누름 칸(투명) + Visual(아이콘). 입력 칸보다 뒤 순서여야 눌린다.
             var clear = (RectTransform)inputBg.Find("ClearButton") ?? NewRect("ClearButton", inputBg);
-            var clearCenter = new Vector2(inputBody.x + inputBody.width * ClearX, inputBody.center.y);
+            var clearCenter = new Vector2(row.xMax - ClearOffset * k, row.center.y);
             float clearHit = ClearHit * k;
             var clearRect = new Rect(clearCenter.x - clearHit * 0.5f, clearCenter.y - clearHit * 0.5f, clearHit, clearHit);
             Place(clear, inputBg, clearRect, inputRect);
@@ -453,10 +580,13 @@ namespace Artti.Editor
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
             else Debug.LogWarning("[ARFieldHelpDetailLayout] TextInputArea에 HelpTextInputController 없음 - 지우기 버튼 연결 안 함");
-            viewport.anchorMin = InputTextMin;
-            viewport.anchorMax = InputTextMax;
+
+            // 글 칸: 말풍선/세로줄 오른쪽 ~ X 앞(양끝에서 px)
+            viewport.anchorMin = new Vector2(0f, InputTextBottom);
+            viewport.anchorMax = new Vector2(1f, InputTextTop);
             viewport.pivot = new Vector2(0.5f, 0.5f);
-            viewport.offsetMin = viewport.offsetMax = Vector2.zero;
+            viewport.offsetMin = new Vector2(InputTextLeft * k, 0f);
+            viewport.offsetMax = new Vector2(-InputTextRight * k, 0f);
             viewport.localScale = Vector3.one;
             // 안내 글(기울임)과 입력 글은 모양은 두고 크기만 보드 기준으로
             foreach (var t in viewport.GetComponentsInChildren<TMP_Text>(true))
@@ -465,15 +595,252 @@ namespace Artti.Editor
                 t.fontSize = InputTextSize * k;
                 EditorUtility.SetDirty(t);
             }
-
-            var sendRect = ArtRect(send, sendBody);
-            Place(send, area, sendRect, row);
-            float gx = sendBody.center.x - (SendIconW + SendGap + SendTextW) * k * 0.5f;
-            var sendIcon = (RectTransform)send.Find("SendIcon") ?? NewRect("SendIcon", send);
-            PlaceGiven(sendIcon, send, SendIcon, new Vector2(gx + SendIconW * k * 0.5f, sendBody.center.y), SendIconW * k, sendRect);
-            Place(sendText, send, Rect.MinMaxRect(gx + (SendIconW + SendGap) * k, sendBody.yMin, sendBody.xMax - 8f * k, sendBody.yMax), sendRect);
-            Style(sendText, SendTextSize * k, true, Color.white, TextAlignmentOptions.MidlineLeft);
             return true;
+        }
+
+        // 가장자리(왼쪽, 아래, 오른쪽, 위, 그림 px)를 9-slice로 들인다. 2048까지 줄이지 않고 들인다(입력창 그림 1280 폭).
+        static Sprite LoadSpriteWithBorder(string path, Vector4 border)
+        {
+            LoadSprite(path, 2048);
+            if (AssetImporter.GetAtPath(path) is TextureImporter ti && ti.spriteBorder != border)
+            {
+                ti.spriteBorder = border;
+                ti.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        }
+
+        // ===== 변경점: 채팅창(아래 입력 줄을 누르면 오른쪽에서 나오는 창, 채팅이 있는 모든 화면) =====
+        //   ChatDrawer(패널 맨 위) = Overlay(뒤 어두운 칸, 누르면 닫힘) + Sheet(오른쪽 창) > Content(보드 배율로 그림, 폭 ChatW 보드 px)
+        //   Content = 어두운 바탕 + 틀 + 제목/닫기 + 문장 입력(아래 입력 줄 복제) + 보낸 문장 목록(스크롤, 누르면 다시 말하기)
+        //   아래 입력 줄(TextInputArea)은 누르면 창을 여는 칸이 된다(위에 투명 OpenChatHit, 지우기 X는 끈다).
+        const float ChatW = 760f;
+        static readonly Rect ChatTitleBox = Rect.MinMaxRect(48f, 36f, 560f, 96f);
+        static readonly Rect ChatSubBox = Rect.MinMaxRect(48f, 96f, 600f, 126f);
+        static readonly Vector2 ChatCloseCenter = new Vector2(ChatW - 72f, 70f);
+        const float ChatCloseRing = 52f, ChatCloseHit = 84f;
+        static readonly Rect ChatInputRow = Rect.MinMaxRect(40f, 148f, ChatW - 40f, 228f);
+        static readonly Rect ChatSectionBox = Rect.MinMaxRect(48f, 248f, ChatW - 48f, 282f);
+        const float ChatListTop = 296f, ChatListSide = 40f, ChatListBottom = 40f;
+        const float ChatItemH = 84f, ChatItemGap = 12f, ChatItemPad = 28f;
+        const float ChatBackInset = 16f, ChatBackRadius = 28f;
+        const string ChatGlassPath = Derived + "ui_order_glass_blue.png";   // 9-slice 88(그림 px), 보드 px의 2배로 그린 카드 유리
+        static readonly Color ChatBackColor = new Color(0.02f, 0.05f, 0.17f, 0.95f);
+
+        // 변경점: 인사/결제/편의(ARFieldGreetingLayout), 주문(ARFieldOrderLayout) 화면도 같이 쓴다.
+        //   panel = 화면 패널, board = 그 화면 보드(BoardFitter, 창 안 배율), bottomInput = 그 화면 아래 입력 줄(TextInputArea)
+        internal static bool ChatDrawer(RectTransform panel, RectTransform board, RectTransform bottomInput)
+        {
+            var font = panel.GetComponentInChildren<TMP_Text>(true)?.font;
+            var root = (RectTransform)panel.Find("ChatDrawer") ?? NewRect("ChatDrawer", panel);
+            Stretch(root);
+            root.SetAsLastSibling();
+            root.gameObject.SetActive(true);
+
+            // 뒤 어두운 칸
+            var overlay = (RectTransform)root.Find("Overlay") ?? NewRect("Overlay", root);
+            Stretch(overlay);
+            var overlayImg = GetOrAdd<Image>(overlay);
+            overlayImg.sprite = null;
+            overlayImg.color = new Color(0f, 0f, 0f, 0f);
+            overlayImg.raycastTarget = true;
+            GetOrAdd<Button>(overlay).transition = Selectable.Transition.None;
+            overlay.SetAsFirstSibling();
+
+            // 오른쪽 창 + 창 안
+            var sheet = (RectTransform)root.Find("Sheet") ?? NewRect("Sheet", root);
+            sheet.anchorMin = new Vector2(1f, 0f);
+            sheet.anchorMax = new Vector2(1f, 1f);
+            sheet.pivot = new Vector2(1f, 0.5f);
+            sheet.sizeDelta = new Vector2(ChatW, 0f);
+            sheet.anchoredPosition = new Vector2(ChatW, 0f);
+            sheet.localScale = Vector3.one;
+            sheet.SetAsLastSibling();
+            var content = (RectTransform)sheet.Find("Content") ?? NewRect("Content", sheet);
+            content.anchorMin = content.anchorMax = content.pivot = new Vector2(0f, 1f);
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta = new Vector2(ChatW, 1000f);
+            content.localScale = Vector3.one;
+            var contentRect = new Rect(0f, 0f, ChatW, 1000f);
+
+            var back = (RectTransform)content.Find("Backing") ?? NewRect("Backing", content);
+            StretchInset(back, ChatBackInset, ChatBackInset, ChatBackInset, ChatBackInset);
+            var backImg = GetOrAdd<Image>(back);
+            backImg.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(RoundedPath);
+            backImg.type = Image.Type.Sliced;
+            backImg.pixelsPerUnitMultiplier = 44f / ChatBackRadius;
+            backImg.color = ChatBackColor;
+            backImg.raycastTarget = true;   // 창 안을 눌러도 뒤(어두운 칸)가 닫히지 않게
+            back.SetSiblingIndex(0);
+            var frame = (RectTransform)content.Find("Frame") ?? NewRect("Frame", content);
+            float glowInset = ChatBackInset - FrameGlow;
+            StretchInset(frame, glowInset, glowInset, glowInset, glowInset);
+            var frameImg = GetOrAdd<Image>(frame);
+            frameImg.sprite = LoadSlicedSprite(FramePath, FrameBorderPx);
+            frameImg.type = Image.Type.Sliced;
+            frameImg.fillCenter = true;
+            frameImg.pixelsPerUnitMultiplier = FramePixelsPerUnit;
+            frameImg.color = Color.white;
+            frameImg.raycastTarget = false;
+            frame.SetSiblingIndex(1);
+
+            var title = (RectTransform)content.Find("Title") ?? NewText("Title", content, font);
+            Place(title, content, ChatTitleBox, contentRect);
+            Style(title, 32f, true, TextWhite, TextAlignmentOptions.MidlineLeft).text = "문장 입력";
+            var sub = (RectTransform)content.Find("Subtitle") ?? NewText("Subtitle", content, font);
+            Place(sub, content, ChatSubBox, contentRect);
+            Style(sub, 18f, false, TextSub, TextAlignmentOptions.MidlineLeft).text = "입력하고 키보드의 완료를 누르면 말해요.";
+
+            var close = (RectTransform)content.Find("CloseButton") ?? NewRect("CloseButton", content);
+            var closeRect = new Rect(ChatCloseCenter.x - ChatCloseHit * 0.5f, ChatCloseCenter.y - ChatCloseHit * 0.5f, ChatCloseHit, ChatCloseHit);
+            Place(close, content, closeRect, contentRect);
+            var closeHit = GetOrAdd<Image>(close);
+            closeHit.sprite = null;
+            closeHit.color = new Color(1f, 1f, 1f, 0f);
+            closeHit.raycastTarget = true;
+            var closeVisual = (RectTransform)close.Find("Visual") ?? NewRect("Visual", close);
+            PlaceGiven(closeVisual, close, ClearIcon, ChatCloseCenter, ChatCloseRing, closeRect);
+            var closeButton = GetOrAdd<Button>(close);
+            closeButton.targetGraphic = closeVisual.GetComponent<Image>();
+
+            // 문장 입력: 아래 입력 줄을 복제(입력/지우기/말하기 연결은 복제본끼리, TTSManager는 그대로)
+            var chatInput = content.Find("ChatInputArea") as RectTransform;
+            if (chatInput == null)
+            {
+                chatInput = (RectTransform)Object.Instantiate(bottomInput.gameObject, content).transform;
+                chatInput.name = "ChatInputArea";
+                var copiedHit = chatInput.Find("OpenChatHit");
+                if (copiedHit != null) Object.DestroyImmediate(copiedHit.gameObject);
+            }
+            if (!LayoutInputRow(chatInput, content, contentRect, ChatInputRow)) return false;
+            var chatClear = chatInput.Find("InputBackground/ClearButton");
+            if (chatClear != null) chatClear.gameObject.SetActive(true);
+            var chatField = chatInput.GetComponentInChildren<TMP_InputField>(true);
+            if (chatField != null) chatField.text = string.Empty;
+
+            var section = (RectTransform)content.Find("SectionLabel") ?? NewText("SectionLabel", content, font);
+            Place(section, content, ChatSectionBox, contentRect);
+            Style(section, 20f, false, TextSub, TextAlignmentOptions.MidlineLeft).text = "보낸 문장 · 누르면 다시 말해요";
+
+            // 보낸 문장 목록(스크롤)
+            var view = (RectTransform)content.Find("History") ?? NewRect("History", content);
+            StretchInset(view, ChatListSide, ChatListBottom, ChatListSide, ChatListTop);
+            var viewHit = GetOrAdd<Image>(view);
+            viewHit.sprite = null;
+            viewHit.color = new Color(1f, 1f, 1f, 0f);
+            viewHit.raycastTarget = true;
+            GetOrAdd<RectMask2D>(view).softness = new Vector2Int(0, 16);
+            var items = (RectTransform)view.Find("Items") ?? NewRect("Items", view);
+            items.anchorMin = new Vector2(0f, 1f);
+            items.anchorMax = new Vector2(1f, 1f);
+            items.pivot = new Vector2(0.5f, 1f);
+            items.anchoredPosition = Vector2.zero;
+            items.sizeDelta = new Vector2(0f, items.sizeDelta.y);
+            items.localScale = Vector3.one;
+            var layout = GetOrAdd<VerticalLayoutGroup>(items);
+            layout.padding = new RectOffset(0, 0, 6, 6);
+            layout.spacing = ChatItemGap;
+            layout.childAlignment = TextAnchor.UpperCenter;
+            layout.childControlWidth = true;
+            layout.childForceExpandWidth = true;
+            layout.childControlHeight = false;
+            layout.childForceExpandHeight = false;
+            var fitter = GetOrAdd<ContentSizeFitter>(items);
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            var scroll = GetOrAdd<ScrollRect>(view);
+            scroll.viewport = view;
+            scroll.content = items;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Elastic;
+            scroll.scrollSensitivity = 30f;
+
+            var template = (RectTransform)items.Find("ItemTemplate") ?? NewRect("ItemTemplate", items);
+            template.anchorMin = template.anchorMax = template.pivot = new Vector2(0.5f, 1f);
+            template.sizeDelta = new Vector2(0f, ChatItemH);
+            var itemImg = GetOrAdd<Image>(template);
+            itemImg.sprite = LoadSlicedSprite(ChatGlassPath, 88f);
+            itemImg.type = Image.Type.Sliced;
+            itemImg.fillCenter = true;
+            itemImg.pixelsPerUnitMultiplier = 2f;
+            itemImg.color = Color.white;
+            itemImg.raycastTarget = true;
+            var itemLayout = GetOrAdd<LayoutElement>(template);
+            itemLayout.preferredHeight = ChatItemH;
+            itemLayout.minHeight = ChatItemH;
+            var itemButton = GetOrAdd<Button>(template);
+            itemButton.targetGraphic = itemImg;
+            var itemLabel = (RectTransform)template.Find("Label") ?? NewText("Label", template, font);
+            StretchInset(itemLabel, ChatItemPad, 0f, ChatItemPad, 0f);
+            var itemText = Style(itemLabel, 26f, false, TextWhite, TextAlignmentOptions.MidlineLeft);
+            itemText.text = "보낸 문장";
+            itemText.textWrappingMode = TextWrappingModes.Normal;
+            itemText.overflowMode = TextOverflowModes.Ellipsis;
+            itemText.enableAutoSizing = true;   // 긴 문장은 줄이고 두 줄까지
+            itemText.fontSizeMin = 18f;
+            itemText.fontSizeMax = 26f;
+            template.gameObject.SetActive(false);
+
+            var empty = (RectTransform)view.Find("EmptyLabel") ?? NewText("EmptyLabel", view, font);
+            Stretch(empty);
+            Style(empty, 22f, false, TextSub, TextAlignmentOptions.Center).text = "아직 보낸 문장이 없어요.";
+            empty.SetAsLastSibling();
+
+            // 아래 입력 줄 = 창 여는 칸
+            var bottomClear = bottomInput.Find("InputBackground/ClearButton");
+            if (bottomClear != null) bottomClear.gameObject.SetActive(false);
+            var openHit = (RectTransform)bottomInput.Find("OpenChatHit") ?? NewRect("OpenChatHit", bottomInput);
+            Stretch(openHit);
+            openHit.SetAsLastSibling();
+            var openImg = GetOrAdd<Image>(openHit);
+            openImg.sprite = null;
+            openImg.color = new Color(1f, 1f, 1f, 0f);
+            openImg.raycastTarget = true;
+            var openButton = GetOrAdd<Button>(openHit);
+            openButton.transition = Selectable.Transition.None;
+
+            // 연결
+            var drawer = GetOrAdd<HelpChatDrawerView>(root);
+            var so = new SerializedObject(drawer);
+            so.FindProperty("openButton").objectReferenceValue = openButton;
+            so.FindProperty("closeButton").objectReferenceValue = closeButton;
+            so.FindProperty("overlay").objectReferenceValue = overlayImg;
+            so.FindProperty("sheet").objectReferenceValue = sheet;
+            so.FindProperty("content").objectReferenceValue = content;
+            so.FindProperty("board").objectReferenceValue = board;
+            so.FindProperty("designWidth").floatValue = ChatW;
+            so.FindProperty("input").objectReferenceValue = chatInput.GetComponent<HelpTextInputController>();
+            so.FindProperty("listScroll").objectReferenceValue = scroll;
+            so.FindProperty("listContent").objectReferenceValue = items;
+            so.FindProperty("itemTemplate").objectReferenceValue = itemButton;
+            so.FindProperty("emptyLabel").objectReferenceValue = empty.gameObject;
+            so.FindProperty("tts").objectReferenceValue = Object.FindFirstObjectByType<TTSManager>(FindObjectsInactive.Include);
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            overlay.gameObject.SetActive(false);   // 닫힌 채로 둔다(HelpChatDrawerView가 연다)
+            sheet.gameObject.SetActive(false);
+            return true;
+        }
+
+        // 부모를 꽉 채우되 왼쪽/아래/오른쪽/위를 띄운다
+        static void StretchInset(RectTransform rt, float left, float bottom, float right, float top)
+        {
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.localScale = Vector3.one;
+            rt.localRotation = Quaternion.identity;
+            rt.offsetMin = new Vector2(left, bottom);
+            rt.offsetMax = new Vector2(-right, -top);
+        }
+
+        static RectTransform NewText(string name, RectTransform parent, TMP_FontAsset font)
+        {
+            var rt = NewRect(name, parent);
+            var tmp = rt.gameObject.AddComponent<TextMeshProUGUI>();
+            if (font != null) tmp.font = font;
+            return rt;
         }
 
         // 그림(Image.sprite)의 본체가 body에 오도록 빛 번짐까지 든 그림 전체 자리를 돌려준다(가로세로 따로 늘림).
@@ -508,6 +875,8 @@ namespace Artti.Editor
         }
 
         // 도움 화면은 실행 중에만 켜지므로 켜고 메가커피 예시 메뉴를 넣어 태블릿(16:10, 4:3)·폰·16:9로 찍는다. 씬은 저장하지 않는다.
+        // 변경점: 태블릿은 메뉴 MenuCardCount개(예시 이름)를 넣은 스크롤 모양도 찍는다(tab_ARFieldHelpDetail_scroll.png, 맨 위 상태).
+        //   채팅창을 연 모양(예시 보낸 문장)도 태블릿·폰으로 찍는다(<tag>_ARFieldHelpDetail_chat.png).
         [MenuItem("Artti/Debug/Capture ARField Help Detail - Tab + 4x3 + Phone + 16x9")]
         static void CaptureHelpDetail()
         {
@@ -516,9 +885,14 @@ namespace Artti.Editor
             var original = EditorSceneManager.GetActiveScene().path;
             string outDir = Path.GetFullPath(Path.Combine(Application.dataPath, "../Temp/LayoutCaptures"));
             Directory.CreateDirectory(outDir);
+            var many = new List<LatestMenuItem>();
+            for (int i = 1; i <= MenuCardCount; i++) many.Add(new LatestMenuItem($"예시 메뉴 {i}", "나중에 넣을 메뉴 설명", "0,000원"));
             try
             {
-                foreach (var (w, h, tag) in new[] { (2560, 1600, "tab"), (2048, 1536, "tab43"), (2400, 1080, "phone"), (1920, 1080, "169") })
+                var chatSample = new[] { "따뜻한 아메리카노 주세요", "포장해 주세요", "화장실이 어디예요?", "카드로 결제할게요",
+                    "얼음은 조금만 넣어 주세요", "감사합니다" };
+                foreach (var (w, h, tag, mode) in new[] { (2560, 1600, "tab", 0), (2048, 1536, "tab43", 0), (2400, 1080, "phone", 0),
+                             (1920, 1080, "169", 0), (2560, 1600, "tab", 1), (2560, 1600, "tab", 2), (2400, 1080, "phone", 2) })
                 {
                     EditorSceneManager.OpenScene(ScenePaths.ARField, OpenSceneMode.Single);
                     foreach (var root in EditorSceneManager.GetActiveScene().GetRootGameObjects())
@@ -528,11 +902,19 @@ namespace Artti.Editor
                         foreach (Transform sib in root.transform)
                             if (sib is RectTransform) sib.gameObject.SetActive(sib == panel);
                         var menu = panel.GetComponentInChildren<LatestMenuController>(true);
-                        if (menu != null) menu.ShowMegaMenu();
+                        if (menu == null) continue;
+                        if (mode == 1) menu.SetMenus(many);
+                        else menu.ShowMegaMenu();
                     }
-                    string file = Path.Combine(outDir, $"{tag}_ARFieldHelpDetail.png");
+                    string file = Path.Combine(outDir, mode == 1 ? $"{tag}_ARFieldHelpDetail_scroll.png"
+                        : mode == 2 ? $"{tag}_ARFieldHelpDetail_chat.png" : $"{tag}_ARFieldHelpDetail.png");
+                    DeviceLayoutCapture.CaptureActiveScene(w, h, file);   // 첫 번은 캔버스 크기 맞추기(보드 배율이 정해진다)
+                    if (mode == 2)
+                    {
+                        var drawer = Object.FindFirstObjectByType<HelpChatDrawerView>(FindObjectsInactive.Include);
+                        if (drawer != null) drawer.PreviewOpen(chatSample);
+                    }
                     DeviceLayoutCapture.CaptureActiveScene(w, h, file);
-                    DeviceLayoutCapture.CaptureActiveScene(w, h, file);   // 첫 번은 캔버스 크기 맞추기
                 }
             }
             finally

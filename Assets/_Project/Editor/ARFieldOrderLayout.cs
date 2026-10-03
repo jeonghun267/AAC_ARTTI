@@ -31,11 +31,8 @@ namespace Artti.Editor
         const string PanelFramePath = Derived + "ui_order_panel_frame.png";             // 9-slice, 가장자리 112px, 바깥 빛 12(보드)
         const string SectionFramePath = Derived + "ui_order_section_frame.png";         // 9-slice, 가장자리 112px, 바깥 빛 12(보드)
         const string GlassBlue = Derived + "ui_order_glass_blue.png";
-        const string GlassOrange = Derived + "ui_order_glass_orange.png";
-        const string GlassPurple = Derived + "ui_order_glass_purple.png";
         const string GlassGlow = Derived + "ui_order_glass_glow.png";
         const string BadgePath = Derived + "ui_order_badge.png";
-        const string PillPath = Derived + "ui_order_pill.png";
         const string CompletePath = Derived + "ui_order_complete.png";
         const string TitleIconPath = Derived + "ui_order_title_icon.png";
         const string ArrowIconPath = Derived + "ui_order_icon_back.png";
@@ -45,7 +42,6 @@ namespace Artti.Editor
         // ===== 9-slice 그림 규격 (make_order_art.py와 같은 값, 그림 px. 보드에는 Image.pixelsPerUnitMultiplier=2로 절반 크기) =====
         const float GlassBorderPx = 88f, GlassGlow9 = 10f;     // 카드: 가장자리 88px, 테두리 선 밖 빛 10(보드)
         const float BadgeBorderPx = 32f, BadgeGlow9 = 4f;
-        const float PillBorderPx = 52f, PillGlow9 = 5f;
         const float SectionBorderPx = 112f, SectionGlow9 = 12f;   // 큰 틀도 같은 규격
         static readonly Vector2 CompleteArt = new Vector2(754f, 208f);   // 주문 완료 그림 전체, 선은 안쪽 26px
         const float CompleteOut = 26f;
@@ -57,10 +53,12 @@ namespace Artti.Editor
         static readonly Rect PanelLine = Rect.MinMaxRect(139f, 41f, 1533f, 908f);   // 큰 틀 = 화면에 맞출 영역
         const float SafeMargin = 32f;
 
-        static readonly Rect BackLine = Rect.MinMaxRect(178f, 80f, 380f, 133f);
-        static readonly Vector2 BackArrowCenter = new Vector2(218f, 106.5f);
-        const float BackArrowSize = 46f;
-        static readonly Rect BackLabelBox = Rect.MinMaxRect(250f, 80f, 372f, 133f);
+        // 변경점: '돌아가기' 알약 대신 다른 탭과 같은 파란 원 뒤로 가기 + 같은 줄 오른쪽 끝에 홈/종료(ARFieldGreetingLayout과 같은 버튼).
+        //   큰 틀 왼쪽/오른쪽 선(139/1533)에서 84 안쪽이 원 가운데, 원 지름 74, 누름 칸 88, 원 사이 20.
+        static readonly Vector2 BackCenter = new Vector2(223f, 106.5f);
+        static readonly Vector2 HomeCenter = new Vector2(1355f, 106.5f);
+        static readonly Vector2 ExitCenter = new Vector2(1449f, 106.5f);
+        const float NavRing = 74f, NavHit = 88f;
         static readonly Vector2 TitleIconCenter = new Vector2(670.5f, 102f);
         const float TitleIconDiameter = 84f;
         static readonly Rect TitleBox = Rect.MinMaxRect(736f, 52f, 1180f, 150f);
@@ -99,22 +97,20 @@ namespace Artti.Editor
         static readonly Vector2 CompleteArrowCenter = new Vector2(1436f, 745f);
         const float CompleteArrowSize = 40f;
         // 입력 줄
-        static readonly Rect InputRow = Rect.MinMaxRect(164f, 817f, 1507f, 894f);
-        static readonly Rect InputBody = Rect.MinMaxRect(164f, 817f, 1266f, 894f);
-        static readonly Rect SendBody = Rect.MinMaxRect(1286f, 822f, 1507f, 889f);
+        static readonly Rect InputRow = Rect.MinMaxRect(164f, 817f, 1507f, 894f);   // 변경점: 전송 버튼 없이 입력창이 줄 전체
 
         // ===== 글자 (보드 px) =====
-        const float BackLabelSize = 26f, TitleSize = 80f, SubtitleSize = 24f, BadgeTextSize = 26f, SectionTitleSize = 30f;
+        const float TitleSize = 80f, SubtitleSize = 24f, BadgeTextSize = 26f, SectionTitleSize = 30f;
         const float TempTextSize = 38f, MenuTextSize = 25f, SizeTextSize = 32f, CompleteTextSize = 30f;
         static readonly Color TextWhite = new Color(0.97f, 0.98f, 1f, 1f);
         static readonly Color TextSub = new Color(0.86f, 0.9f, 1f, 0.95f);
 
-        // 버튼 이름 -> (그룹, 카드 색, 고르면 바뀌는 색, 아이콘, 보이는 글)
-        static readonly Dictionary<string, (string glass, string icon, string label)> Temps = new Dictionary<string, (string, string, string)>
+        // 버튼 이름 -> (아이콘, 보이는 글). 변경점: 카드는 모두 같은 파란 유리(GlassBlue), 고르면 빛 테두리만 켜진다.
+        static readonly Dictionary<string, (string icon, string label)> Temps = new Dictionary<string, (string, string)>
         {
-            { "Hot", (GlassOrange, Generated + "ui_order_icon_warm.png", "따뜻한") },
-            { "Ice", (GlassBlue, Generated + "ui_order_icon_cold.png", "차가운") },
-            { "Mild", (GlassPurple, Generated + "ui_order_icon_mild.png", "미지근한") },
+            { "Hot", (Generated + "ui_order_icon_warm.png", "따뜻한") },
+            { "Ice", (Generated + "ui_order_icon_cold.png", "차가운") },
+            { "Mild", (Generated + "ui_order_icon_mild.png", "미지근한") },
         };
         static readonly (string name, string key)[] Drinks =
         {
@@ -175,8 +171,9 @@ namespace Artti.Editor
             SlicedImage(frame, PanelFramePath, SectionBorderPx);
 
             // ===== 머리: 돌아가기 / 제목 아이콘 / 제목 / 안내 글 =====
-            if (buttons.TryGetValue("Back", out var back)) BackButton(back, board, font);
+            if (buttons.TryGetValue("Back", out var back)) ARFieldGreetingLayout.ArrowBackButton(back, board, BoardRect, BackCenter, NavRing, NavHit);
             else Debug.LogWarning("[ARFieldOrderLayout] Back 버튼 없음");
+            ARFieldGreetingLayout.NavButtons(board, BoardRect, HomeCenter, ExitCenter, NavRing, NavHit);
             title.SetParent(board, false);
             Place(title, board, TitleBox, BoardRect);
             Style(title, TitleSize, true, TextWhite, TextAlignmentOptions.MidlineLeft).text = "주문하기";
@@ -201,7 +198,7 @@ namespace Artti.Editor
                 string name = i == 0 ? "Hot" : i == 1 ? "Ice" : "Mild";
                 if (!buttons.TryGetValue(name, out var card)) { Debug.LogError($"[ARFieldOrderLayout] {name} 버튼 없음"); return; }
                 var t = Temps[name];
-                Choice(card, sections[0], TempCards[i], OrderChoiceGroup.Temperature, t.glass, null, t.icon, TempIconCenter, TempIconHeight, TempTextBox, t.label, TempTextSize, font);
+                Choice(card, sections[0], TempCards[i], OrderChoiceGroup.Temperature, t.icon, TempIconCenter, TempIconHeight, TempTextBox, t.label, TempTextSize, font);
             }
             // 2 메뉴
             float menuW = (MenuX1 - MenuX0 - MenuGap * (Drinks.Length - 1)) / Drinks.Length;
@@ -212,14 +209,14 @@ namespace Artti.Editor
                 string icon = string.Format(DrinkIconFormat, Drinks[i].key);
                 if (!File.Exists(icon)) { missingDrinks.Add(Path.GetFileName(icon)); icon = DrinkPlaceholderPath; }
                 float x = MenuX0 + i * (menuW + MenuGap);
-                Choice(card, sections[1], Rect.MinMaxRect(x, MenuY0, x + menuW, MenuY1), OrderChoiceGroup.Drink, GlassBlue, GlassPurple,
+                Choice(card, sections[1], Rect.MinMaxRect(x, MenuY0, x + menuW, MenuY1), OrderChoiceGroup.Drink,
                     icon, MenuIconCenter, MenuIconHeight, MenuTextBox, null, MenuTextSize, font);
             }
             // 3 사이즈 + 주문 완료
             for (int i = 0; i < Sizes.Length; i++)
             {
                 if (!buttons.TryGetValue(Sizes[i].name, out var card)) { Debug.LogError($"[ARFieldOrderLayout] {Sizes[i].name} 버튼 없음"); return; }
-                Choice(card, sections[2], SizeCards[i], OrderChoiceGroup.Size, GlassBlue, GlassPurple,
+                Choice(card, sections[2], SizeCards[i], OrderChoiceGroup.Size,
                     Sizes[i].icon, SizeIconCenter, SizeIconHeights[i], SizeTextBox, Sizes[i].label, SizeTextSize, font);
             }
             var complete = CompleteButton(sections[2], font);
@@ -228,7 +225,8 @@ namespace Artti.Editor
             var input = EnsureInputArea(board);
             if (input == null) return;
             input.SetAsLastSibling();
-            if (!ARFieldHelpDetailLayout.LayoutInputRow(input, board, BoardRect, InputRow, InputBody, SendBody)) return;
+            if (!ARFieldHelpDetailLayout.LayoutInputRow(input, board, BoardRect, InputRow)) return;
+            if (!ARFieldHelpDetailLayout.ChatDrawer(panel, board, input)) return;   // 변경점: 누르면 오른쪽 채팅창
 
             // 그리는 순서: 큰 틀 -> 머리 -> 단계 틀 -> 입력 줄
             if (buttons.TryGetValue("Back", out back)) back.SetSiblingIndex(1);
@@ -282,8 +280,8 @@ namespace Artti.Editor
             return sec;
         }
 
-        // 선택 카드 하나: 루트 = 유리 바탕(9-slice) + Button, 자식 = 아이콘 / 글 / 선택 빛 테두리. OnClick 연결은 그대로.
-        static void Choice(RectTransform card, RectTransform section, Rect line, OrderChoiceGroup group, string glass, string selectedGlass,
+        // 선택 카드 하나: 루트 = 파란 유리 바탕(9-slice) + Button, 자식 = 아이콘 / 글 / 선택 빛 테두리. OnClick 연결은 그대로.
+        static void Choice(RectTransform card, RectTransform section, Rect line, OrderChoiceGroup group,
             string iconPath, Vector2 iconCenter, float iconHeight, Rect textBox, string label, float textSize, TMP_FontAsset font)
         {
             var sectionRect = new Rect(section.anchoredPosition.x, -section.anchoredPosition.y, section.sizeDelta.x, section.sizeDelta.y);
@@ -292,7 +290,7 @@ namespace Artti.Editor
             DisableOutline(card);
             if (card.TryGetComponent<Mask>(out var mask)) mask.enabled = false;
             foreach (var layout in card.GetComponents<LayoutGroup>()) layout.enabled = false;
-            var bg = SlicedImage(card, glass, GlassBorderPx);
+            var bg = SlicedImage(card, GlassBlue, GlassBorderPx);
             bg.raycastTarget = true;
             var button = card.GetComponent<Button>();
             if (button != null) { button.targetGraphic = bg; EditorUtility.SetDirty(button); }
@@ -327,7 +325,7 @@ namespace Artti.Editor
             so.FindProperty("value").stringValue = value;
             so.FindProperty("background").objectReferenceValue = bg;
             so.FindProperty("normalSprite").objectReferenceValue = bg.sprite;
-            so.FindProperty("selectedSprite").objectReferenceValue = selectedGlass != null ? LoadSlicedSprite(selectedGlass, GlassBorderPx) : null;
+            so.FindProperty("selectedSprite").objectReferenceValue = null;   // 고르면 색은 그대로, 빛 테두리(SelectedGlow)만
             so.FindProperty("selectedGlow").objectReferenceValue = glow.gameObject;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
@@ -353,24 +351,6 @@ namespace Artti.Editor
                 return trimmed;
             }
             return "";
-        }
-
-        static void BackButton(RectTransform back, RectTransform board, TMP_FontAsset font)
-        {
-            var rect = Expand(BackLine, PillGlow9);
-            Place(back, board, rect, BoardRect);
-            DisableOutline(back);
-            var img = SlicedImage(back, PillPath, PillBorderPx);
-            img.raycastTarget = true;
-            foreach (Transform child in back)
-                if (child.name != "ArrowImage" && child.name != "Label") child.gameObject.SetActive(false);   // 예전 ← 글자
-            var arrow = (RectTransform)back.Find("ArrowImage") ?? NewRect("ArrowImage", back);
-            Place(arrow, back, Square(BackArrowCenter, BackArrowSize), rect);
-            SimpleImage(arrow, ArrowIconPath, true, 256);
-            var label = (RectTransform)back.Find("Label") ?? NewText("Label", back, font);
-            Place(label, back, BackLabelBox, rect);
-            Style(label, BackLabelSize, true, TextWhite, TextAlignmentOptions.MidlineLeft).text = "돌아가기";
-            if (back.TryGetComponent<Button>(out var button)) { button.targetGraphic = img; EditorUtility.SetDirty(button); }
         }
 
         static Button CompleteButton(RectTransform section, TMP_FontAsset font)

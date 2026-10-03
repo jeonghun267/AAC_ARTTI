@@ -1,9 +1,11 @@
 using System.IO;
 using TMPro;
 using UnityEditor;
+using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.UI;
+using Artti.Common;
 using Artti.UI;
 using static Artti.Editor.ARFieldResultLayout;
 
@@ -93,9 +95,7 @@ namespace Artti.Editor
             },
         };
         // 입력 줄: 카드 틀 양끝(221.5 ~ 1449)에 맞춘다. 입력창 높이 80 (도움 화면 92의 비율로 아이콘/글자도 줄어든다)
-        static readonly Rect InputRow = Rect.MinMaxRect(221.5f, 780f, 1449f, 860f);
-        static readonly Rect InputBody = Rect.MinMaxRect(221.5f, 780f, 1226f, 860f);
-        static readonly Rect SendBody = Rect.MinMaxRect(1238f, 780f, 1449f, 860f);
+        static readonly Rect InputRow = Rect.MinMaxRect(221.5f, 780f, 1449f, 860f);   // 변경점: 전송 버튼 없이 입력창이 줄 전체
 
         static readonly Rect CardFrameLine = Rect.MinMaxRect(221.5f, 259.5f, 1449f, 763.5f);
         static readonly Rect CardAreaBox = Rect.MinMaxRect(266.5f, 286.5f, 1411.5f, 739.5f);
@@ -110,6 +110,12 @@ namespace Artti.Editor
 
         static readonly Vector2 BackCenter = new Vector2(133.5f, 133.5f);
         const float BackRing = 74f, BackHit = 88f;
+        // 변경점: 뒤로 가기와 같은 줄 오른쪽 끝에 종료, 그 왼쪽에 홈(큰 틀 오른쪽 선에서 뒤로 가기와 같은 거리, 원 사이 20)
+        static readonly Vector2 ExitCenter = new Vector2(1541f, 133.5f);
+        static readonly Vector2 HomeCenter = new Vector2(1447f, 133.5f);
+        const string HomeIconPath = Derived + "ui_aac_icon_home_ring.png";    // 뒤로 가기와 같은 파란 원 + 집
+        const string ExitIconPath = Derived + "ui_aac_icon_power_ring.png";   // 같은 파란 원 + 전원
+        const string HomeScene = "MainScene";
         static readonly Rect LogoBox = Rect.MinMaxRect(213f, 106f, 420f, 146f);
         static readonly Rect TitleBox = Rect.MinMaxRect(536f, 114f, 1136f, 194f);
         static readonly Rect SubtitleBox = Rect.MinMaxRect(436f, 198f, 1236f, 232f);
@@ -238,7 +244,8 @@ namespace Artti.Editor
             Style(title, TitleSize, true, TextWhite, TextAlignmentOptions.Center);
             Place(subtitle, board, SubtitleBox, BoardRect);
             Style(subtitle, SubtitleSize, false, TextSub, TextAlignmentOptions.Center);
-            BackButton(back, board);
+            ArrowBackButton(back, board, BoardRect, BackCenter, BackRing, BackHit);
+            NavButtons(board, BoardRect, HomeCenter, ExitCenter, BackRing, BackHit);
 
             // ===== 카드 자리(GridLayout) + 카드 템플릿 =====
             var area = Need(board, "CardArea");
@@ -265,7 +272,8 @@ namespace Artti.Editor
                 var input = EnsureInputArea(board);
                 if (input == null) return false;
                 input.SetSiblingIndex(info.GetSiblingIndex() + 1);
-                if (!ARFieldHelpDetailLayout.LayoutInputRow(input, board, BoardRect, InputRow, InputBody, SendBody)) return false;
+                if (!ARFieldHelpDetailLayout.LayoutInputRow(input, board, BoardRect, InputRow)) return false;
+                if (!ARFieldHelpDetailLayout.ChatDrawer(panel, board, input)) return false;   // 변경점: 누르면 오른쪽 채팅창
             }
             return true;
         }
@@ -375,19 +383,21 @@ namespace Artti.Editor
         }
 
         // 뒤로 가기 = 다음 화살표를 좌우로 뒤집어 놓는다. 루트는 투명 누름 칸, 버튼 연결은 그대로.
-        static void BackButton(RectTransform back, RectTransform board)
+        // 변경점: 주문 화면(ARFieldOrderLayout)도 같이 쓰도록 자리(center/ring/hit, 보드 px)를 받는다.
+        internal static void ArrowBackButton(RectTransform back, RectTransform board, Rect boardRect, Vector2 center, float ring, float hitSize)
         {
-            var backRect = Square(BackCenter, BackHit);
-            Place(back, board, backRect, BoardRect);
+            var backRect = Square(center, hitSize);
+            Place(back, board, backRect, boardRect);
             DisableOutline(back);
             var hit = GetOrAdd<Image>(back);
             hit.sprite = null;
+            hit.type = Image.Type.Simple;
             hit.color = new Color(1f, 1f, 1f, 0f);
             hit.raycastTarget = true;
             foreach (Transform child in back)
-                if (child.name != "ArrowImage") child.gameObject.SetActive(false);   // 예전 ← 글자
+                if (child.name != "ArrowImage") child.gameObject.SetActive(false);   // 예전 ← 글자 / '돌아가기' 글
             var arrow = (RectTransform)back.Find("ArrowImage") ?? NewRect("ArrowImage", back);
-            PlaceArrow(arrow, back, BackCenter, BackRing, backRect);
+            PlaceRingIcon(arrow, back, ArrowPath, center, ring, backRect);
             arrow.pivot = new Vector2(0.5f, 0.5f);   // 가운데를 축으로 뒤집는다(Place는 좌상단 pivot)
             arrow.anchoredPosition += new Vector2(arrow.sizeDelta.x * 0.5f, -arrow.sizeDelta.y * 0.5f);
             arrow.localScale = new Vector3(-1f, 1f, 1f);
@@ -413,13 +423,52 @@ namespace Artti.Editor
             return rect;
         }
 
-        // 화살표 그림 속 파란 원의 가운데를 center, 지름을 ring(보드 px)으로
-        static void PlaceArrow(RectTransform rt, RectTransform parent, Vector2 center, float ring, Rect parentRect)
+        // 변경점: 홈(MainScene으로, SceneBackButton) / 종료(AppQuit) 버튼. 루트 = 투명 누름 칸 + Button(OnClick 연결), 자식 Icon = 파란 원 그림.
+        internal static void NavButtons(RectTransform board, Rect boardRect, Vector2 homeCenter, Vector2 exitCenter, float ring, float hitSize)
+        {
+            var home = NavButton(board, boardRect, "HomeButton", HomeIconPath, homeCenter, ring, hitSize);
+            var go = GetOrAdd<SceneBackButton>(home);
+            go.SetTarget(HomeScene);
+            UnityEventTools.AddPersistentListener(home.onClick, go.GoBack);
+            EditorUtility.SetDirty(go);
+            EditorUtility.SetDirty(home);
+
+            var exit = NavButton(board, boardRect, "ExitButton", ExitIconPath, exitCenter, ring, hitSize);
+            var quit = GetOrAdd<AppQuit>(exit);
+            UnityEventTools.AddPersistentListener(exit.onClick, quit.Quit);
+            EditorUtility.SetDirty(exit);
+        }
+
+        static Button NavButton(RectTransform board, Rect boardRect, string name, string iconPath, Vector2 center, float ring, float hitSize)
+        {
+            var root = (RectTransform)board.Find(name) ?? NewRect(name, board);
+            var rect = Square(center, hitSize);
+            Place(root, board, rect, boardRect);
+            root.SetAsLastSibling();
+            var hit = GetOrAdd<Image>(root);
+            hit.sprite = null;
+            hit.type = Image.Type.Simple;
+            hit.color = new Color(1f, 1f, 1f, 0f);
+            hit.raycastTarget = true;
+            var icon = (RectTransform)root.Find("Icon") ?? NewRect("Icon", root);
+            PlaceRingIcon(icon, root, iconPath, center, ring, rect);
+            var button = GetOrAdd<Button>(root);
+            button.targetGraphic = icon.GetComponent<Image>();
+            for (int i = button.onClick.GetPersistentEventCount() - 1; i >= 0; i--)
+                UnityEventTools.RemovePersistentListener(button.onClick, i);   // 여러 번 실행해도 연결이 하나만
+            return button;
+        }
+
+        // 파란 원 그림(화살표/홈/종료, 모두 1254px에 원 본체 369~882) 속 원의 가운데를 center, 지름을 ring(보드 px)으로
+        static void PlaceRingIcon(RectTransform rt, RectTransform parent, string path, Vector2 center, float ring, Rect parentRect)
         {
             float k = ring / ArrowBody.width;
             Place(rt, parent, new Rect(center.x - ArrowBody.center.x * k, center.y - ArrowBody.center.y * k, ArrowSize.x * k, ArrowSize.y * k), parentRect);
-            Icon(rt, ArrowPath, 512);
+            Icon(rt, path, 512);
         }
+
+        static void PlaceArrow(RectTransform rt, RectTransform parent, Vector2 center, float ring, Rect parentRect)
+            => PlaceRingIcon(rt, parent, ArrowPath, center, ring, parentRect);
 
         static void Icon(RectTransform rt, string path, int maxSize = 256)
         {

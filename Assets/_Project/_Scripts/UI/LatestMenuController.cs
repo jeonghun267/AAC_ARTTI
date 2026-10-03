@@ -30,6 +30,8 @@ public sealed class LatestMenuCardView
     public TMP_Text menuName;
     public TMP_Text menuDescription;
     public TMP_Text priceText;
+    // 변경점: 카드를 누르면 "메뉴 이름 주세요"를 읽는다(카드 전체가 누름 칸)
+    public Button button;
 }
 
 [DisallowMultipleComponent]
@@ -54,11 +56,43 @@ public sealed class LatestMenuController : MonoBehaviour
     [Header("Store Price")]
     [SerializeField] private MegaStorePriceLoader storePriceLoader;
 
+    // 변경점: 브랜드별 최신 메뉴 목록(Inspector에서 추가/수정). 비어 있으면 아래 코드 기본 메뉴 4개를 쓴다.
+    //   카드는 최대 cards 수(HelpDetailPanel Fix가 20장으로 만든다)까지 보이고, 넘치는 카드는 스크롤로 본다.
+    [Header("Menu Lists (Inspector에서 추가)")]
+    [SerializeField] private List<LatestMenuItem> megaMenus = new List<LatestMenuItem>();
+    [SerializeField] private List<LatestMenuItem> tenPercentMenus = new List<LatestMenuItem>();
+    [Tooltip("메뉴가 바뀌면 맨 위로 올린다")]
+    [SerializeField] private ScrollRect menuScroll;
+
+    [Header("TTS")]
+    [Tooltip("메뉴 카드를 누르면 \"메뉴 이름 주세요\"를 읽는다")]
+    [SerializeField] private TTSManager tts;
+
     // UI 표시용 고정 가을 시즌 메뉴 데이터입니다. 가격은 사용자가 지정한 표시 금액입니다.
     [SerializeField] private List<LatestMenuItem> testMenus = CreateInitialMenus();
 
     private string _lastEvaluatedPlaceName = string.Empty;
     private bool _hasEvaluatedPlace;
+
+    private void Awake()
+    {
+        if (cards == null) return;
+        for (int i = 0; i < cards.Length; i++)
+        {
+            if (cards[i] == null || cards[i].button == null) continue;
+            int index = i;
+            cards[i].button.onClick.AddListener(() => SpeakMenu(index));
+        }
+    }
+
+    // 변경점: 카드에 보이는 메뉴 이름 + " 주세요"를 읽는다(예: "하우스밀크 라떼 주세요")
+    private void SpeakMenu(int index)
+    {
+        if (tts == null || index >= cards.Length || cards[index]?.menuName == null) return;
+        string menuName = cards[index].menuName.text?.Trim();
+        if (string.IsNullOrEmpty(menuName)) return;
+        tts.Speak(menuName + " 주세요");
+    }
 
     private void OnEnable()
     {
@@ -118,25 +152,57 @@ public sealed class LatestMenuController : MonoBehaviour
 
     public void ShowMegaMenu()
     {
-        testMenus = CreateInitialMenus(
-            housemilkLatteImage,
-            orzoLatteImage,
-            goldenappleBlackteaImage,
-            bamgogumaBreadImage);
+        // 변경점: Inspector 목록이 있으면 그것(복사본, 가격 갱신이 원본을 바꾸지 않게), 없으면 코드 기본 메뉴
+        testMenus = megaMenus.Count > 0
+            ? CopyMenus(megaMenus)
+            : CreateInitialMenus(
+                housemilkLatteImage,
+                orzoLatteImage,
+                goldenappleBlackteaImage,
+                bamgogumaBreadImage);
         SetMenus(testMenus);
     }
 
     public void ShowTenPercentMenu()
     {
-        // 사용자가 제공한 표시용 메뉴/가격입니다. 실시간 시즌 메뉴나 지점별 가격 조회가 아닙니다.
-        testMenus = new List<LatestMenuItem>
+        testMenus = tenPercentMenus.Count > 0 ? CopyMenus(tenPercentMenus) : CreateTenPercentMenus();
+        SetMenus(testMenus);
+    }
+
+    // 사용자가 제공한 표시용 메뉴/가격입니다. 실시간 시즌 메뉴나 지점별 가격 조회가 아닙니다.
+    private List<LatestMenuItem> CreateTenPercentMenus()
+    {
+        return new List<LatestMenuItem>
         {
             new LatestMenuItem("솔티 글레이즈드 라떼", "솔티 글레이즈드 풍미의 라떼", "3,800원", saltyGlazedLatteImage),
             new LatestMenuItem("아보카도 바나나 프레치노", "아보카도와 바나나를 담은 프레치노", "5,000원", avocadoBananaFrecinoImage),
             new LatestMenuItem("꾸덕 커피 빙수", "꾸덕한 커피 빙수 메뉴", "5,300원", thickCoffeeBingsuImage),
             new LatestMenuItem("더티땅콩라떼", "고소한 땅콩 풍미의 라떼", "3,900원", dirtyPeanutLatteImage)
         };
-        SetMenus(testMenus);
+    }
+
+    private static List<LatestMenuItem> CopyMenus(List<LatestMenuItem> source)
+    {
+        var copy = new List<LatestMenuItem>(source.Count);
+        foreach (LatestMenuItem m in source)
+        {
+            if (m != null) copy.Add(new LatestMenuItem(m.menuName, m.description, m.price, m.image));
+        }
+        return copy;
+    }
+
+    // 변경점: Inspector 메뉴 목록이 비어 있으면 지금 코드 기본 메뉴(사진 포함)로 채운다. 에디터 Fix가 부른다.
+    public void FillMenuListsIfEmpty()
+    {
+        if (megaMenus.Count == 0)
+        {
+            megaMenus = CreateInitialMenus(housemilkLatteImage, orzoLatteImage, goldenappleBlackteaImage, bamgogumaBreadImage);
+        }
+
+        if (tenPercentMenus.Count == 0)
+        {
+            tenPercentMenus = CreateTenPercentMenus();
+        }
     }
 
     public void HideMenus()
@@ -296,10 +362,19 @@ public sealed class LatestMenuController : MonoBehaviour
                 card.priceText.text = menu.price;
             }
 
-            if (card.menuImage != null && menu.image != null)
+            // 변경점: 사진이 없는 메뉴는 이전 카드 사진이 남지 않게 사진을 숨긴다
+            if (card.menuImage != null)
             {
                 card.menuImage.sprite = menu.image;
+                card.menuImage.enabled = menu.image != null;
             }
+        }
+
+        // 변경점: 메뉴가 바뀌면 목록을 맨 위로
+        if (menuScroll != null && menuScroll.content != null)
+        {
+            menuScroll.StopMovement();
+            menuScroll.content.anchoredPosition = new Vector2(menuScroll.content.anchoredPosition.x, 0f);
         }
     }
 }

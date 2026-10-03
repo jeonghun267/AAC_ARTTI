@@ -12,8 +12,12 @@
 #     ui_aac_icon_again.png         다시 말해 주세요: 말풍선 + 소리 물결           (파랑)
 #     ui_aac_icon_info.png          안내 바: 원 + i                                (파랑)
 #     ui_aac_icon_ring.png          카드 아이콘 둘레: 옅은 원 + 반짝이는 점 4개(흰색, 카드 색은 Image.color로)
+#     ui_aac_icon_home_ring.png     홈 버튼: 뒤로가기와 같은 파란 원(ui_neon_arrow_right_blue)에서 화살표를 지우고 흰 집 모양
+#     ui_aac_icon_power_ring.png    종료 버튼: 같은 파란 원 + 흰 전원 모양. 두 그림 모두 원 자리/크기가 화살표 그림과 같다(1254, 원 본체 369~882)
+#   Assets/Resources/UI/ui_camera_back.png  인앱 카메라(InAppCamera, 실행 중 코드로 만드는 화면) 뒤로 가기: 화살표 원을 좌우로 뒤집어
+#                                           원 둘레(빛 포함)만 잘라 256으로 줄인 것. 원 지름 = 그림 폭의 CAMERA_BACK_RING(InAppCamera.BackRingRatio)
 #   네온 모양(흰 심 + 색 빛 번짐)은 make_helpdetail_icons.py의 함수를 그대로 쓴다.
-#   실행: python Art_Source/ui_arfield/make_aac_greeting_art.py      필요: Python 3 + numpy + Pillow
+#   실행: python Art_Source/ui_arfield/make_aac_greeting_art.py      필요: Python 3 + numpy + scipy + Pillow
 import math
 import os
 import sys
@@ -249,6 +253,82 @@ def conv_question():
     return m
 
 
+# ===== 홈/종료 버튼(뒤로가기와 같은 파란 원) =====
+RING_SRC = os.path.join(GEN, 'ui_neon_arrow_right_blue.png')
+RING_C = (625.5, 624.0)   # 원 가운데
+RING_INNER = 205          # 이 안쪽만 고친다(흰 테두리 반지름 약 240)
+GLYPH_W = 18              # 선 굵기(화살표와 같게)
+GLYPH_GLOW = (150, 210, 255)
+
+
+def clean_disc():
+    """화살표(흰 심 + 빛)를 지우고 주변 파란색으로 메운 원(가중 흐림으로 구멍을 채운다)"""
+    from scipy.ndimage import gaussian_filter, binary_dilation
+    a = np.asarray(Image.open(RING_SRC).convert('RGBA')).astype(float)
+    h, w = a.shape[:2]
+    yy, xx = np.mgrid[0:h, 0:w]
+    inside = np.hypot(xx - RING_C[0], yy - RING_C[1]) < RING_INNER
+    hole = binary_dilation((a[:, :, :3].min(axis=2) > 110) & inside, iterations=22)   # 화살표 흰 심(약 18px) + 빛 번짐(약 15px)
+    keep = (inside & ~hole).astype(float)
+    den = gaussian_filter(keep, 45)
+    out = a.copy()
+    for c in range(4):
+        fill = gaussian_filter(a[:, :, c] * keep, 45) / np.maximum(den, 1e-6)
+        out[:, :, c] = np.where(hole, fill, a[:, :, c])
+    return Image.fromarray(np.clip(out + 0.5, 0, 255).astype(np.uint8), 'RGBA')
+
+
+def ring_icon(draw_fn):
+    S = 2
+    m = Image.new('L', (1254 * S, 1254 * S), 0)
+    draw_fn(ImageDraw.Draw(m), S, GLYPH_W * S)
+    m = m.resize((1254, 1254), Image.LANCZOS)
+    img = clean_disc()
+    glow = m.filter(ImageFilter.GaussianBlur(9)).point(lambda v: min(255, v * 2))
+    for alpha_img, rgb, k in ((glow, GLYPH_GLOW, 0.7), (m, (255, 255, 255), 1.0)):
+        layer = Image.new('RGBA', img.size, rgb + (0,))
+        layer.putalpha(alpha_img.point(lambda v: int(v * k)))
+        img.alpha_composite(layer)
+    return img
+
+
+def _poly(d, pts, w, closed=False):
+    if closed:
+        pts = list(pts) + [pts[0], pts[1]]
+    d.line(pts, fill=255, width=w, joint='curve')
+    for x, y in (pts[0], pts[-1]):
+        d.ellipse([x - w / 2, y - w / 2, x + w / 2, y + w / 2], fill=255)
+
+
+def home_glyph(d, S, w):
+    p = lambda x, y: (x * S, y * S)
+    _poly(d, [p(520, 625), p(625, 530), p(730, 625)], w)                        # 지붕
+    _poly(d, [p(552, 600), p(552, 722), p(698, 722), p(698, 600)], w)           # 벽
+    _poly(d, [p(603, 722), p(603, 668), p(647, 668), p(647, 722)], w)           # 문
+
+
+def power_glyph(d, S, w):
+    cx, cy, r = 625.5 * S, 640 * S, 88 * S
+    d.arc([cx - r, cy - r, cx + r, cy + r], -55, 235, fill=255, width=w)        # 위가 열린 원
+    for ang in (-55, 235):
+        a = math.radians(ang)
+        x, y = cx + (r - w / 2) * math.cos(a), cy + (r - w / 2) * math.sin(a)
+        d.ellipse([x - w / 2, y - w / 2, x + w / 2, y + w / 2], fill=255)
+    _poly(d, [(625.5 * S, 520 * S), (625.5 * S, 632 * S)], w)                   # 세로 막대
+
+
+CAMERA_BACK_HALF = 320   # 원 가운데에서 잘라낼 반폭(원 반지름 약 256 + 빛)
+
+
+def camera_back():
+    os.makedirs(os.path.join(ROOT, 'Assets', 'Resources', 'UI'), exist_ok=True)
+    src = Image.open(RING_SRC).convert('RGBA').transpose(Image.FLIP_LEFT_RIGHT)
+    cx = 1254 - RING_C[0]   # 뒤집은 그림에서 원 가운데
+    box = (round(cx - CAMERA_BACK_HALF), round(RING_C[1] - CAMERA_BACK_HALF),
+           round(cx + CAMERA_BACK_HALF), round(RING_C[1] + CAMERA_BACK_HALF))
+    return src.crop(box).resize((256, 256), Image.LANCZOS)
+
+
 def info():
     m, d = canvas()
     c, r = N / 2, 330
@@ -299,6 +379,9 @@ def main():
                             ('conv_water', conv_water, BLUE), ('conv_seat', conv_seat, PURPLE), ('conv_question', conv_question, BLUE)):
         compose(fn(), color).save(os.path.join(OUT, 'ui_aac_icon_%s.png' % name))
     ring().save(os.path.join(OUT, 'ui_aac_icon_ring.png'))
+    ring_icon(home_glyph).save(os.path.join(OUT, 'ui_aac_icon_home_ring.png'))
+    ring_icon(power_glyph).save(os.path.join(OUT, 'ui_aac_icon_power_ring.png'))
+    camera_back().save(os.path.join(ROOT, 'Assets', 'Resources', 'UI', 'ui_camera_back.png'))
     print('-> %s (ui_aac_*_glass.png x2, ui_aac_icon_*.png x20 %dx%d)' % (os.path.relpath(OUT, ROOT), SIZE, SIZE))
 
 

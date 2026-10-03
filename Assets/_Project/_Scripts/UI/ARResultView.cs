@@ -6,8 +6,7 @@ namespace Artti.UI
 {
     // AR 현장모드 결과 화면(HJ 시안)의 "인식 결과" 카드에서 OcrTestController가 채우지 않는 칸을 채운다. 보여 주기만 한다.
     //   분류 칩 = 지점 전체 이름("메가MGC커피 인천송도점", 글 길이에 맞춰 칩 폭이 바뀜), 큰 이름 = 장소명에서 지점명을 뺀 이름("메가MGC커피"),
-    //   아래 세 줄 = 지점 전체 이름 / 분류 의사소통 문구 / 분류별 도움 카드.
-    //   1줄을 누르면 장소 이름을 읽어 주고, 2·3줄은 '도움 카드' 버튼과 같은 일을 한다(그 버튼의 클릭을 그대로 부른다).
+    //   아래 세 줄 = 지점 전체 이름 / 분류 의사소통 문구 / 분류별 도움 카드. 변경점: 세 줄은 누를 수 없는 글이다.
     // 결과를 못 찾은 경우(PlaceContext 비어 있음)는 OcrTestController가 쓴 글("인식 실패" 등)을 그대로 두고 칩만 숨긴다.
     // 분류 아이콘: OcrTestController는 Resources.Load("cafe")로 찾는데 그림은 Resources/AAC/ 아래라 비어 있게 된다.
     //   비어 있을 때만 여기서 분류에 맞는 그림(Resources/AAC/...)을 넣는다.
@@ -19,9 +18,6 @@ namespace Artti.UI
         [SerializeField] private TMP_Text nameText;           // OcrTestController.categoryText와 같은 글
         [SerializeField] private Image iconImage;             // OcrTestController.aacImageComponent와 같은 칸
         [SerializeField] private TMP_Text[] rowTexts = new TMP_Text[3];
-        [SerializeField] private Button[] rowButtons = new Button[3];
-        [SerializeField] private Button helpButton;           // '도움 카드'
-        [SerializeField] private TTSManager tts;
         [SerializeField] private KakaoLocalSearcher kakao;
 
         private string _shownCategory;
@@ -29,27 +25,19 @@ namespace Artti.UI
         private object _shownStore;
         private TextChipAutoWidth _chipFit;
 
-        public void Setup(GameObject chipRoot, TMP_Text chipLabel, TMP_Text name, Image icon, TMP_Text[] rows, Button[] rowHits,
-            Button help, TTSManager speaker, KakaoLocalSearcher searcher)
+        public void Setup(GameObject chipRoot, TMP_Text chipLabel, TMP_Text name, Image icon, TMP_Text[] rows, KakaoLocalSearcher searcher)
         {
             iconImage = icon;
             chip = chipRoot;
             chipText = chipLabel;
             nameText = name;
             rowTexts = rows;
-            rowButtons = rowHits;
-            helpButton = help;
-            tts = speaker;
             kakao = searcher;
         }
 
         private void Awake()
         {
             if (chip != null) _chipFit = chip.GetComponent<TextChipAutoWidth>();
-            if (rowButtons == null) return;
-            if (rowButtons.Length > 0 && rowButtons[0] != null) rowButtons[0].onClick.AddListener(SpeakPlace);
-            for (int i = 1; i < rowButtons.Length; i++)
-                if (rowButtons[i] != null) rowButtons[i].onClick.AddListener(OpenHelp);
         }
 
         private void OnEnable() => Refresh();
@@ -152,17 +140,6 @@ namespace Artti.UI
                 case "약국": return "증상 말하기, 약 사기 도움 카드";
                 default: return "도움 카드 보기";
             }
-        }
-
-        private void SpeakPlace()
-        {
-            if (tts == null || rowTexts == null || rowTexts.Length == 0 || rowTexts[0] == null) return;
-            tts.Speak(rowTexts[0].text);
-        }
-
-        private void OpenHelp()
-        {
-            if (helpButton != null) helpButton.onClick.Invoke();
         }
     }
 }
