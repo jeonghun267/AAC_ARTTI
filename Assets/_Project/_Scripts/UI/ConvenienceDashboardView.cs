@@ -132,6 +132,33 @@ namespace Artti.UI
                     yield return ValueAt(productUtterances, i, productNames[i] + " 주세요");
         }
 
+        // 변경점: 말하거나 쓴 문장이 추천 상품 요청 문장("과자 주세요")이면 그 상품(id·이름).
+        //   음성·키보드 요청도 상품을 누른 것과 똑같이 장바구니에 담으려고 쓴다. 띄어쓰기·문장 부호는 보지 않는다
+        public bool TryFindProduct(string utterance, out string productId, out string productName)
+        {
+            productId = productName = null;
+            var key = Compact(utterance);
+            if (key.Length == 0) return false;
+            for (int i = 0; productNames != null && i < productNames.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(productNames[i])) continue;
+                if (Compact(ValueAt(productUtterances, i, productNames[i] + " 주세요")) != key) continue;
+                productId = ValueAt(productIds, i, $"dashboard_product_{i + 1}");
+                productName = productNames[i];
+                return true;
+            }
+            return false;
+        }
+
+        private static string Compact(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (var ch in s)
+                if (!char.IsWhiteSpace(ch) && !char.IsPunctuation(ch) && !char.IsSymbol(ch)) sb.Append(ch);
+            return sb.ToString();
+        }
+
         private bool HasBubbles => quickPhraseActiveBubbles != null && quickPhraseActiveBubbles.Length > 0;
         private bool ShowsCategoryTiles => categoryContent != null && categoryButtons != null && categoryButtons.Length > 0;
 

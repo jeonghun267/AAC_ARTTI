@@ -93,6 +93,15 @@ namespace Artti.Common
             ActiveProfile = Profiles.Find(p => p.id == id);
         }
 
+        // 변경점: 마지막으로 쓴 프로필(없으면 null). 앱을 다시 켰을 때 자동으로 고르는 데 쓴다
+        public ProfileData LastUsedProfile()
+        {
+            ProfileData best = null;
+            foreach (var p in Profiles)
+                if (best == null || p.lastUsedAtTicks > best.lastUsedAtTicks) best = p;
+            return best;
+        }
+
         // 마지막 사용일자 갱신 (사용자 선택/생성 시)
         public void UpdateLastUsed(string id)
         {

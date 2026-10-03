@@ -28,6 +28,7 @@ namespace Artti.Common.Speech
         private const int CompleteSilenceMs = 3000;          // 발화 후 종료 판정까지의 침묵
         private const int PossiblyCompleteSilenceMs = 3000;  // 끝났을 수 있다고 보는 침묵
         private const int MinimumInputMs = 5000;             // 최소 인식 유지 시간(말 시작 지연 허용)
+        private const int MaxResults = 5;                    // 변경점: 인식 추측 개수(대화 모드 어눌한 발음 해석용)
 
         private AndroidJavaObject _activity;
         private AndroidJavaObject _recognizer;
@@ -113,7 +114,8 @@ namespace Artti.Common.Speech
                     intent.Call<AndroidJavaObject>("putExtra", "android.speech.extra.LANGUAGE", "ko-KR");
                     intent.Call<AndroidJavaObject>("putExtra", "android.speech.extra.LANGUAGE_MODEL", "free_form");
                     intent.Call<AndroidJavaObject>("putExtra", "calling_package", _activity.Call<string>("getPackageName"));
-                    intent.Call<AndroidJavaObject>("putExtra", "android.speech.extra.MAX_RESULTS", 1);
+                    // 변경점: 추측을 여러 개 받는다(대화 모드가 어눌한 말을 두세 번째 추측으로도 알아듣게). 맨 앞이 가장 그럴듯한 것
+                    intent.Call<AndroidJavaObject>("putExtra", "android.speech.extra.MAX_RESULTS", MaxResults);
 
                     // 변경점: 침묵 타임아웃 extra 추가. 기본값이 너무 짧아 천천히/끊어 말하는
                     //         발달장애인 사용자의 발화가 중간에 잘려 ERROR_NO_MATCH/SPEECH_TIMEOUT으로
@@ -203,6 +205,7 @@ namespace Artti.Common.Speech
             {
                 string top = "";
                 float conf = 0f;
+                string[] others = null;
                 try
                 {
                     var list = bundle.Call<AndroidJavaObject>("getStringArrayList", "results_recognition");
@@ -210,6 +213,12 @@ namespace Artti.Common.Speech
                     {
                         int n = list.Call<int>("size");
                         if (n > 0) top = list.Call<string>("get", 0);
+                        // 변경점: 두 번째부터는 다른 추측으로 넘긴다
+                        if (n > 1)
+                        {
+                            others = new string[n - 1];
+                            for (int i = 1; i < n; i++) others[i - 1] = list.Call<string>("get", i);
+                        }
                     }
                     try
                     {
@@ -223,8 +232,8 @@ namespace Artti.Common.Speech
                     Debug.LogWarning($"[NativeSTT] onResults 파싱 실패: {e.Message}");
                 }
 
-                Debug.Log($"[NativeSTT] result='{top}' conf={conf:F2}");
-                _owner.Resolve(new SttResult { text = top ?? "", confidence = conf, isEmpty = string.IsNullOrEmpty(top) });
+                Debug.Log($"[NativeSTT] result='{top}' conf={conf:F2}" + (others != null ? $" others='{string.Join("' / '", others)}'" : ""));
+                _owner.Resolve(new SttResult { text = top ?? "", confidence = conf, isEmpty = string.IsNullOrEmpty(top), alternatives = others });
             }
         }
     }

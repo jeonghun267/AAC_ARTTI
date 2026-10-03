@@ -262,34 +262,122 @@ namespace Artti.Training
             return ConversationFallback(recognized, target);
         }
 
-        // 규칙 판정만: 기준 이내로 가까운 후보가 있으면 true. 없으면(애매함) 호출 측이 AI 판단 또는 폴백을 쓴다.
-        public static bool TryMatchCandidate(string recognized, string target, IEnumerable<string> candidates, out string match)
+        private const string RequestEnding = "주세요";
+        // 변경점(2026-10-02): 발음 거리(KoreanSpeechSimilarity, 0~1) 기준. 자모로 나눠 비교하고 헷갈리는 소리는 반만 틀린 것으로 센다
+        public const float SentenceThreshold = 0.35f;   // 문장 전체와 비교할 때
+        public const float NameThreshold = 0.3f;        // 상품 이름만 말했을 때("과자", "가자")
+        private const float NameContainedScore = 0.1f;  // 상품 이름이 말 속에 그대로 들어 있을 때("음 과자요")
+        private const float AlternativePenalty = 0.05f; // 인식기의 두 번째·세 번째 추측은 조금 덜 믿는다
+
+        // 규칙 판정만: 기준 이내로 가까운 후보가 있으면 true. 없으면(애매함) 호출 측이 AI 판단 또는 다시 묻기를 쓴다.
+        public static bool TryMatchCandidate(string recognized, string target, IEnumerable<string> candidates, out string match) =>
+            TryMatchCandidate(new[] { recognized }, target, candidates, out match);
+
+        // 변경점: 어눌한 발음도 알아듣게(사용자가 가장 중요하다고 한 기능).
+        //   heardOptions = 인식기의 추측들(첫 번째가 가장 그럴듯함). 휴대폰 인식은 어눌한 말일수록 두세 번째 추측이 맞을 때가 많다.
+        //   후보마다 발음 거리를 재서 가장 가까운 것, 동점이면 추천 문장. 예전에는 글자 단위 편집 거리라 "가자"와 "과자"를 완전히 다른 글자로 봤다.
+        //   상품 요청("과자 주세요")은 이름만 말해도 된다. 한 글자 이름("물")은 똑같을 때만("네"가 "물"로 잡히지 않게).
+        public static bool TryMatchCandidate(IList<string> heardOptions, string target, IEnumerable<string> candidates, out string match)
         {
             match = null;
-            var r = NormalizeSpeech(recognized);
-            string best = null;
-            int bestDistance = int.MaxValue;
-            int bestLength = 0;
+            if (heardOptions == null || candidates == null) return false;
 
-            if (r.Length > 0 && candidates != null)
+            string best = null;
+            float bestScore = float.MaxValue;
+            void Consider(string candidate, float score, float allowed)
             {
-                foreach (var candidate in candidates)
+                if (score > allowed) return;
+                if (score < bestScore || (System.Math.Abs(score - bestScore) < 0.0001f && candidate == target))
                 {
-                    var c = NormalizeSpeech(candidate);
+                    best = candidate;
+                    bestScore = score;
+                }
+            }
+
+            var list = new List<string>();
+            foreach (var candidate in candidates)
+                if (!string.IsNullOrWhiteSpace(candidate)) list.Add(candidate);
+            var keywords = UniqueKeywords(list);
+
+            for (int rank = 0; rank < heardOptions.Count; rank++)
+            {
+                var heard = KoreanSpeechSimilarity.Compact(heardOptions[rank]);
+                if (heard.Length == 0) continue;
+                var shortAnswer = StripPoliteEnding(heard);   // "카드요" -> "카드", "현금이요" -> "현금"
+                float penalty = rank * AlternativePenalty;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var candidate = list[i];
+                    var c = KoreanSpeechSimilarity.Compact(candidate);
                     if (c.Length == 0) continue;
-                    int d = EditDistance(r, c);
-                    if (d < bestDistance || (d == bestDistance && candidate == target))
+                    Consider(candidate, KoreanSpeechSimilarity.Distance(heard, c) + penalty, SentenceThreshold + penalty);
+
+                    // 핵심 단어만 말한 짧은 대답: 상품 이름("과자 주세요" -> "과자"), 첫 단어에서 조사를 뗀 것("카드로 할게요" -> "카드")
+                    var key = keywords[i];
+                    if (key == null) continue;
+                    if (key.Length == 1)
                     {
-                        best = candidate;
-                        bestDistance = d;
-                        bestLength = c.Length;
+                        if (heard == key || shortAnswer == key) Consider(candidate, penalty, NameThreshold + penalty);
+                        continue;
+                    }
+                    if (heard.Contains(key)) Consider(candidate, NameContainedScore + penalty, NameThreshold + penalty);
+                    else
+                    {
+                        float d = System.Math.Min(KoreanSpeechSimilarity.Distance(heard, key), KoreanSpeechSimilarity.Distance(shortAnswer, key));
+                        Consider(candidate, d + penalty, NameThreshold + penalty);
                     }
                 }
             }
 
-            if (best == null || bestDistance > Math.Max(1, bestLength / 2)) return false;
+            if (best == null) return false;
             match = best;
             return true;
+        }
+
+        static readonly string[] Particles = { "으로", "로", "에서", "에", "를", "을", "이", "가", "은", "는", "도" };
+
+        // 후보마다 핵심 단어(없거나 다른 후보와 겹치면 null). 겹치는 단어("봉투 주세요"/"봉투 필요 없어요"의 "봉투")로는 고르지 않는다
+        static string[] UniqueKeywords(IList<string> candidates)
+        {
+            var keys = new string[candidates.Count];
+            var count = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                keys[i] = KeywordOf(candidates[i]);
+                if (keys[i] == null) continue;
+                count.TryGetValue(keys[i], out int n);
+                count[keys[i]] = n + 1;
+            }
+            for (int i = 0; i < keys.Length; i++)
+                if (keys[i] != null && count[keys[i]] > 1) keys[i] = null;
+            return keys;
+        }
+
+        static string KeywordOf(string candidate)
+        {
+            var c = KoreanSpeechSimilarity.Compact(candidate);
+            if (c.Length > RequestEnding.Length && c.EndsWith(RequestEnding, StringComparison.Ordinal))
+                return c.Substring(0, c.Length - RequestEnding.Length);   // 상품 이름(한 글자도 됨: "물")
+            var words = candidate.Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length < 2) return null;
+            var first = KoreanSpeechSimilarity.Compact(words[0]);
+            foreach (var p in Particles)
+            {
+                if (first.Length - p.Length >= 2 && first.EndsWith(p, StringComparison.Ordinal))
+                {
+                    first = first.Substring(0, first.Length - p.Length);
+                    break;
+                }
+            }
+            return first.Length >= 2 ? first : null;
+        }
+
+        // 짧은 대답 끝의 "요"/"이요"를 뗀다(남는 게 없으면 그대로)
+        static string StripPoliteEnding(string compact)
+        {
+            if (compact.Length > 2 && compact.EndsWith("이요", StringComparison.Ordinal)) return compact.Substring(0, compact.Length - 2);
+            if (compact.Length > 1 && compact.EndsWith("요", StringComparison.Ordinal)) return compact.Substring(0, compact.Length - 1);
+            return compact;
         }
 
         // 규칙도 AI도 고르지 못했을 때: 추천 문장, 추천 문장이 없으면 인식 원문 그대로

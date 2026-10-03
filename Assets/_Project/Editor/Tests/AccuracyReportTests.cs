@@ -167,6 +167,48 @@ namespace Artti.EditorTests.Report
             Assert.That(d.modelSentences, Is.EqualTo(new[] { "안녕하세요 반가워요" }));
             Assert.That(AccuracyReportLabels.DifficultNote(d), Is.EqualTo("어려운 발음이 없어요!"));
         }
+
+        // 변경점: 인식이 중간에 끊긴 발화("주세요"만)도 모범 발음은 목표 문장 전체를 읽는다
+        [Test]
+        public void ModelSentence_UsesTarget_WhenRecognitionWasCut()
+        {
+            var now = DateTime.Now;
+            long t0 = Ms(now.Date.AddHours(9));
+            Ev(AACEventType.ScenarioEntered, t0, payload: "mode:accuracy");
+            Ev(AACEventType.ObjectiveEntered, t0, "select_items");
+            Ev(AACEventType.CardSelected, t0 + 3000, payload: "guided_voice:주세요|stt:주세요|clarity:38:red:사과 주세요");
+            Ev(AACEventType.CardSelected, t0 + 9000, payload: "guided_voice:네|stt:네");
+            Ev(AACEventType.SessionEnded, t0 + 30000, payload: "completed");
+            var lines = new List<string>();
+            foreach (var ev in _events) lines.Add(JsonUtility.ToJson(ev));
+            File.WriteAllLines(_path, lines);
+
+            var d = AccuracyReportBuilder.Build(new ReportDataService(_path), ReportPeriod.All, now);
+
+            Assert.That(d.modelSentences, Is.EqualTo(new[] { "사과 주세요", "네" }));
+        }
+
+        // 변경점: 서버 명료도가 없을 때(기기 STT) 리포트용 추정치
+        [Test]
+        public void ClarityEstimate_FromRecognizedVsTarget()
+        {
+            Assert.That(Artti.Common.Speech.ClarityEstimator.TryEstimate("사과 주세요", "사과 주세요.", out int same), Is.True);
+            Assert.That(same, Is.EqualTo(100), "띄어쓰기·문장 부호는 보지 않는다");
+            Assert.That(Artti.Common.Speech.ClarityEstimator.TryEstimate("사과 주세요", "아과 주세요", out int oneOff), Is.True);
+            Assert.That(oneOff, Is.EqualTo(80), "5음절 중 1음절 다름");
+            Assert.That(Artti.Common.Speech.ClarityEstimator.TryEstimate("사과 주세요", "", out _), Is.False);
+
+            var filled = Artti.Common.Speech.ClarityEstimator.FillIfMissing(
+                new Artti.Common.Speech.SttResult { text = "아과 주세요" }, "사과 주세요");
+            Assert.That(filled.hasClarity, Is.True);
+            Assert.That(filled.clarityPercent, Is.EqualTo(80));
+            Assert.That(filled.clarityLight, Is.EqualTo("yellow"));
+            Assert.That(filled.clarityTarget, Is.EqualTo("사과 주세요"));
+
+            var server = new Artti.Common.Speech.SttResult { text = "아과 주세요", hasClarity = true, clarityPercent = 42, clarityLight = "red" };
+            Assert.That(Artti.Common.Speech.ClarityEstimator.FillIfMissing(server, "사과 주세요").clarityPercent, Is.EqualTo(42),
+                "서버 값이 있으면 그대로 둔다");
+        }
     }
 }
 #endif

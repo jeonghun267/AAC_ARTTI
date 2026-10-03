@@ -826,7 +826,9 @@ namespace Artti.Training
                 var sttResultP = await ListenUserAsync(_cts.Token);
                 uiView.ShowSttResult(sttResultP.text);
                 uiView.UnlockPool();
-                _eventLogger?.LogCardSelected(card.id, card.phrase?.text, sttResultP);
+                // 변경점: 정확도 모드에서 서버 명료도가 없으면(기기 STT) 리포트용 추정치를 채워 기록한다. 관문은 아래에서 서버 값으로만
+                _eventLogger?.LogCardSelected(card.id, card.phrase?.text,
+                    IsConversationMode ? sttResultP : ClarityEstimator.FillIfMissing(sttResultP, card.phrase?.text));
 
                 // 빈 결과 시 fallback 전용 대사 후 같은 objective 유지 — 2차 시도(scaffold_level=1)는 같은 카드 유지 (PLAN.MD 7.3.1)
                 if (string.IsNullOrWhiteSpace(sttResultP.text))
@@ -964,6 +966,7 @@ namespace Artti.Training
             dashboardView?.SetInteractionEnabled(false);
             string recognized = null;
             string utterance = null; // 대화에 넘길 문장. 정확도 모드 = 인식 원문, 대화 모드 = 후보 문장으로 해석한 결과
+            bool smallTalk = false;  // 변경점: 대화 모드에서 화면 문장이 아닌 일상 대화로 판단됨(utterance = 인식 원문)
             SttResult spoken = default;
             try
             {
@@ -982,6 +985,13 @@ namespace Artti.Training
                     && !ConvenienceQuickPhrasePolicy.IsAttemptAtTarget(recognized, clarityTarget, dashboardView.GetSpeechCandidates()))
                     spoken.hasClarity = false;
 
+                // 변경점: 정확도 모드에서 서버 명료도가 없으면(기기 STT) 목표 문장을 말하려던 발화에 리포트용 추정치를 채운다.
+                //   다시 말하기 관문은 서버 명료도(gateInput)로만 막는다(기존 동작)
+                var gateInput = spoken;
+                if (!IsConversationMode && !spoken.hasClarity && dashboardView != null
+                    && ConvenienceQuickPhrasePolicy.IsAttemptAtTarget(recognized, clarityTarget, dashboardView.GetSpeechCandidates()))
+                    spoken = ClarityEstimator.FillIfMissing(spoken, clarityTarget);
+
                 if (string.IsNullOrWhiteSpace(recognized))
                 {
                     _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
@@ -991,13 +1001,29 @@ namespace Artti.Training
                 }
 
                 // 변경점: 정확도 모드는 목표 문장을 또렷하게 말해야 다음으로 넘어간다(명료도 관문).
-                if (BlockLowClarity("guided_voice", spoken, logUtterance: true)) return;
+                if (BlockLowClarity("guided_voice", gateInput, logUtterance: true)) return;
 
                 // 대화 모드: 어눌하게 말해도 화면 후보 문장으로 해석해 진행한다 (규칙 -> 애매하면 AI -> 추천 문장).
                 //   인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다. 정확도 모드는 기존 흐름 그대로.
-                utterance = IsConversationMode && dashboardView != null
-                    ? await ResolveConversationUtteranceAsync(recognized, clarityTarget, _cts.Token)
-                    : recognized;
+                if (IsConversationMode && dashboardView != null)
+                {
+                    var resolved = await ResolveConversationUtteranceAsync(recognized, stt.alternatives, clarityTarget, _cts.Token);
+                    utterance = resolved.phrase;
+                    smallTalk = resolved.smallTalk;
+                }
+                else utterance = recognized;
+
+                // 변경점: 못 알아들었으면 한 번 다시 말해 달라고 한다. 인식 원문과 재시도는 기록하고 이번 턴은 진행하지 않는다
+                //   (DialogueManager.RegisterFailure는 부르지 않는다: 실패 4회면 시나리오가 강제 종료된다)
+                if (utterance == null)
+                {
+                    _eventLogger?.LogCardSelected("guided_voice", spoken.text, spoken);
+                    hud?.SetUserUtterance(spoken.text);
+                    _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
+                    _lastToolSpoke = true;
+                    SpeakNpc(UnclearRetryLine, isFallback: true);
+                    return;
+                }
             }
             finally
             {
@@ -1005,11 +1031,23 @@ namespace Artti.Training
                 if (!_sessionCompleted) dashboardView?.SetInteractionEnabled(true);
             }
 
-            bool captureWater = IsConvenienceItemSelectionStep()
-                                && string.Equals(
-                                    utterance?.Trim().TrimEnd('?', '!', '.', '…'),
-                                    "물 주세요",
-                                    System.StringComparison.Ordinal);
+            // 변경점: 일상 대화는 점원이 자연스럽게 받아 주고 지금 단계로 부드럽게 돌아온다(단계 진행·장바구니 변화 없음)
+            if (smallTalk)
+            {
+                RunDashboardTurn("guided_voice", "음성으로 말하기", utterance, false, null, spoken, smallTalk: true).Forget();
+                return;
+            }
+
+            bool isWater = IsWaterRequest(utterance);
+            // 변경점: "과자 주세요"처럼 추천 상품 요청이면 그 상품을 누른 것과 똑같이 처리한다(장바구니에 그 상품).
+            //   예전에는 대화 힌트처럼 AI에게만 넘겨 과자가 장바구니에 안 들어갈 수 있었다. "물 주세요"는 기존 정책(ResolveWater) 그대로
+            if (!isWater && dashboardView != null && dashboardView.TryFindProduct(utterance, out var productId, out var productName))
+            {
+                RunDashboardTurn(productId, productName, utterance, true,
+                    IsConvenienceItemSelectionStep() ? productName : null, spoken).Forget();
+                return;
+            }
+            bool captureWater = IsConvenienceItemSelectionStep() && isWater;
             RunDashboardTurn(
                 "guided_voice",
                 "음성으로 말하기",
@@ -1018,6 +1056,9 @@ namespace Artti.Training
                 captureWater ? "물" : null,
                 spoken).Forget();
         }
+
+        private static bool IsWaterRequest(string text) =>
+            string.Equals(text?.Trim().TrimEnd('?', '!', '.', '…'), "물 주세요", System.StringComparison.Ordinal);
 
         // 정확도 모드 명료도 관문. 기준 미달이면 점원이 다시 말해 달라고 하고 true를 돌려준다(이번 턴은 진행하지 않음).
         //   명료도가 없으면(다른 후보 문장을 말함, 명료도를 주지 않는 기기 STT) 막지 않는다.
@@ -1045,17 +1086,30 @@ namespace Artti.Training
 
         // 대화 모드 문장 해석: 1) 규칙(틀린 글자 수)으로 확실하면 바로 결정
         //   2) 애매하면 Gemini가 뜻으로 판단 (최대 ConversationJudgeTimeoutSeconds초)
-        //   3) Gemini도 못 고르거나 늦으면 추천 문장
+        //   3) Gemini가 '알아들었지만 화면 문장이 아님(일상 대화)'이라고 하면 점원이 그 말을 받아 주고 지금 단계에 머문다
+        //   4) Gemini도 모르거나 늦으면 한 번은 다시 말해 달라고 하고(null), 두 번째에도 모르면 추천 문장
+        //      (변경점, 사용자 결정 2026-10-02: 예전에는 바로 추천 문장 "물 주세요"로 넘어가 "과자"라고 해도 물이 됐다)
         private const float ConversationJudgeTimeoutSeconds = 3f;
+        private const int UnclearRetryLimit = 1;
+        private const string UnclearRetryLine = "잘 못 들었어요. 한 번만 더 말해 줄래요?";
+        private int _unclearRetries;   // 못 알아들어 다시 말해 달라고 한 횟수. 알아들은 턴이 진행되면 0
+        private string _clerkLineBeforeRetry;   // 다시 말해 달라고 하기 전 점원이 한 말(AI 판단 맥락)
 
-        private async UniTask<string> ResolveConversationUtteranceAsync(string recognized, string target, CancellationToken ct)
+        // 반환: phrase = 진행할 문장(null이면 다시 말해 달라고 한다), smallTalk = 화면 문장이 아닌 일상 대화(phrase = 인식 원문)
+        private async UniTask<(string phrase, bool smallTalk)> ResolveConversationUtteranceAsync(
+            string recognized, string[] alternatives, string target, CancellationToken ct)
         {
             var candidates = dashboardView.GetSpeechCandidates().ToList();
-            if (ConvenienceQuickPhrasePolicy.TryMatchCandidate(recognized, target, candidates, out var match))
+            // 변경점: 인식기의 다른 추측들도 함께 본다(맨 앞 = 가장 그럴듯한 것)
+            var heardOptions = new List<string> { recognized };
+            if (alternatives != null) heardOptions.AddRange(alternatives);
+            if (ConvenienceQuickPhrasePolicy.TryMatchCandidate(heardOptions, target, candidates, out var match))
             {
-                Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(규칙): '{recognized}' -> '{match}'");
-                return match;
+                Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(규칙): '{string.Join("' / '", heardOptions)}' -> '{match}'");
+                return (match, false);
             }
+            // 변경점: AI에게는 점원이 방금 한 말(맥락)을 함께 준다. 다시 물어본 뒤라면 그 전의 원래 질문
+            var clerkLine = _lastNpcLine == UnclearRetryLine ? _clerkLineBeforeRetry : _lastNpcLine;
 
             if (_geminiService != null && candidates.Count > 0)
             {
@@ -1065,16 +1119,22 @@ namespace Artti.Training
                     ShowThinking(true);
                     try
                     {
-                        int index = await _geminiService.RequestPhraseMatchAsync(recognized, candidates, timeout.Token);
+                        int index = await _geminiService.RequestPhraseMatchAsync(recognized, candidates, timeout.Token, clerkLine, alternatives);
                         if (index >= 0)
                         {
                             Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(AI): '{recognized}' -> '{candidates[index]}'");
-                            return candidates[index];
+                            return (candidates[index], false);
+                        }
+                        // 변경점: 알아들었지만 화면 문장이 아니면(일상 대화) 되묻지 않고 점원이 그 말을 받아 준다
+                        if (index == GeminiDialogueService.PhraseNone)
+                        {
+                            Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(AI): '{recognized}' -> 일상 대화(점원이 받아 주고 지금 단계 유지)");
+                            return (recognized, true);
                         }
                     }
                     catch (System.OperationCanceledException) when (!ct.IsCancellationRequested)
                     {
-                        Debug.LogWarning("[TrainingSceneRoot] 대화 모드 AI 판단 시간 초과 — 추천 문장으로 진행");
+                        Debug.LogWarning("[TrainingSceneRoot] 대화 모드 AI 판단 시간 초과");
                     }
                     finally
                     {
@@ -1083,9 +1143,16 @@ namespace Artti.Training
                 }
             }
 
+            if (_unclearRetries < UnclearRetryLimit)
+            {
+                _unclearRetries++;
+                _clerkLineBeforeRetry = clerkLine;   // 다시 말했을 때 AI가 원래 질문을 맥락으로 쓰게
+                Debug.Log($"[TrainingSceneRoot] 대화 모드 해석 실패: '{recognized}' -> 다시 말해 달라고 함 ({_unclearRetries}/{UnclearRetryLimit})");
+                return (null, false);
+            }
             var fallback = ConvenienceQuickPhrasePolicy.ConversationFallback(recognized, target);
             Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(폴백): '{recognized}' -> '{fallback}'");
-            return fallback;
+            return (fallback, false);
         }
 
         private void StartFreeTalk()
@@ -1183,8 +1250,14 @@ namespace Artti.Training
         // 변경점(TrainingCon 시안): 키보드로 쓴 문장도 대화 힌트를 누른 것과 같은 한 턴으로 보낸다.
         private void HandleTypedUtterance(string text)
         {
-            bool captureItem = IsConvenienceItemSelectionStep()
-                               && string.Equals(text?.Trim().TrimEnd('?', '!', '.', '…'), "물 주세요", System.StringComparison.Ordinal);
+            // 변경점: 키보드로 "과자 주세요"를 써도 그 상품을 누른 것과 똑같이(음성과 같은 규칙)
+            if (!IsWaterRequest(text) && dashboardView != null && dashboardView.TryFindProduct(text, out var productId, out var productName))
+            {
+                RunDashboardTurn(productId, productName, text, true,
+                    IsConvenienceItemSelectionStep() ? productName : null).Forget();
+                return;
+            }
+            bool captureItem = IsConvenienceItemSelectionStep() && IsWaterRequest(text);
             RunDashboardTurn(
                 "keyboard_input",
                 "키보드 입력",
@@ -1204,11 +1277,13 @@ namespace Artti.Training
             string utterance,
             bool isProduct,
             string capturedItemName = null,
-            SttResult? spoken = null)
+            SttResult? spoken = null,
+            bool smallTalk = false)
         {
             if (_dashboardTurnBusy || _freeTalkActive || _sessionCompleted || !_useGemini
                 || string.IsNullOrWhiteSpace(utterance)) return;
 
+            _unclearRetries = 0;   // 변경점: 알아들은 턴(음성·버튼·키보드)이 진행되면 '다시 말해 줄래요' 횟수를 비운다
             _dashboardTurnBusy = true;
             dashboardView?.SetInteractionEnabled(false);
             try
@@ -1229,7 +1304,7 @@ namespace Artti.Training
 
                 // 다섯 개 고정 대화 힌트는 현재 단계와 장바구니 상태를 함께 보고 판정한다.
                 // 같은 문장도 단계에 따라 유지/전환/마무리 결과가 달라진다.
-                if (!isProduct)
+                if (!isProduct && !smallTalk)
                 {
                     var lastItem = _dialogueManager.LastSlotListItem("items_requested");
                     if (ConvenienceQuickPhrasePolicy.TryResolve(
@@ -1260,6 +1335,13 @@ namespace Artti.Training
                     ? $"The user tapped the recommended product '{sourceName}' (product_id={sourceId}). " +
                       $"Treat it as the direct customer utterance: \"{utterance}\". Respond about that exact product."
                     : $"The user tapped a dialogue-hint button. Treat it as the direct customer utterance: \"{utterance}\".";
+                // 변경점: 일상 대화(화면 문장이 아님). 어눌한 음성 인식이라 너그럽게 뜻을 짐작해 짧게 받아 주고, 지금 단계 질문으로 부드럽게 돌아온다
+                if (smallTalk)
+                    sourceContext =
+                        $"The customer said this by voice: \"{utterance}\". It is not one of the hint phrases; it is everyday small talk or another topic. " +
+                        "It comes from speech recognition of a person with a developmental disability, so it may be garbled: guess the meaning kindly. " +
+                        "Reply warmly in one short sentence to what they said, then gently ask the question for the current step again. " +
+                        "Do not complete the objective, do not add items, and use present_cards to stay on the current step.";
 
                 if (!string.IsNullOrWhiteSpace(capturedItemName))
                 {
@@ -1272,7 +1354,8 @@ namespace Artti.Training
                     null,
                     utterance,
                     sourceContext,
-                    capturedItemName);
+                    capturedItemName,
+                    stayOnStep: smallTalk);
             }
             finally
             {
@@ -1319,7 +1402,8 @@ namespace Artti.Training
             string sttText,
             string sourceContext = null,
             string capturedItemName = null,
-            DialogueTurn resolvedTurn = null)
+            DialogueTurn resolvedTurn = null,
+            bool stayOnStep = false)
         {
             // 턴 상한 / 반복 실패 — 더 끌지 않고 부드럽게 마무리한다.
             // LLM 호출 "전"에 검사한다: 응답을 말한 직후 마무리 멘트를 덧붙이면 TTS가 서로 잘린다.
@@ -1369,6 +1453,15 @@ namespace Artti.Training
                 SpeakNpc(PickFallback("llm_call_failed"), isFallback: true);
                 RefreshPool();
                 return;
+            }
+
+            // 변경점: 일상 대화 턴은 점원이 받아 주기만 하고 단계·장바구니는 그대로(AI가 단계를 넘기려 해도 지금 단계에 머문다)
+            if (stayOnStep && (turn.Tool == DialogueTool.MarkObjectiveComplete || turn.Tool == DialogueTool.TransitionToObjective
+                               || turn.Tool == DialogueTool.ForceCompleteScenario))
+            {
+                turn.Tool = DialogueTool.PresentCards;
+                turn.ObjectiveId = null;
+                turn.SlotsFilled = null;
             }
 
             // 침묵 방어선 — 이 턴에 점원이 실제로 말했는지. HandleObjectiveChanged가 고정 멘트로 메꿀지 판단한다.

@@ -15,6 +15,10 @@ namespace Artti.Common.Speech
         public int clarityPercent;    // 0..100
         public string clarityLight;   // "green" / "yellow" / "red"
         public string clarityTarget;  // 명료도 비교 기준(목표 문장). 상세기록의 '이유' 설명에 쓴다
+
+        // 변경점: 인식기의 다른 추측들(text 다음으로 그럴듯한 순서). 어눌한 말일수록 두세 번째 추측이 맞을 때가 많아
+        //   대화 모드 문장 해석이 함께 본다. 주지 않는 STT는 null
+        public string[] alternatives;
     }
 
     // 변경점: 목표 문장(탭한 카드 문구, 연습 문장)을 알아야 명료도를 계산할 수 있는 STT.

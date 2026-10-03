@@ -73,7 +73,7 @@ namespace Artti.Report
             return data;
         }
 
-        // 세션들(최신순)에서 내가 한 말을 오래된 것부터, 같은 문장은 한 번만
+        // 세션들(최신순)에서 내가 한 말을 오래된 것부터, 같은 문장은 한 번만(목표 문장이 기록돼 있으면 그 문장)
         public static List<string> SpokenSentences(ReportDataService service, IList<ReportSessionSummary> sessions)
         {
             var list = new List<string>();
@@ -85,7 +85,9 @@ namespace Artti.Report
                 foreach (var t in detail.steps.SelectMany(st => st.turns))
                 {
                     if (!t.isUser || string.IsNullOrWhiteSpace(t.text)) continue;
-                    var text = t.text.Trim();
+                    // 변경점: 음성 발화의 text는 인식기가 알아들은 원문이라 중간에 끊기면("주세요"만) 모범 발음도 짧게 읽었다.
+                    //   목표 문장(명료도 기준)이 있으면 그 문장을 바른 발음으로 읽는다
+                    var text = (!string.IsNullOrWhiteSpace(t.clarityTarget) ? t.clarityTarget : t.text).Trim();
                     if (seen.Add(text)) list.Add(text);
                 }
             }

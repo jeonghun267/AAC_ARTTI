@@ -123,7 +123,7 @@ namespace Artti.Training
         // 완료 화면 요소 경로(completionRoot 기준). 배경을 따라 크기가 바뀌는 무대(Stage) 아래에 있다
         const string EndingStage = "Background/Stage";
         static readonly string[] EndingStatCards = { "AccuracyCard", "ExpressionCard", "RecordCard" };
-        static readonly string[] EndingButtons = { "RetryButton", "NextScenarioButton", "HomeButton" };
+        static readonly string[] EndingButtons = { "RetryButton", "HomeButton" };   // 다음 시나리오·종료하기 버튼은 뺐다(2026-10-03)
 
         private int _objectiveIndex = -1;
         private string _objectiveLabel;

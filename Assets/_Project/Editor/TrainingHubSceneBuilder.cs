@@ -11,10 +11,13 @@ namespace Artti.Editor
     // 말하기 훈련 모드 선택 화면 (다크 네온). 가로 1920x1080 Stage 기준, 좌상단 원점(y 아래가 -).
     // 에셋: Art/UI/TrainingHub/
     //   56 배경(1672x941, 매장 / 왼쪽 문구 "작은 변화가 더 나은 내일을 만들어요." / 오른쪽 위 ARTTI 간판 / 왼쪽 위 뒤로 버튼이 그려져 있음)
-    //   57 제목 "말하기 훈련 / 오늘은 어떤 연습을 해볼까요?"   58 정확도 모드 카드   59 대화 모드 카드
+    //   57 제목 "말하기 훈련 / 오늘은 어떤 연습을 해볼까요?"
+    //   "58 1" 정확도 모드 카드(여자 캐릭터, 그림 글자 "훈련지원모드")   "59 1" 대화 모드 카드(남자 캐릭터, 그림 글자 "현장지원모드")
+    //   (2026-10-03 새 시안으로 교체. 처음 시안 58/59는 폴더에 남겨 둠)
     //   60 연습하기(파랑, 정확도)   61 연습하기(보라, 대화)   tip_bulb 안내 바 전구(코드로 그린 안내 바에 씀)
     // 좌표는 시안(1672x941)을 1920 폭으로 환산(x1.1483)한 값. 카드는 56 왼쪽 문구(Stage x ~505, y 258~597)를 피해 오른쪽에 두고,
-    // 태블릿(16:10)에서 좌우가 44씩 잘려도 대화 모드 카드 오른쪽 끝이 남는 크기(0.52배)로 정했다.
+    // 태블릿(16:10)에서 좌우가 44씩 잘려도 오른쪽 카드 끝이 남는 크기(0.50배)로 정했다.
+    // 배치: 좌 = 대화 모드, 우 = 정확도 모드 (2026-10-03 좌우를 바꿈).
     // 카드와 그 아래 연습하기 버튼 어디를 눌러도 그 모드로 시작한다(모드마다 Button 하나).
     public static class TrainingHubSceneBuilder
     {
@@ -31,21 +34,23 @@ namespace Artti.Editor
         static readonly Vector2 TitleCenter = new Vector2(1172f, -164f);
         const float TitleWidth = 400f;
 
-        // 카드(58/59, 1448x1086) 0.52배. 위치 = 이미지 좌상단. 두 카드는 같은 높이(59는 그림 자체가 조금 낮게 그려져 있음).
-        const float CardImgW = 1448f, CardImgH = 1086f, CardScale = 0.52f;
-        static readonly Vector2 AccuracyCardPos = new Vector2(470f, -218f);
-        static readonly Vector2 ConversationCardPos = new Vector2(1106f, -218f);
+        // 카드("58 1"/"59 1", 1448x1086) 0.50배. 위치 = 이미지 좌상단. 두 카드는 같은 높이.
+        // 본체(알파>200): "59 1" x 20~1437 y 82~1022, "58 1" x 109~1331 y 74~994. "59 1"이 더 넓게 그려져 있어
+        // 0.52배로는 오른쪽 카드가 태블릿에서 잘린다. 두 카드 사이 틈은 가장 좁은 곳(카드 아래쪽) 25.
+        const float CardImgW = 1448f, CardImgH = 1086f, CardScale = 0.50f;
+        static readonly Vector2 ConversationCardPos = new Vector2(505f, -218f);
+        static readonly Vector2 AccuracyCardPos = new Vector2(1166.5f, -218f);
         // 누르는 영역(카드 px, 위에서부터 y). 기울어진 두 카드 사이 틈에서 서로 겹치지 않게 본체보다 조금 안쪽.
+        static readonly Rect ConversationCardHit = Rect.MinMaxRect(60, 115, 1395, 1000);
         static readonly Rect AccuracyCardHit = Rect.MinMaxRect(130, 90, 1290, 985);
-        static readonly Rect ConversationCardHit = Rect.MinMaxRect(110, 125, 1370, 985);
 
         // 연습하기(60/61, 2172x724). 본체 = 알파>250(알약 테두리). 두 버튼은 높이를 맞춘다.
-        // 카드 아래 가장자리(기울어져 y 718~728) 가운데 밑.
+        // 카드 본체 가운데 x, 카드 아래 가장자리(Stage y ~717)에서 17 밑.
         const float PillImgW = 2172f, PillImgH = 724f, PillHeight = 76f;
         static readonly Rect BluePillBody = Rect.MinMaxRect(259, 135, 1912, 559);
         static readonly Rect PurplePillBody = Rect.MinMaxRect(291, 162, 1878, 542);
-        static readonly Vector2 AccuracyPillCenter = new Vector2(818f, -785f);
-        static readonly Vector2 ConversationPillCenter = new Vector2(1466f, -785f);
+        static readonly Vector2 ConversationPillCenter = new Vector2(869f, -772f);
+        static readonly Vector2 AccuracyPillCenter = new Vector2(1526.5f, -772f);
 
         // 아래 안내 바(코드로 그림). 폰(20:9)은 배경 위아래가 잘려 Stage y 49~965만 보이므로 그 안에 둔다.
         static readonly Vector2 TipCenter = new Vector2(1172f, -913f);
@@ -90,11 +95,11 @@ namespace Artti.Editor
                 (TitleBody.center.y - TitleImgH / 2f) * ts);
             AddImage(title, HubDir + "57.png");
 
-            // ===== 모드 카드 2장: 좌 = 정확도 모드(58 + 60), 우 = 대화 모드(59 + 61) =====
-            var accuracyBtn = BuildModeCard(stage, "AccuracyModeCard", HubDir + "58.png", AccuracyCardPos, AccuracyCardHit,
-                HubDir + "60.png", BluePillBody, AccuracyPillCenter);
-            var conversationBtn = BuildModeCard(stage, "ConversationModeCard", HubDir + "59.png", ConversationCardPos, ConversationCardHit,
+            // ===== 모드 카드 2장: 좌 = 대화 모드("59 1" + 61), 우 = 정확도 모드("58 1" + 60) =====
+            var conversationBtn = BuildModeCard(stage, "ConversationModeCard", HubDir + "59 1.png", ConversationCardPos, ConversationCardHit,
                 HubDir + "61.png", PurplePillBody, ConversationPillCenter);
+            var accuracyBtn = BuildModeCard(stage, "AccuracyModeCard", HubDir + "58 1.png", AccuracyCardPos, AccuracyCardHit,
+                HubDir + "60.png", BluePillBody, AccuracyPillCenter);
 
             BuildTipBar(stage, font);
 
@@ -106,7 +111,7 @@ namespace Artti.Editor
 
             SceneBuilderUtils.ForceRebuildCanvasLayouts(canvasGo);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[TrainingHubSceneBuilder] 완료 (배경 56 꽉 채움 + 제목 57 + 모드 카드 58/59 + 연습하기 60/61 + 안내 바)");
+            Debug.Log("[TrainingHubSceneBuilder] 완료 (배경 56 꽉 채움 + 제목 57 + 모드 카드 좌 대화(59 1) / 우 정확도(58 1) + 연습하기 61/60 + 안내 바)");
         }
 
         // 배경(56): 화면을 빈틈 없이 꽉 채운다. 왼쪽 문구와 뒤로 버튼이 가장자리 가까이 그려져 있어

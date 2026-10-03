@@ -221,6 +221,85 @@ namespace Artti.Editor
             if (ok == total) Debug.Log(msg); else Debug.LogError(msg);
         }
 
+        // 변경점: 대화 모드 어눌한 발음 해석 확인(규칙 -> AI). 실제 훈련과 같은 단계별 화면 후보·점원 말로 돌려
+        //   어느 단계가 알아들었는지와 정답 여부를 Console에 보여 준다. 규칙이 못 고른 것만 Gemini를 부른다(요청 사이 4초)
+        const string SmallTalk = "(일상 대화: 점원이 받아 주고 단계 유지)", Unclear = "(못 알아들음: 다시 묻기)";
+
+        [MenuItem("Artti/Debug/Verify Slurred Speech (Rule + AI)")]
+        static void VerifySlurredMenu() => VerifySlurredAsync().Forget();
+
+        static async Cysharp.Threading.Tasks.UniTaskVoid VerifySlurredAsync()
+        {
+            ApiKeyLoader.Reload();
+            string[] greeting = { "물 주세요", "어디에 있어요?", "얼마예요?", "계산할게요", "감사합니다", "생수 주세요", "삼각김밥 주세요",
+                                  "컵라면 주세요", "과자 주세요", "초콜릿 주세요", "캔커피 주세요", "우유 주세요", "샌드위치 주세요" };
+            string[] bag = { "봉투 주세요", "봉투 필요 없어요", "얼마예요?", "계산할게요", "감사합니다" };
+            string[] pay = { "카드로 할게요", "현금으로 할게요", "얼마예요?", "계산할게요", "감사합니다" };
+            var cases = new (string clerk, string heard, string[] candidates, string target, string expected)[]
+            {
+                ("어서 오세요. 찾으시는 물건 있으세요?", "가자", greeting, "물 주세요", "과자 주세요"),
+                ("어서 오세요. 찾으시는 물건 있으세요?", "초코릿 주떼요", greeting, "물 주세요", "초콜릿 주세요"),
+                ("어서 오세요. 찾으시는 물건 있으세요?", "목이 말라요", greeting, "물 주세요", "물 주세요"),
+                ("어서 오세요. 찾으시는 물건 있으세요?", "라면 이써요", greeting, "물 주세요", "컵라면 주세요"),
+                ("봉투 필요하세요?", "아뇨", bag, "봉투 주세요", "봉투 필요 없어요"),
+                ("봉투 필요하세요?", "네 주세요", bag, "봉투 주세요", "봉투 주세요"),
+                ("결제는 어떻게 하시겠어요?", "가드요", pay, "카드로 할게요", "카드로 할게요"),
+                ("결제는 어떻게 하시겠어요?", "돈으로 낼게요", pay, "카드로 할게요", "현금으로 할게요"),
+                // 변경점: 일상 대화(어눌해도) -> 점원이 받아 주고 단계 유지 / 알아들을 수 없는 말 -> 다시 묻기
+                ("어서 오세요. 찾으시는 물건 있으세요?", "오늘 날씨 좋네요", greeting, "물 주세요", SmallTalk),
+                ("어서 오세요. 찾으시는 물건 있으세요?", "오늘 너무 더워써요", greeting, "물 주세요", SmallTalk),
+                ("봉투 필요하세요?", "저 학교 끈나고 와써요", bag, "봉투 주세요", SmallTalk),
+                ("어서 오세요. 찾으시는 물건 있으세요?", "브아 므브", greeting, "물 주세요", Unclear),
+            };
+            var gemini = new Artti.Training.GeminiDialogueService(ApiKeyLoader.Get(ApiKeyLoader.GeminiApi),
+                Newtonsoft.Json.Linq.JObject.Parse(Resources.Load<TextAsset>("AAC/dialogue_tools").text)["function_declarations"]?.ToString(Newtonsoft.Json.Formatting.None));
+            var prompts = Resources.Load<TextAsset>("AAC/system_prompts");
+            string system = prompts != null
+                ? new Artti.Training.SystemPromptProvider(prompts.text).BuildSystemPrompt(Artti.AAC.ScenarioIds.Convenience)
+                : "너는 편의점 점원이다.";
+            var sb = new StringBuilder();
+            int ok = 0, aiCalls = 0;
+            Debug.Log($"[ModeReportVerify] 어눌한 발음 해석 확인 시작 ({cases.Length}개, 모델 {GeminiConfig.Model})");
+            foreach (var c in cases)
+            {
+                string layer, result;
+                if (Artti.Training.ConvenienceQuickPhrasePolicy.TryMatchCandidate(c.heard, c.target, c.candidates, out var match))
+                {
+                    layer = "규칙";
+                    result = match;
+                }
+                else
+                {
+                    if (aiCalls++ > 0)
+                        await Cysharp.Threading.Tasks.UniTask.Delay(TimeSpan.FromSeconds(4), Cysharp.Threading.Tasks.DelayType.Realtime);
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    int index = await gemini.RequestPhraseMatchAsync(c.heard, c.candidates, default, c.clerk);
+                    layer = $"AI {sw.ElapsedMilliseconds}ms";
+                    result = index >= 0 ? c.candidates[index]
+                        : index == Artti.Training.GeminiDialogueService.PhraseNone ? SmallTalk : Unclear;
+                }
+                bool pass = result == c.expected;
+                if (pass) ok++;
+                string reply = "";
+                if (result == SmallTalk)
+                {
+                    // 훈련 화면과 같은 지시로 점원이 실제로 뭐라고 받아 주는지
+                    await Cysharp.Threading.Tasks.UniTask.Delay(TimeSpan.FromSeconds(4), Cysharp.Threading.Tasks.DelayType.Realtime);
+                    var turn = await gemini.RequestNextTurnAsync(system,
+                        $"[active_objective: {(c.candidates == bag ? "extras" : "greeting")}] [attempt: 1, scaffold_level: 0]\n" +
+                        $"The customer said this by voice: \"{c.heard}\". It is not one of the hint phrases; it is everyday small talk or another topic. " +
+                        "It comes from speech recognition of a person with a developmental disability, so it may be garbled: guess the meaning kindly. " +
+                        "Reply warmly in one short sentence to what they said, then gently ask the question for the current step again. " +
+                        "Do not complete the objective, do not add items, and use present_cards to stay on the current step.");
+                    reply = turn != null ? $"  점원: \"{turn.NpcSpeech?.Replace('\n', ' ')}\" ({turn.Tool})" : "  점원: (응답 없음)";
+                }
+                sb.AppendLine($"{(pass ? "PASS" : "FAIL")}  점원 \"{c.clerk}\" / 들린 말 \"{c.heard}\" -> {result} [{layer}]" +
+                              (pass ? "" : $"  (기대 {c.expected})") + reply);
+            }
+            var msg = $"[ModeReportVerify] 어눌한 발음 해석 {ok}/{cases.Length}\n{sb}";
+            if (ok == cases.Length) Debug.Log(msg); else Debug.LogError(msg);
+        }
+
         // ===== 대화 모드 =====
         static void VerifyConversation(ReportDataService service, string outDir, Action<string, bool, string> check, StringBuilder report)
         {
