@@ -1,4 +1,5 @@
 #if UNITY_INCLUDE_TESTS
+using System.Collections.Generic;
 using Artti.AAC;
 using Artti.Training;
 using NUnit.Framework;
@@ -137,6 +138,97 @@ namespace Artti.EditorTests.Training
             Assert.That(ConvenienceQuickPhrasePolicy.TryMatchCandidate("무 주세여", "물 주세요", ItemCandidates, out match), Is.True);
             Assert.That(match, Is.EqualTo("물 주세요"));
         }
+
+        // 변경점: 상품 이름만 말해도(어눌해도) 그 상품 요청 문장으로. 추천 문장("물 주세요")으로 넘어가지 않는다
+        private static readonly string[] ProductCandidates =
+            { "물 주세요", "어디에 있어요?", "얼마예요?", "계산할게요", "감사합니다", "과자 주세요", "우유 주세요", "삼각김밥 주세요" };
+
+        [TestCase("과자", ExpectedResult = "과자 주세요")]
+        [TestCase("가자", ExpectedResult = "과자 주세요")]        // 어눌하게 한 글자 틀림
+        [TestCase("과자 주세여", ExpectedResult = "과자 주세요")]
+        [TestCase("우유", ExpectedResult = "우유 주세요")]
+        [TestCase("삼각김바", ExpectedResult = "삼각김밥 주세요")]
+        [TestCase("물", ExpectedResult = "물 주세요")]
+        public string TryMatchCandidate_ProductNameAlone(string recognized)
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.TryMatchCandidate(recognized, "물 주세요", ProductCandidates, out var match), Is.True);
+            return match;
+        }
+
+        [TestCase("네")]      // 한 글자 이름("물")은 똑같을 때만
+        [TestCase("뭘")]
+        public void TryMatchCandidate_OneLetterName_NeedsExactMatch(string recognized)
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.TryMatchCandidate(recognized, "물 주세요", ProductCandidates, out _), Is.False);
+        }
+
+        // 변경점: 어눌한 발음(자모 비교 + 헷갈리는 소리 반만 틀림). 단계별 화면 후보로 확인한다
+        private static readonly string[] GreetingCandidates =
+            { "물 주세요", "어디에 있어요?", "얼마예요?", "계산할게요", "감사합니다",
+              "생수 주세요", "삼각김밥 주세요", "컵라면 주세요", "과자 주세요", "초콜릿 주세요", "캔커피 주세요", "우유 주세요", "샌드위치 주세요" };
+        private static readonly string[] PayCandidates =
+            { "카드로 할게요", "현금으로 할게요", "얼마예요?", "계산할게요", "감사합니다" };
+
+        [TestCase("가자", ExpectedResult = "과자 주세요")]             // ㅘ -> ㅏ
+        [TestCase("꽈자 주세요", ExpectedResult = "과자 주세요")]       // ㄱ -> ㄲ
+        [TestCase("음 과자요", ExpectedResult = "과자 주세요")]         // 이름이 말 속에 들어 있음
+        [TestCase("초코릿 주떼요", ExpectedResult = "초콜릿 주세요")]   // 받침 빠짐, ㅅ -> ㄸ
+        [TestCase("컴나면 주세여", ExpectedResult = "컵라면 주세요")]   // 받침·초성 바뀜, ㅛ -> ㅕ
+        [TestCase("캥커피", ExpectedResult = "캔커피 주세요")]
+        [TestCase("새드위치", ExpectedResult = "샌드위치 주세요")]
+        [TestCase("얼마에요", ExpectedResult = "얼마예요?")]            // ㅖ -> ㅔ
+        [TestCase("게산 하께요", ExpectedResult = "계산할게요")]        // ㅖ -> ㅔ, 받침 빠짐
+        [TestCase("감사함니다", ExpectedResult = "감사합니다")]
+        [TestCase("어디 이써요", ExpectedResult = "어디에 있어요?")]
+        public string Slurred_GreetingStep(string recognized)
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.TryMatchCandidate(recognized, "물 주세요", GreetingCandidates, out var match), Is.True,
+                $"'{recognized}'를 못 알아들음");
+            return match;
+        }
+
+        [TestCase("가드로 할께요", ExpectedResult = "카드로 할게요")]    // ㅋ -> ㄱ, ㄱ -> ㄲ
+        [TestCase("카드요", ExpectedResult = "카드로 할게요")]
+        [TestCase("형그므로 하께요", ExpectedResult = "현금으로 할게요")]
+        public string Slurred_PayStep(string recognized)
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.TryMatchCandidate(recognized, "카드로 할게요", PayCandidates, out var match), Is.True,
+                $"'{recognized}'를 못 알아들음");
+            return match;
+        }
+
+        [TestCase("봉두 주떼요", ExpectedResult = "봉투 주세요")]
+        [TestCase("봉투 필요 업써요", ExpectedResult = "봉투 필요 없어요")]
+        public string Slurred_BagStep(string recognized)
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.TryMatchCandidate(recognized, "봉투 주세요", BagCandidates, out var match), Is.True);
+            return match;
+        }
+
+        [Test]
+        public void Slurred_SecondGuessOfRecognizer_IsUsed()
+        {
+            var options = new List<string> { "가다 주세요", "과자 주세요" };   // 첫 추측은 틀리고 두 번째가 맞음
+            Assert.That(ConvenienceQuickPhrasePolicy.TryMatchCandidate(options, "물 주세요", GreetingCandidates, out var match), Is.True);
+            Assert.That(match, Is.EqualTo("과자 주세요"));
+        }
+
+        [TestCase("오늘 날씨 좋네요")]   // 관계없는 말은 AI 판단·다시 묻기로 넘긴다
+        [TestCase("아아아아아아")]
+        [TestCase("네")]
+        public void Unrelated_IsLeftForAiOrRetry(string recognized)
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.TryMatchCandidate(recognized, "물 주세요", GreetingCandidates, out _), Is.False);
+        }
+
+        // 변경점: AI 판단 답 읽기 - 번호 / 0 = 알아들었지만 해당 없음(일상 대화) / X·이상한 답 = 모름
+        [TestCase("3", 5, ExpectedResult = 2)]
+        [TestCase(" 1\n", 5, ExpectedResult = 0)]
+        [TestCase("0", 5, ExpectedResult = GeminiDialogueService.PhraseNone)]
+        [TestCase("X", 5, ExpectedResult = GeminiDialogueService.PhraseUnclear)]
+        [TestCase("9", 5, ExpectedResult = GeminiDialogueService.PhraseUnclear)]
+        [TestCase(null, 5, ExpectedResult = GeminiDialogueService.PhraseUnclear)]
+        public int ParsePhraseMatch(string reply, int count) => GeminiDialogueService.ParsePhraseMatch(reply, count);
 
         [Test]
         public void ResolveConversationUtterance_NoTargetAndNoMatch_KeepsRecognized()

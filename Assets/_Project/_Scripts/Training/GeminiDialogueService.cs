@@ -90,41 +90,73 @@ namespace Artti.Training
             }
         }
 
+        // 변경점: 판단 결과 - 알아들었지만 어느 문장도 아님(일상 대화 등) / 무슨 말인지 모름(실패·키 없음 포함)
+        public const int PhraseNone = -1;
+        public const int PhraseUnclear = -2;
+
         // 대화 모드 AI 판단: 인식된 말이 후보 문장 중 어느 것과 같은 뜻인지 고른다.
-        //   반환: 후보 인덱스(0부터). 같은 뜻이 없거나 실패·키없음이면 -1. 취소(OperationCanceledException)는 호출 측으로 전파.
+        //   반환: 후보 인덱스(0부터), PhraseNone(알아들었지만 해당 없음: 일상 대화), PhraseUnclear(모름·실패·키없음).
+        //   취소(OperationCanceledException)는 호출 측으로 전파.
+        // 변경점: clerkLine = 점원이 방금 한 말(맥락: "봉투 필요하세요?"에 "아뇨" -> "봉투 필요 없어요"),
+        //   alternatives = 인식기의 다른 추측들(어눌한 말일수록 두세 번째 추측이 맞을 때가 많다).
+        //   예전에는 일상 대화도 '해당 없음'과 '모름'을 구분하지 않아 "잘 못 들었어요" 뒤 추천 문장("물 주세요")으로 넘어갔다.
         public async UniTask<int> RequestPhraseMatchAsync(
             string heard,
             IReadOnlyList<string> candidates,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            string clerkLine = null,
+            IReadOnlyList<string> alternatives = null)
         {
-            if (string.IsNullOrWhiteSpace(heard) || candidates == null || candidates.Count == 0) return -1;
+            if (string.IsNullOrWhiteSpace(heard) || candidates == null || candidates.Count == 0) return PhraseUnclear;
 
             const string systemPrompt =
                 "You match what a Korean customer said to one of the given Korean phrases by meaning. " +
-                "The text comes from speech recognition of a person with a developmental disability, so it may be misspelled or garbled. " +
-                "Reply with only the number of the phrase that has the same meaning, or 0 if none match. No other text.";
+                "The text comes from speech recognition of a person with a developmental disability, so it may be misspelled, garbled, " +
+                "cut short, or have similar-sounding consonants and vowels swapped (e.g. 가자 for 과자, 봉두 for 봉투, 하께요 for 할게요). " +
+                "Use the clerk's last line as context: a short reply like 네 or 아뇨 can match the phrase that answers it. " +
+                "Other recognition guesses may also be given; any of them may be the right one. " +
+                "Reply with only one of these: the number of the phrase that has the same meaning; " +
+                "0 if you understand what the customer meant but it matches none of the phrases (for example small talk or another topic); " +
+                "X if you cannot tell what the customer said. No other text.";
 
             var sb = new StringBuilder();
-            sb.Append("Customer said: \"").Append(heard).Append("\"\nPhrases:\n");
+            if (!string.IsNullOrWhiteSpace(clerkLine))
+                sb.Append("Clerk just said: \"").Append(clerkLine.Replace('\n', ' ')).Append("\"\n");
+            sb.Append("Customer said: \"").Append(heard).Append("\"\n");
+            if (alternatives != null && alternatives.Count > 0)
+            {
+                sb.Append("Other recognition guesses:");
+                foreach (var alt in alternatives)
+                    if (!string.IsNullOrWhiteSpace(alt)) sb.Append(" \"").Append(alt).Append('"');
+                sb.Append('\n');
+            }
+            sb.Append("Phrases:\n");
             for (int i = 0; i < candidates.Count; i++)
                 sb.Append(i + 1).Append(". ").Append(candidates[i]).Append('\n');
 
             var raw = await SendAsync(BuildBody(systemPrompt, sb.ToString()), ct);
-            if (raw == null) return -1;
+            if (raw == null) return PhraseUnclear;
 
             try
             {
                 var parts = JObject.Parse(raw)["candidates"]?[0]?["content"]?["parts"] as JArray;
                 var text = parts?.Select(p => p["text"]?.ToString()).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
-                var digits = new string((text ?? string.Empty).Where(char.IsDigit).ToArray());
-                if (!int.TryParse(digits, out var number)) return -1;
-                return number >= 1 && number <= candidates.Count ? number - 1 : -1;
+                return ParsePhraseMatch(text, candidates.Count);
             }
             catch (Exception e)
             {
                 Debug.LogError($"[Gemini] 문장 판단 파싱 실패: {e.Message}\n{raw}");
-                return -1;
+                return PhraseUnclear;
             }
+        }
+
+        // "3" -> 2, "0" -> PhraseNone, "X"·이상한 답 -> PhraseUnclear
+        public static int ParsePhraseMatch(string text, int candidateCount)
+        {
+            var digits = new string((text ?? string.Empty).Where(char.IsDigit).ToArray());
+            if (!int.TryParse(digits, out var number)) return PhraseUnclear;
+            if (number == 0) return PhraseNone;
+            return number <= candidateCount ? number - 1 : PhraseUnclear;
         }
 
         // system_instruction + contents 공통 골격.

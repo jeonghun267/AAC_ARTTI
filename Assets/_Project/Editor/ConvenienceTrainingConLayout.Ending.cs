@@ -28,7 +28,7 @@ namespace Artti.Editor
         const string ConfettiDir = "Assets/_Project/Art/UI/Training/Completion/";
         static readonly Vector2 EndingSize = new Vector2(1448f, 1086f);
 
-        // 무대에서 꼭 보여야 하는 영역(시안 px): 위 버튼 ~ 아래 버튼, 다시 연습 왼쪽 끝 ~ 기록 판 오른쪽 끝
+        // 무대에서 꼭 보여야 하는 영역(시안 px): 위 버튼 ~ 아래 버튼, 응원 손글씨(시안의 다시 연습 왼쪽 끝) ~ 기록 판 오른쪽 끝
         static readonly Rect EndingSafe = Rect.MinMaxRect(252f, 14f, 1416f, 998f);
         static readonly Vector2 EndingFocus = new Vector2(0.5f, 0.55f);   // 폰에서 잘릴 때 위(점원 얼굴·간판)를 조금 더 남긴다
 
@@ -62,16 +62,15 @@ namespace Artti.Editor
         static readonly Rect RecordTitleRel = Rect.MinMaxRect(0.40f, 0.18f, 0.95f, 0.30f);
 
         // 버튼(2172x724). 몸통 = 밝은 테두리 상자. 시안 자리는 높이 기준, 가로는 상자 가운데에
+        // 시안의 다음 시나리오(7)·종료하기(9)는 쓰지 않는다(2026-10-03 사용자 요청으로 뺌).
+        // 남은 다시 연습·메인으로는 크기 그대로, 간격 24로 기록 판 3개 줄 가운데(x 952) 밑에 둔다.
         static readonly Vector2 ButtonPng = new Vector2(2172f, 724f);
         static readonly Rect RetryBody = Rect.MinMaxRect(420f, 183f, 1753f, 534f);
-        static readonly Rect NextBody = Rect.MinMaxRect(258f, 166f, 1917f, 550f);
         static readonly Rect HomeBody = Rect.MinMaxRect(417f, 162f, 1756f, 551f);
-        static readonly Rect QuitBody = Rect.MinMaxRect(223f, 114f, 1950f, 605f);
         static readonly Rect ReportBody = Rect.MinMaxRect(340f, 153f, 1832f, 576f);
-        static readonly Rect RetryBox = Rect.MinMaxRect(262f, 915f, 538f, 988f);
-        static readonly Rect NextBox = Rect.MinMaxRect(552f, 910f, 897f, 990f);
-        static readonly Rect HomeBox = Rect.MinMaxRect(915f, 915f, 1170f, 988f);
-        const float TopButtonY0 = 22f, TopButtonY1 = 80f, TopButtonRight = 1407f, TopButtonGap = 14f;
+        static readonly Rect RetryBox = Rect.MinMaxRect(674.5f, 915f, 950.5f, 988f);
+        static readonly Rect HomeBox = Rect.MinMaxRect(974.5f, 915f, 1229.5f, 988f);
+        const float TopButtonY0 = 22f, TopButtonY1 = 80f, TopButtonRight = 1407f;
 
         // 제목(title.png 1997x689, 글자 몸통 (90,270)-(1907,599)) -> 시안 글자 상자 가로 662~1140, 세로 가운데 187
         static readonly Vector2 TitlePng = new Vector2(1997f, 689f);
@@ -218,13 +217,9 @@ namespace Artti.Editor
 
             // 버튼
             var retry = EndButton("RetryButton", stage, EndDir + "6.png", RetryBody, RetryBox);
-            var next = EndButton("NextScenarioButton", stage, EndDir + "7.png", NextBody, NextBox);
             var home = EndButton("HomeButton", stage, EndDir + "8.png", HomeBody, HomeBox);
             float reportW = ReportBody.width * (TopButtonY1 - TopButtonY0) / ReportBody.height;
-            float quitW = QuitBody.width * (TopButtonY1 - TopButtonY0) / QuitBody.height;
             var reportBox = Rect.MinMaxRect(TopButtonRight - reportW, TopButtonY0, TopButtonRight, TopButtonY1);
-            var quitBox = Rect.MinMaxRect(reportBox.xMin - TopButtonGap - quitW, TopButtonY0, reportBox.xMin - TopButtonGap, TopButtonY1);
-            var quit = EndButton("QuitButton", stage, EndDir + "9.png", QuitBody, quitBox);
             var report = EndButton("ReportButton", stage, EndDir + "10.png", ReportBody, reportBox);
 
             // HUD 연결
@@ -252,10 +247,10 @@ namespace Artti.Editor
                 so.FindProperty("completionRecordHeadline").objectReferenceValue = recordHeadline;
                 so.FindProperty("completionRecordNote").objectReferenceValue = recordNote;
                 so.FindProperty("retryBtn").objectReferenceValue = retry;
-                so.FindProperty("hubBtn").objectReferenceValue = next;
+                so.FindProperty("hubBtn").objectReferenceValue = null;   // 다음 시나리오 버튼 없음
                 so.FindProperty("homeBtn").objectReferenceValue = home;
                 so.FindProperty("completionReportBtn").objectReferenceValue = report;
-                so.FindProperty("completionQuitBtn").objectReferenceValue = quit;
+                so.FindProperty("completionQuitBtn").objectReferenceValue = null;   // 종료하기 버튼 없음
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
             else Debug.LogWarning("[ConvenienceTrainingConLayout] ConvenienceHudView 없음 — 완료 화면을 연결하지 못했다");
