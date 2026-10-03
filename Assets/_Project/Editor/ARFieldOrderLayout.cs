@@ -12,14 +12,15 @@ namespace Artti.Editor
 {
     // AR 현장모드 주문하기 화면(ARFieldScene / Canvas/OrderPanel)을 주문하기 시안(1672x941, 한 화면)처럼 바꾼다.
     //   예전: 온도(TempPanel) -> 음료(MenuPanel) -> 사이즈(SizePanel)를 한 화면씩 넘기고, 사이즈를 고르면 바로 말했다.
-    //   지금: 큰 틀 안에 1 온도 / 2 메뉴 / 3 사이즈 + '주문 완료하기'를 한 화면에 두고, 아래에 문장 직접 입력 줄을 둔다.
+    //   지금: 큰 틀 안에 1 사이즈 / 2 메뉴 / 3 온도 + '주문 완료하기'를 한 화면에 두고, 아래에 문장 직접 입력 줄을 둔다.
+    //         변경점: 온도는 따뜻한/차가운 둘(미지근한 Mild는 끔). 메뉴는 도움 화면 최신 메뉴(사진/이름)를 가로 스크롤 카드로
+    //         (OrderMenuListView가 실행 중에 채움). 예전 고정 음료 버튼(Drink*)은 끄고, 그 글은 메뉴를 모르는 가게용으로 둔다.
     //         OrderManager.singlePage를 켜서 고른 카드만 선택 표시(OrderChoiceView)하고 '주문 완료하기'에서 주문 문장을 말한다.
     // OrderPanel은 손배치 씬이라 다시 만들지 않는다. 버튼(Hot/Ice/Mild, Drink*, Small/Medium/Large, Back)은 OnClick 연결째 새 자리로 옮기고,
     // 예전 단계 패널/장식은 지우지 않고 끈다.
     //   보드: 시안 px 그대로(OrderBoard, 1672x941). BoardFitter(fillSafeRect)가 큰 틀을 여백 32px만 남기고 화면에 맞춘다.
     //   그림: Art_Source/ui_arfield/make_order_art.py(카드 유리/배지/버튼), 입력 줄은 도움 화면 TextInputArea를 복제.
-    //   음료 아이콘: Generated/ui_order_icon_drink_<americano|latte|cappuccino|orange|lemonade|choco>.png가 있으면 쓰고,
-    //               없으면 임시 아이콘(네온 컵). 배경: Generated/ui_order_background_cafe.png가 있으면 쓰고 없으면 ui_aac_background_neon.
+    //   메뉴 사진이 없는 메뉴는 임시 아이콘(네온 컵). 배경: Generated/ui_order_background_cafe.png가 있으면 쓰고 없으면 ui_aac_background_neon.
     // 여러 번 실행해도 같은 결과가 되게(새로 만든 오브젝트는 이름으로 다시 찾는다) 만들었다.
     public static class ARFieldOrderLayout
     {
@@ -37,7 +38,6 @@ namespace Artti.Editor
         const string TitleIconPath = Derived + "ui_order_title_icon.png";
         const string ArrowIconPath = Derived + "ui_order_icon_back.png";
         const string DrinkPlaceholderPath = Derived + "ui_helpdetail_icon_coffee.png";
-        const string DrinkIconFormat = Generated + "ui_order_icon_drink_{0}.png";
 
         // ===== 9-slice 그림 규격 (make_order_art.py와 같은 값, 그림 px. 보드에는 Image.pixelsPerUnitMultiplier=2로 절반 크기) =====
         const float GlassBorderPx = 88f, GlassGlow9 = 10f;     // 카드: 가장자리 88px, 테두리 선 밖 빛 10(보드)
@@ -66,32 +66,34 @@ namespace Artti.Editor
         const string SubtitleText = "원하는 음료를 선택하고, 나만의 한 잔을 주문해보세요.";
 
         // 단계 틀(테두리 선), 번호 배지, 단계 제목
+        // 변경점: 1 사이즈 / 2 메뉴 / 3 온도(+ 주문 완료). 메뉴 칸은 사진이 들어가 가장 높게(1·3은 155.5, 2는 267.5, 사이 15.5)
         static readonly Rect[] SectionLines =
         {
-            Rect.MinMaxRect(167f, 191f, 1507f, 394.5f),
-            Rect.MinMaxRect(167f, 410f, 1507f, 629.5f),
+            Rect.MinMaxRect(167f, 191f, 1507f, 346.5f),
+            Rect.MinMaxRect(167f, 362f, 1507f, 629.5f),
             Rect.MinMaxRect(167f, 645f, 1507f, 800.5f),
         };
-        static readonly string[] SectionTitles = { "온도를 골라주세요", "메뉴를 선택해주세요", "사이즈를 골라주세요" };
+        static readonly string[] SectionTitles = { "사이즈를 골라주세요", "메뉴를 선택해주세요", "온도를 골라주세요" };
         static readonly Vector2 BadgeOffset = new Vector2(32f, 3.5f);   // 단계 틀 좌상단 -> 배지 좌상단
         static readonly Vector2 BadgeSize = new Vector2(57.5f, 37f);
         const float SectionTitleX = 280f;
 
-        // 1 온도: 카드 테두리 선(보드 px), 카드 안 아이콘 가운데/보이는 높이, 글 칸(카드 좌상단 기준)
-        static readonly Rect[] TempCards = { Rect.MinMaxRect(200f, 242.5f, 613f, 385f), Rect.MinMaxRect(632f, 242.5f, 1041f, 385f), Rect.MinMaxRect(1061f, 242.5f, 1477f, 385f) };
-        static readonly Vector2 TempIconCenter = new Vector2(147f, 71f);
-        const float TempIconHeight = 118f;
-        static readonly Rect TempTextBox = Rect.MinMaxRect(205f, 0f, 375f, 142.5f);
-        // 2 메뉴: 여섯 칸(198 ~ 1479, 사이 14)
-        const float MenuX0 = 198f, MenuX1 = 1479f, MenuGap = 14f, MenuY0 = 463.5f, MenuY1 = 621f;
-        static readonly Vector2 MenuIconCenter = new Vector2(101f, 64f);
-        const float MenuIconHeight = 100f;
-        static readonly Rect MenuTextBox = Rect.MinMaxRect(4f, 116f, 198f, 154f);
-        // 3 사이즈 + 주문 완료
-        static readonly Rect[] SizeCards = { Rect.MinMaxRect(198f, 688f, 487f, 795f), Rect.MinMaxRect(502f, 688f, 791f, 795f), Rect.MinMaxRect(806f, 688f, 1097f, 795f) };
+        // 1 사이즈: 카드 테두리 선(보드 px, 198 ~ 1479 세 칸, 사이 18), 카드 안 아이콘 가운데/보이는 높이, 글 칸(카드 좌상단 기준)
+        static readonly Rect[] SizeCards = { Rect.MinMaxRect(198f, 234f, 613f, 341f), Rect.MinMaxRect(631f, 234f, 1046f, 341f), Rect.MinMaxRect(1064f, 234f, 1479f, 341f) };
         static readonly float[] SizeIconHeights = { 78f, 87f, 92f };   // 작게 < 보통 < 크게
-        static readonly Vector2 SizeIconCenter = new Vector2(107f, 56f);
-        static readonly Rect SizeTextBox = Rect.MinMaxRect(140f, 0f, 248f, 107f);
+        static readonly Vector2 SizeIconCenter = new Vector2(150f, 53.5f);
+        static readonly Rect SizeTextBox = Rect.MinMaxRect(200f, 0f, 330f, 107f);
+        // 2 메뉴: 가로 스크롤(보이는 칸 184 ~ 1490). 카드 선 190 x 205.5, 사이 16(6장 남짓 보이고 나머지는 밀어서).
+        //   카드 안(카드 선 좌상단 기준): 둥근 정사각형 사진, 아래 이름(두 줄까지, 넘치면 글자를 줄임)
+        const float MenuViewX0 = 184f, MenuViewX1 = 1490f, MenuFirstX = 198f, MenuY0 = 415.5f, MenuY1 = 621f;
+        const float MenuCardW = 190f, MenuCardGap = 16f, MenuPhotoRadius = 16f;
+        static readonly Rect MenuPhotoBox = new Rect(31f, 10f, 128f, 128f);
+        static readonly Rect MenuTextBox = Rect.MinMaxRect(6f, 142f, 184f, 201f);
+        // 3 온도(따뜻한/차가운, 198 ~ 1097 두 칸, 사이 16) + 주문 완료
+        static readonly Rect[] TempCards = { Rect.MinMaxRect(198f, 688f, 639.5f, 795f), Rect.MinMaxRect(655.5f, 688f, 1097f, 795f) };
+        static readonly Vector2 TempIconCenter = new Vector2(150f, 53.5f);
+        const float TempIconHeight = 88f;
+        static readonly Rect TempTextBox = Rect.MinMaxRect(205f, 0f, 375f, 107f);
         static readonly Rect CompleteLine = Rect.MinMaxRect(1134f, 706f, 1485f, 784f);
         static readonly Rect CompleteTextBox = Rect.MinMaxRect(1180f, 706f, 1410f, 784f);
         static readonly Vector2 CompleteArrowCenter = new Vector2(1436f, 745f);
@@ -101,22 +103,19 @@ namespace Artti.Editor
 
         // ===== 글자 (보드 px) =====
         const float TitleSize = 80f, SubtitleSize = 24f, BadgeTextSize = 26f, SectionTitleSize = 30f;
-        const float TempTextSize = 38f, MenuTextSize = 25f, SizeTextSize = 32f, CompleteTextSize = 30f;
+        const float TempTextSize = 36f, MenuTextSize = 24f, MenuTextMin = 16f, SizeTextSize = 34f, CompleteTextSize = 30f;
         static readonly Color TextWhite = new Color(0.97f, 0.98f, 1f, 1f);
         static readonly Color TextSub = new Color(0.86f, 0.9f, 1f, 0.95f);
 
         // 버튼 이름 -> (아이콘, 보이는 글). 변경점: 카드는 모두 같은 파란 유리(GlassBlue), 고르면 빛 테두리만 켜진다.
-        static readonly Dictionary<string, (string icon, string label)> Temps = new Dictionary<string, (string, string)>
+        // 변경점: 미지근한(Mild) 버튼은 끈다(지우지 않음, OnClick 연결 그대로)
+        static readonly (string name, string icon, string label)[] Temps =
         {
-            { "Hot", (Generated + "ui_order_icon_warm.png", "따뜻한") },
-            { "Ice", (Generated + "ui_order_icon_cold.png", "차가운") },
-            { "Mild", (Generated + "ui_order_icon_mild.png", "미지근한") },
+            ("Hot", Generated + "ui_order_icon_warm.png", "따뜻한"),
+            ("Ice", Generated + "ui_order_icon_cold.png", "차가운"),
         };
-        static readonly (string name, string key)[] Drinks =
-        {
-            ("DrinkAmericano", "americano"), ("DrinkLatte", "latte"), ("DrinkCappuccino", "cappuccino"),
-            ("DrinkOrange", "orange"), ("DrinkLemonade", "lemonade"), ("DrinkChoco", "choco"),
-        };
+        // 예전 고정 음료 버튼(끈다). OnClick 글은 메뉴를 모르는 가게용 메뉴(OrderMenuListView.fallbackMenus)로 옮긴다.
+        static readonly string[] OldDrinkButtons = { "DrinkAmericano", "DrinkLatte", "DrinkCappuccino", "DrinkOrange", "DrinkLemonade", "DrinkChoco" };
         static readonly (string name, string icon, string label)[] Sizes =
         {
             ("Small", Generated + "ui_order_size_icon_small.png", "작게"),
@@ -192,33 +191,23 @@ namespace Artti.Editor
             var sections = new RectTransform[3];
             for (int i = 0; i < 3; i++) sections[i] = Section(board, i, font);
 
-            // 1 온도
-            for (int i = 0; i < 3; i++)
-            {
-                string name = i == 0 ? "Hot" : i == 1 ? "Ice" : "Mild";
-                if (!buttons.TryGetValue(name, out var card)) { Debug.LogError($"[ARFieldOrderLayout] {name} 버튼 없음"); return; }
-                var t = Temps[name];
-                Choice(card, sections[0], TempCards[i], OrderChoiceGroup.Temperature, t.icon, TempIconCenter, TempIconHeight, TempTextBox, t.label, TempTextSize, font);
-            }
-            // 2 메뉴
-            float menuW = (MenuX1 - MenuX0 - MenuGap * (Drinks.Length - 1)) / Drinks.Length;
-            var missingDrinks = new List<string>();
-            for (int i = 0; i < Drinks.Length; i++)
-            {
-                if (!buttons.TryGetValue(Drinks[i].name, out var card)) { Debug.LogError($"[ARFieldOrderLayout] {Drinks[i].name} 버튼 없음"); return; }
-                string icon = string.Format(DrinkIconFormat, Drinks[i].key);
-                if (!File.Exists(icon)) { missingDrinks.Add(Path.GetFileName(icon)); icon = DrinkPlaceholderPath; }
-                float x = MenuX0 + i * (menuW + MenuGap);
-                Choice(card, sections[1], Rect.MinMaxRect(x, MenuY0, x + menuW, MenuY1), OrderChoiceGroup.Drink,
-                    icon, MenuIconCenter, MenuIconHeight, MenuTextBox, null, MenuTextSize, font);
-            }
-            // 3 사이즈 + 주문 완료
+            // 1 사이즈
             for (int i = 0; i < Sizes.Length; i++)
             {
                 if (!buttons.TryGetValue(Sizes[i].name, out var card)) { Debug.LogError($"[ARFieldOrderLayout] {Sizes[i].name} 버튼 없음"); return; }
-                Choice(card, sections[2], SizeCards[i], OrderChoiceGroup.Size,
+                Choice(card, sections[0], SizeCards[i], OrderChoiceGroup.Size,
                     Sizes[i].icon, SizeIconCenter, SizeIconHeights[i], SizeTextBox, Sizes[i].label, SizeTextSize, font);
             }
+            // 2 메뉴: 도움 화면 최신 메뉴(사진/이름)를 실행 중에 카드로 채운다
+            var menuList = MenuList(sections[1], buttons, font);
+            // 3 온도 + 주문 완료
+            for (int i = 0; i < Temps.Length; i++)
+            {
+                if (!buttons.TryGetValue(Temps[i].name, out var card)) { Debug.LogError($"[ARFieldOrderLayout] {Temps[i].name} 버튼 없음"); return; }
+                Choice(card, sections[2], TempCards[i], OrderChoiceGroup.Temperature,
+                    Temps[i].icon, TempIconCenter, TempIconHeight, TempTextBox, Temps[i].label, TempTextSize, font);
+            }
+            if (buttons.TryGetValue("Mild", out var mild)) mild.gameObject.SetActive(false);
             var complete = CompleteButton(sections[2], font);
 
             // ===== 문장 직접 입력 줄(도움 화면 TextInputArea 복제) =====
@@ -242,13 +231,13 @@ namespace Artti.Editor
             var so = new SerializedObject(manager);
             so.FindProperty("singlePage").boolValue = true;
             so.FindProperty("completeButton").objectReferenceValue = complete;
+            so.FindProperty("menuList").objectReferenceValue = menuList;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
-            Debug.Log("[ARFieldOrderLayout] 완료 - 주문하기를 한 화면 시안으로 맞춤(버튼 OnClick 연결 그대로)" +
-                      (cafe ? "" : $"\n  배경: {Path.GetFileName(CafeBackgroundPath)} 없음 -> 네온 도시 배경 사용") +
-                      (missingDrinks.Count == 0 ? "" : $"\n  음료 아이콘 없음 -> 임시 아이콘 사용: {string.Join(", ", missingDrinks)}"));
+            Debug.Log("[ARFieldOrderLayout] 완료 - 주문하기를 한 화면 시안으로 맞춤(1 사이즈 / 2 메뉴 / 3 온도, 버튼 OnClick 연결 그대로)" +
+                      (cafe ? "" : $"\n  배경: {Path.GetFileName(CafeBackgroundPath)} 없음 -> 네온 도시 배경 사용"));
         }
 
         // 단계 틀 하나: Frame(9-slice) + Badge(번호) + Title. 컨테이너 자리 = 틀 그림 자리(선 + 바깥 빛)
@@ -328,6 +317,155 @@ namespace Artti.Editor
             so.FindProperty("selectedSprite").objectReferenceValue = null;   // 고르면 색은 그대로, 빛 테두리(SelectedGlow)만
             so.FindProperty("selectedGlow").objectReferenceValue = glow.gameObject;
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 2 메뉴 칸: MenuScroll(가로 ScrollRect, 보이는 칸) > MenuContent(HorizontalLayoutGroup) > MenuCardTemplate(꺼 둠).
+        //   카드는 실행 중에 OrderMenuListView가 도움 화면 최신 메뉴(LatestMenuController)로 복제해 채운다.
+        static OrderMenuListView MenuList(RectTransform section, Dictionary<string, RectTransform> buttons, TMP_FontAsset font)
+        {
+            var sectionRect = new Rect(section.anchoredPosition.x, -section.anchoredPosition.y, section.sizeDelta.x, section.sizeDelta.y);
+            var viewRect = Rect.MinMaxRect(MenuViewX0, MenuY0 - GlassGlow9, MenuViewX1, MenuY1 + GlassGlow9);
+            var view = (RectTransform)section.Find("MenuScroll") ?? NewRect("MenuScroll", section);
+            Place(view, section, viewRect, sectionRect);
+            view.gameObject.SetActive(true);
+            var hit = GetOrAdd<Image>(view);   // 카드 사이/빈 곳을 끌어도 스크롤되게 투명 Image
+            hit.sprite = null;
+            hit.color = new Color(1f, 1f, 1f, 0f);
+            hit.raycastTarget = true;
+            GetOrAdd<RectMask2D>(view).softness = new Vector2Int(16, 0);
+
+            var content = (RectTransform)view.Find("MenuContent") ?? NewRect("MenuContent", view);
+            content.anchorMin = Vector2.zero;
+            content.anchorMax = new Vector2(0f, 1f);
+            content.pivot = new Vector2(0f, 0.5f);
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta = new Vector2(viewRect.width, 0f);
+            content.localScale = Vector3.one;
+            var layout = GetOrAdd<HorizontalLayoutGroup>(content);
+            int pad = Mathf.RoundToInt(MenuFirstX - GlassGlow9 - MenuViewX0);   // 첫/끝 카드의 빛 번짐까지 보이게
+            layout.padding = new RectOffset(pad, pad, 0, 0);
+            layout.spacing = MenuCardGap - 2f * GlassGlow9;   // 카드 칸은 빛 번짐(양쪽 10)까지 커서, 카드 선 사이가 MenuCardGap
+            layout.childAlignment = TextAnchor.MiddleLeft;
+            layout.childControlWidth = layout.childControlHeight = false;
+            layout.childForceExpandWidth = layout.childForceExpandHeight = false;
+            var fitter = GetOrAdd<ContentSizeFitter>(content);
+            fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;   // 보이는 카드 수만큼만 길어진다
+            fitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+
+            var scroll = GetOrAdd<ScrollRect>(view);
+            scroll.viewport = view;
+            scroll.content = content;
+            scroll.horizontal = true;
+            scroll.vertical = false;
+            scroll.movementType = ScrollRect.MovementType.Elastic;
+            scroll.elasticity = 0.1f;
+            scroll.inertia = true;
+            scroll.decelerationRate = 0.135f;
+            scroll.scrollSensitivity = 30f;
+            scroll.horizontalScrollbar = null;
+            scroll.verticalScrollbar = null;
+            EditorUtility.SetDirty(scroll);
+
+            var template = MenuCardTemplate(content, font);
+
+            // 예전 고정 음료 버튼은 끄고(지우지 않음), OnClick 글은 메뉴를 모르는 가게용으로
+            var fallback = new List<string>();
+            foreach (var name in OldDrinkButtons)
+            {
+                if (!buttons.TryGetValue(name, out var old)) continue;
+                string value = FixClickArgument(old.GetComponent<Button>());
+                if (value.Length > 0) fallback.Add(value);
+                old.gameObject.SetActive(false);
+            }
+
+            var list = GetOrAdd<OrderMenuListView>(view);
+            var latest = Object.FindFirstObjectByType<LatestMenuController>(FindObjectsInactive.Include);
+            if (latest == null) Debug.LogWarning("[ARFieldOrderLayout] LatestMenuController 없음 - 메뉴 칸에는 예전 고정 음료만 보임");
+            var so = new SerializedObject(list);
+            so.FindProperty("latestMenu").objectReferenceValue = latest;
+            so.FindProperty("scroll").objectReferenceValue = scroll;
+            so.FindProperty("content").objectReferenceValue = content;
+            so.FindProperty("template").objectReferenceValue = template;
+            so.FindProperty("placeholderImage").objectReferenceValue = LoadSprite(DrinkPlaceholderPath, 256);
+            var menus = so.FindProperty("fallbackMenus");
+            if (menus.arraySize == 0)   // Inspector에서 고친 목록은 다시 실행해도 그대로
+            {
+                menus.arraySize = fallback.Count;
+                for (int i = 0; i < fallback.Count; i++)
+                {
+                    var e = menus.GetArrayElementAtIndex(i);
+                    e.FindPropertyRelative("menuName").stringValue = fallback[i];
+                    e.FindPropertyRelative("description").stringValue = string.Empty;
+                    e.FindPropertyRelative("price").stringValue = string.Empty;
+                    e.FindPropertyRelative("image").objectReferenceValue = null;
+                }
+            }
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return list;
+        }
+
+        // 메뉴 카드 하나(꺼 둠): 파란 유리 바탕 + Button + 둥근 사진 칸(PhotoMask/Photo) + 이름(Label) + 선택 빛 테두리.
+        //   카드 칸 = 카드 선 + 빛 번짐(GlassGlow9). 사진/이름 자리는 카드 선 좌상단 기준(MenuPhotoBox/MenuTextBox).
+        //   사진은 둥근 칸을 꽉 채우고 넘치는 쪽을 자른다(AspectRatioFitter EnvelopeParent, 비율은 OrderChoiceView.Bind가 맞춤).
+        static OrderChoiceView MenuCardTemplate(RectTransform content, TMP_FontAsset font)
+        {
+            var line = new Rect(0f, 0f, MenuCardW, MenuY1 - MenuY0);
+            var rect = Expand(line, GlassGlow9);
+            var card = (RectTransform)content.Find("MenuCardTemplate") ?? NewRect("MenuCardTemplate", content);
+            Place(card, content, rect, rect);
+            card.SetAsFirstSibling();
+            var bg = SlicedImage(card, GlassBlue, GlassBorderPx);
+            bg.raycastTarget = true;
+            var button = GetOrAdd<Button>(card);
+            button.transition = Selectable.Transition.ColorTint;
+            button.targetGraphic = bg;
+            EditorUtility.SetDirty(button);
+
+            var mask = (RectTransform)card.Find("PhotoMask") ?? NewRect("PhotoMask", card);
+            Place(mask, card, MenuPhotoBox, rect);
+            ARFieldHelpDetailLayout.RoundedMask(mask, MenuPhotoRadius);
+            var photo = (RectTransform)mask.Find("Photo") ?? NewRect("Photo", mask);
+            Stretch(photo);
+            var photoImg = GetOrAdd<Image>(photo);
+            photoImg.sprite = LoadSprite(DrinkPlaceholderPath, 256);
+            photoImg.type = Image.Type.Simple;
+            photoImg.preserveAspect = false;
+            photoImg.color = Color.white;
+            photoImg.raycastTarget = false;
+            var aspect = GetOrAdd<AspectRatioFitter>(photo);
+            aspect.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            aspect.aspectRatio = 1f;
+
+            var label = (RectTransform)card.Find("Label") ?? NewText("Label", card, font);
+            Place(label, card, MenuTextBox, rect);
+            var tmp = Style(label, MenuTextSize, true, TextWhite, TextAlignmentOptions.Center);
+            tmp.text = "메뉴";
+            tmp.textWrappingMode = TextWrappingModes.Normal;   // 긴 이름은 두 줄, 그래도 넘치면 글자를 줄인다
+            tmp.enableAutoSizing = true;
+            tmp.fontSizeMin = MenuTextMin;
+            tmp.fontSizeMax = MenuTextSize;
+
+            var glow = (RectTransform)card.Find("SelectedGlow") ?? NewRect("SelectedGlow", card);
+            Place(glow, card, rect, rect);
+            var glowImg = SlicedImage(glow, GlassGlow, GlassBorderPx);
+            glowImg.raycastTarget = false;
+            glow.SetAsLastSibling();
+            glow.gameObject.SetActive(false);
+
+            var view = GetOrAdd<OrderChoiceView>(card);
+            var so = new SerializedObject(view);
+            so.FindProperty("group").enumValueIndex = (int)OrderChoiceGroup.Drink;
+            so.FindProperty("value").stringValue = string.Empty;
+            so.FindProperty("background").objectReferenceValue = bg;
+            so.FindProperty("normalSprite").objectReferenceValue = bg.sprite;
+            so.FindProperty("selectedSprite").objectReferenceValue = null;
+            so.FindProperty("selectedGlow").objectReferenceValue = glow.gameObject;
+            so.FindProperty("label").objectReferenceValue = tmp;
+            so.FindProperty("photo").objectReferenceValue = photoImg;
+            so.FindProperty("photoFitter").objectReferenceValue = aspect;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            card.gameObject.SetActive(false);
+            return view;
         }
 
         // 버튼 OnClick이 OrderManager에 넘기는 글(예: "따뜻한"). 앞뒤 빈칸이 있으면 지워 저장한다("중간 " -> "중간").
@@ -500,7 +638,7 @@ namespace Artti.Editor
             return t;
         }
 
-        // 주문 화면은 실행 중에만 켜진다. 켜고 '따뜻한' / '아메리카노' / '크게'를 고른 모양으로 태블릿·폰·16:9로 찍는다. 씬은 저장하지 않는다.
+        // 주문 화면은 실행 중에만 켜진다. 켜고 메가커피 메뉴로 채운 뒤 '크게' / 첫 메뉴 / '따뜻한'을 고른 모양으로 태블릿·폰·16:9로 찍는다. 씬은 저장하지 않는다.
         [MenuItem("Artti/Debug/Capture ARField Order - Tab + Phone + 16x9")]
         static void CaptureOrder()
         {
@@ -518,8 +656,15 @@ namespace Artti.Editor
                     if (panel == null) { Debug.LogError("[ARFieldOrderLayout] Canvas/OrderPanel 없음"); return; }
                     foreach (Transform sib in panel.parent)
                         if (sib is RectTransform) sib.gameObject.SetActive(sib == panel);
+                    var menuList = panel.GetComponentInChildren<OrderMenuListView>(true);
+                    string firstMenu = null;
+                    if (menuList != null)
+                    {
+                        menuList.Rebuild(null, LatestMenuController.MegaCoffeeBrand);
+                        firstMenu = menuList.FirstValue;
+                    }
                     foreach (var view in panel.GetComponentsInChildren<OrderChoiceView>(true))
-                        view.SetSelected(view.Value == "따뜻한" || view.Value == "아메리카노" || view.Value == "큰");
+                        view.SetSelected(view.Value == "따뜻한" || view.Value == "큰" || (firstMenu != null && view.Value == firstMenu));
                     string file = Path.Combine(outDir, $"{tag}_ARFieldOrder.png");
                     DeviceLayoutCapture.CaptureActiveScene(w, h, file);
                     DeviceLayoutCapture.CaptureActiveScene(w, h, file);   // 첫 번은 캔버스 크기 맞추기

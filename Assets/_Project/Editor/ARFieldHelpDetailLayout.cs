@@ -508,7 +508,7 @@ namespace Artti.Editor
         }
 
         // 둥근 모서리로 자식을 자르는 칸(모양만, 그림은 안 보임). RoundedRect 모서리 44px을 radius로 맞춘다.
-        static void RoundedMask(RectTransform rt, float radius)
+        internal static void RoundedMask(RectTransform rt, float radius)
         {
             var img = GetOrAdd<Image>(rt);
             img.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(RoundedPath);
