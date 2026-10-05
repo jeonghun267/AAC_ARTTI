@@ -69,7 +69,8 @@ namespace Artti.Report
             return n > 0 ? Mathf.RoundToInt(sum / (float)n) : -1;
         }
 
-        public static int SessionSeconds(ReportSessionSummary s) => (int)Math.Max(0, (s.dateMs - s.startMs) / 1000);
+        // 변경점: 실제 연습 시간(앱을 켜 둔 채 쉰 시간 제외, ReportDataService.ActiveMs). 예전에는 끝 - 시작 경과 시간
+        public static int SessionSeconds(ReportSessionSummary s) => Math.Max(0, s.activeSeconds);
     }
 
     // 두 리포트가 같이 쓰는 표시 문구

@@ -15,6 +15,10 @@ namespace Artti.Common.Speech
         public int clarityPercent;    // 0..100
         public string clarityLight;   // "green" / "yellow" / "red"
         public string clarityTarget;  // 명료도 비교 기준(목표 문장). 상세기록의 '이유' 설명에 쓴다
+        // 변경점: 명료도를 계산한 모델이 들은 문장. 현장지원모드(대화 모드)의 두 모델 서버는 text(새 모델, NPC 대화용)와
+        //   명료도용 인식(기존 모델)이 달라 상세기록의 '들린 문장'·이유 설명은 이 문장으로 한다.
+        //   서버가 따로 주지 않으면 null(= text와 같은 모델)
+        public string clarityText;
 
         // 변경점: 인식기의 다른 추측들(text 다음으로 그럴듯한 순서). 어눌한 말일수록 두세 번째 추측이 맞을 때가 많아
         //   대화 모드 문장 해석이 함께 본다. 주지 않는 STT는 null

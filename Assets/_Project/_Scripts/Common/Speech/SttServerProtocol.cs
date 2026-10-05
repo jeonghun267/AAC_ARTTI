@@ -21,6 +21,10 @@ namespace Artti.Common.Speech
         // 변경점: 목표 문장(명료도 비교 기준)을 받는 필드. 문서에 있으면 그 이름, 값은 발화마다 ServerSttService가 채운다.
         public string TargetField;
         public bool TargetInQuery;   // 문서상 폼 필드가 아니라 쿼리 파라미터인 경우
+        // 변경점: 서버 동작 방식 필드(두 모델 서버의 mode=dialogue|accuracy)와 문서의 enum 값.
+        //   문서에 있을 때만 채우고, 값은 보낼 때 ServerSttService가 정한다(WithMode).
+        public string ModeField;
+        public List<string> ModeOptions = new List<string>();
 
         // 같은 엔드포인트 판별용 ("경로|파일 필드")
         public string Key => Path.TrimEnd('/') + "|" + FileField;
@@ -52,6 +56,20 @@ namespace Artti.Common.Speech
 
             var copy = (SttEndpoint)MemberwiseClone();
             copy.Query = SttServerProtocol.MergeQuery(Query, Uri.EscapeDataString(field) + "=" + Uri.EscapeDataString(target));
+            return copy;
+        }
+
+        // 변경점: 서버 동작 방식(mode)을 담은 사본. 문서의 enum에 이 값이 있을 때만 보낸다
+        //   (mode 필드가 없거나 뜻이 다른 mode인 서버에는 아무것도 더하지 않는다). 문서 기본값으로 이미 넣은 값은 바꾼다.
+        public SttEndpoint WithMode(string mode)
+        {
+            if (string.IsNullOrEmpty(ModeField) || string.IsNullOrWhiteSpace(mode)) return this;
+            if (ModeOptions == null || !ModeOptions.Contains(mode)) return this;
+            var copy = (SttEndpoint)MemberwiseClone();
+            copy.FormFields = new List<KeyValuePair<string, string>>(FormFields.Count + 1);
+            foreach (var f in FormFields)
+                if (!string.Equals(f.Key, ModeField, StringComparison.OrdinalIgnoreCase)) copy.FormFields.Add(f);
+            copy.FormFields.Add(new KeyValuePair<string, string>(ModeField, mode));
             return copy;
         }
 
@@ -214,6 +232,10 @@ namespace Artti.Common.Speech
 
         public static bool IsTargetField(string name) =>
             !string.IsNullOrEmpty(name) && Array.IndexOf(TargetNames, name.ToLowerInvariant()) >= 0;
+
+        // 변경점: 서버 동작 방식 필드(두 모델 서버: mode=dialogue|accuracy). 값은 발화마다 ServerSttService가 정한다.
+        public const string ModeFieldName = "mode";
+        public static bool IsModeField(string name) => string.Equals(name, ModeFieldName, StringComparison.OrdinalIgnoreCase);
 
         // 경로·operationId·summary에 이 단어가 있으면 음성 인식 엔드포인트일 가능성이 높다 (점수, 소문자 비교).
         private static readonly (string word, int score)[] PositiveWords =
@@ -421,6 +443,12 @@ namespace Artti.Common.Speech
                     continue;
                 }
                 var ps = Resolve(root, p.Value) as JObject;
+                if (IsModeField(p.Name))
+                {
+                    // 변경점: 동작 방식 필드와 선택지를 기억한다. 필수면 아래에서 문서 기본값을 넣고, 보낼 때 WithMode가 바꾼다.
+                    endpoint.ModeField = p.Name;
+                    endpoint.ModeOptions = CollectEnum(root, ps, 0);
+                }
                 if (NeedsServerModel(root, path, p.Name, ps, required.Contains(p.Name)))
                 {
                     endpoint.ModelField = p.Name;
@@ -1013,6 +1041,31 @@ namespace Artti.Common.Speech
                         return true;
                 return false;
             }
+            return true;
+        }
+
+        // 변경점: 명료도를 계산한 모델이 들은 문장(두 모델 서버의 clarity_recognized). 대화용 인식(recognized)과 다른 모델의 결과다.
+        //   없으면 false(명료도와 인식 문장이 같은 모델인 서버). 빈 문자열은 '그 모델이 아무것도 못 들음'이라 그대로 돌려준다.
+        public static bool TryParseClarityText(string body, out string text)
+        {
+            text = null;
+            if (string.IsNullOrWhiteSpace(body)) return false;
+            string trimmed = body.Trim().TrimStart('\uFEFF').Trim();
+            if (trimmed.Length == 0 || trimmed[0] != '{') return false;
+
+            JObject obj;
+            try
+            {
+                obj = JObject.Parse(trimmed);
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+
+            var token = obj.GetValue("clarity_recognized", StringComparison.OrdinalIgnoreCase);
+            if (token == null || token.Type != JTokenType.String) return false;
+            text = ((string)token).Trim();
             return true;
         }
 
