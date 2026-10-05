@@ -4,6 +4,7 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using Artti.ARField;
 
 /// <summary>
 /// OCR 테스트 화면 컨트롤러
@@ -315,8 +316,27 @@ public class OcrTestController : MonoBehaviour
             StopCoroutine(_resultMapRoutine);
             _resultMapRoutine = null;
         }
-        if (homePanel != null) homePanel.SetActive(true);
+        if (homePanel != null)
+        {
+            // 변경점: 홈이 사라지는 중에 돌아오면 사라지기를 멈추고 원래 모습으로
+            var fade = homePanel.GetComponent<ARPanelFadeOut>();
+            if (fade != null) fade.Cancel();
+            homePanel.SetActive(true);
+        }
         if (resultPanel != null) resultPanel.SetActive(false);
+    }
+
+    // 변경점(사용자 결정 2026-10-06): 홈 -> 결과는 결과를 먼저 켜고, 홈을 맨 앞에서 서서히 사라지게 한다(페이드아웃).
+    //   사라지는 동안 홈은 누를 수 없다. 결과 화면 자체의 등장 효과는 없다(ARPanelEnterFx가 결과에는 붙지 않음)
+    private const float HomeFadeOutSeconds = 0.35f;
+
+    private void SwitchHomeToResult()
+    {
+        if (resultPanel != null) resultPanel.SetActive(true);
+        if (homePanel == null || !homePanel.activeSelf) return;
+        var fade = homePanel.GetComponent<ARPanelFadeOut>();
+        if (fade == null) fade = homePanel.AddComponent<ARPanelFadeOut>();
+        fade.FadeOutAndHide(HomeFadeOutSeconds);
     }
 
     private void ShowResultPanel(KeywordMatch match, string imagePath)
@@ -366,8 +386,7 @@ public class OcrTestController : MonoBehaviour
             }
         }
 
-        if (homePanel != null) homePanel.SetActive(false);
-        if (resultPanel != null) resultPanel.SetActive(true);
+        SwitchHomeToResult();
 
         KakaoDocument selectedPlace = kakaoSearcher != null ? kakaoSearcher.SelectedPlace : null;
         Debug.Log($"[ResultMap] GPS IsReady = {GPSManager.IsReady}");
@@ -478,8 +497,7 @@ public class OcrTestController : MonoBehaviour
             aacImageComponent.color = new Color(0.9f, 0.9f, 0.9f);
         }
 
-        if (homePanel != null) homePanel.SetActive(false);
-        if (resultPanel != null) resultPanel.SetActive(true);
+        SwitchHomeToResult();
         if (_resultMapRoutine != null)
         {
             StopCoroutine(_resultMapRoutine);
