@@ -196,7 +196,7 @@ namespace Artti.Editor
                 stars[i].sprite = starOn;
                 stars[i].raycastTarget = false;
             }
-            var summary = EndLabel("Summary", scoreCard, Scaled(SummaryBox, ss), "편의점 · 정확도 모드 · 1분 안에 마쳤어요",
+            var summary = EndLabel("Summary", scoreCard, Scaled(SummaryBox, ss), "편의점 · 구음진단모드 · 1분 안에 마쳤어요",
                 22f, EndInk, false, TextAlignmentOptions.Center);
             summary.rectTransform.localRotation = Quaternion.Euler(0f, 0f, ScoreCardTilt);
 

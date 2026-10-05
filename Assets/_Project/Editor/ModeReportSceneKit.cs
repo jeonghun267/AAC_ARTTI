@@ -191,8 +191,10 @@ namespace Artti.Editor
             Img("Icon", back, new Vector2(58, 41), ArtDer + "icon_back.png", Rect.MinMaxRect(55, 38, 117, 100), 256);
             r.back = back.GetComponent<Button>();
             bool accuracy = spec.mode == TrainingMode.Accuracy;
-            var accBtn = NavButton("AccuracyModeButton", stage, new Vector2(136f, 290f), accuracy, "icon_target", "정확도 모드", font);
-            var convBtn = NavButton("ConversationModeButton", stage, new Vector2(136f, 378f), !accuracy, "icon_chat", "대화 모드", font);
+            var accBtn = NavButton("AccuracyModeButton", stage, new Vector2(136f, 290f), accuracy,
+                ArtDir + "nav_accuracy.png", NavAccuracySize, NavAccuracyBody);
+            var convBtn = NavButton("ConversationModeButton", stage, new Vector2(136f, 378f), !accuracy,
+                ArtDir + "nav_conversation.png", NavConversationSize, NavConversationBody);
             r.otherMode = accuracy ? convBtn : accBtn;
 
             // 머리말: 아이콘 + 제목 + 부제 + 기간 탭 + 날짜
@@ -214,12 +216,17 @@ namespace Artti.Editor
             return r;
         }
 
-        // 왼쪽 메뉴 판: 켜짐 = nav_active(11에서 글자 지움), 꺼짐 = nav_normal(10에서 글자 지움, 누르는 버튼) + 아이콘 + 이름
-        static Button NavButton(string name, RectTransform stage, Vector2 center, bool active, string icon, string label, TMP_FontAsset font)
+        // 변경점(2026-10-05 사용자 시안): 왼쪽 모드 메뉴 = 아이콘·이름이 그려진 버튼 그림 한 장
+        //   (nav_accuracy "구음진단모드" 1672x941 / nav_conversation "소통 연습모드" 2172x724, 본체 = 알파>200).
+        //   예전 판(nav_active/nav_normal) + 아이콘 + 글자 대신. 지금 모드 = 그대로, 다른 모드 = 조금 어둡고 비치게(누르면 그 리포트로).
+        static readonly Vector2 NavAccuracySize = new Vector2(1672f, 941f);
+        static readonly Rect NavAccuracyBody = Rect.MinMaxRect(155, 259, 1519, 713);
+        static readonly Vector2 NavConversationSize = new Vector2(2172f, 724f);
+        static readonly Rect NavConversationBody = Rect.MinMaxRect(363, 132, 1807, 596);
+
+        static Button NavButton(string name, RectTransform stage, Vector2 center, bool active, string path, Vector2 imgSize, Rect body)
         {
             const float bodyW = 196f;
-            var body = active ? Rect.MinMaxRect(418, 143, 1755, 575) : Rect.MinMaxRect(498, 161, 1678, 556);
-            string plate = ArtDer + (active ? "nav_active.png" : "nav_normal.png");
             float bodyH = bodyW * body.height / body.width;
             var box = Rect.MinMaxRect(center.x - bodyW / 2f, center.y - bodyH / 2f, center.x + bodyW / 2f, center.y + bodyH / 2f);
             RectTransform root;
@@ -231,12 +238,8 @@ namespace Artti.Editor
                 button = root.GetComponent<Button>();
             }
             var ro = new Vector2(box.xMin, box.yMin);
-            var plateImg = ImageByBody("Plate", root, ro, plate, S2172, body, center, bodyH, 4096);
+            var plateImg = ImageByBody("Plate", root, ro, path, imgSize, body, center, bodyH, 2048);
             if (!active) plateImg.color = new Color(0.72f, 0.78f, 1f, 0.72f);   // 다른 모드 = 조금 어둡고 비치게(지금 모드가 눈에 띄게)
-            var ic = Img("Icon", root, ro, ArtDer + icon + ".png", Rect.MinMaxRect(box.xMin + 8, center.y - 24, box.xMin + 56, center.y + 24), 256);
-            ic.color = active ? Color.white : new Color(0.85f, 0.9f, 1f, 0.85f);
-            Label("Label", root, ro, label, font, 21f, active ? Color.white : SubInk, active, box.xMin + 60, box.xMax - 8, center.y,
-                TextAlignmentOptions.MidlineLeft);
             return button;
         }
 

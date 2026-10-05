@@ -241,7 +241,7 @@ namespace Artti.Report
             var radar = m.Radar;
             var have = Enumerable.Range(0, radar.Length).Where(i => radar[i] >= 0).ToList();
             if (have.Count == 0)
-                return new[] { "아직 대화 기록이 없어요.", "대화 모드로 연습하면 여기에서 결과를 볼 수 있어요.", "오늘 첫 대화를 시작해 볼까요?" };
+                return new[] { "아직 대화 기록이 없어요.", "소통 연습모드로 연습하면 여기에서 결과를 볼 수 있어요.", "오늘 첫 대화를 시작해 볼까요?" };
             var order = have.OrderByDescending(i => radar[i]).ToList();
             var lines = new List<string> { Praise[order[0]] };
             if (order.Count > 1) lines.Add(Praise[order[1]]);

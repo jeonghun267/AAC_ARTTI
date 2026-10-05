@@ -39,8 +39,10 @@ namespace Artti.Editor
         const string HelpPath    = Dir + "6.png";
         const string QuitPath    = Dir + "7.png";
         const string ReportPath  = Dir + "8.png";
-        const string ARTitlePath    = Dir + "10.png";   // 현장모드 + 실생활에서 도움을 받아보세요.
-        const string TrainTitlePath = Dir + "11.png";   // 훈련모드 + 다양한 상황에서 말을 연습해보세요.
+        // 변경점(2026-10-05 새 시안): 제목 + 부제 그림(40/41). 시안 원본에는 아래에 기능 3줄도 있으나 카드 빈 곳이 좁아
+        //   글씨가 너무 작아지므로(사용자 결정) 부제 아래를 잘라 넣었다(41: 위 560px, 40: 위 565px). 예전 10/11은 폴더에 남겨 둠
+        const string ARTitlePath    = Dir + "40.png";   // 현장지원모드 + 실제 현장에서 빠르게 지원을 받아보세요.
+        const string TrainTitlePath = Dir + "41.png";   // 훈련지원모드 + 일상 속 상황에서 나의 생각을 전하는 연습을 해요.
 
         // 이미지 속 불투명 본체 영역 (x0, y0, x1, y1) — 원본 대비 비율, y는 위에서부터.
         // 4·5·3번은 알파 실측(>200), 6~9번은 화면 판독값이라 몇 px 오차가 있을 수 있다.
@@ -245,8 +247,8 @@ namespace Artti.Editor
             Debug.Log("[MainSceneBuilder] 새 1.png 배치 적용 완료 (왼쪽 글래스 분리 + 글자/버튼 재배치) - 손배치 유지");
         }
 
-        // 손배치 씬(MainScene)에 모드 제목 그림(10/11)만 적용한다. 다른 손배치 값은 그대로 둔다.
-        [MenuItem("Artti/Fix/MainScene - Mode Title Images 10 11 (keep hand placement)")]
+        // 손배치 씬(MainScene)에 모드 제목 그림(40/41)과 두 버튼 자리만 적용한다. 다른 손배치 값은 그대로 둔다.
+        [MenuItem("Artti/Fix/MainScene - Mode Title Images 40 41 (keep hand placement)")]
         public static void ApplyModeTitleImagesMenu()
         {
             if (EditorApplication.isPlaying) { Debug.LogWarning("[MainSceneBuilder] Play 모드에서는 실행하지 않는다."); return; }
@@ -264,7 +266,7 @@ namespace Artti.Editor
             ApplyModeTitleImages(stage);
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
             SceneBuilderUtils.SaveActiveScene();
-            Debug.Log("[MainSceneBuilder] 모드 제목 그림(10/11) 적용 완료 - 손배치 유지");
+            Debug.Log("[MainSceneBuilder] 모드 제목 그림(40/41) 적용 완료 - 손배치 유지");
         }
 
         // 모드 제목 그림: 묶음(TrainGroup/ARGroup)의 제목(Title)+부제(Desc) 글자를 끄고 그림 한 장(TitleImage)으로 바꾼다.
@@ -272,14 +274,19 @@ namespace Artti.Editor
         //   글자 폭/자리는 예전 TMP 렌더 실측(훈련 84pt 약 317, 현장 64pt 약 245 Stage px).
         //   변경점: 제목과 버튼 사이 메모 글이 빠져 둘이 멀어 보이므로, 부제와 버튼 사이를 약 80으로 좁힌다.
         //   훈련 카드는 제목을 55 내리고 버튼을 57 올려 묶음이 카드 세로 가운데에 오게, 현장 카드는 제목만 22 내린다.
-        static readonly Vector2 TrainBtnCenter = new Vector2(149.3f, -321.9f);   // 예전 손배치 -378.9
+        //   변경점(2026-10-05 새 시안 40/41, 제목 + 부제): 그림 본체(알파>200) 왼쪽 위를 기준점으로, 두 카드 같은 배율(0.306)로 놓는다.
+        //   훈련: 본체 Stage (580,165)부터 폭 400(오른쪽 = 캐릭터 머리·소매 왼쪽, 태블릿 캡처 실측), 버튼은 그림 아래 40.
+        //   현장: 본체 Stage (618,658)부터(왼쪽 = 버튼 알약 왼쪽 끝), 버튼은 예전 손배치 그대로(그림 아래 약 42).
+        static readonly Vector2 TrainBtnCenter = new Vector2(149.3f, -282.1f);   // 예전 손배치 -378.9, 10/11 그림 때 -321.9
+        static readonly Vector2 ARBtnCenter = new Vector2(141f, -141f);          // 예전 손배치 그대로
         static void ApplyModeTitleImages(RectTransform stage)
         {
-            ModeTitleImage(stage, "TrainGroup", TrainTitlePath, new Vector2(1447f, 1087f),
-                glyphTopLeft: new Vector2(209f, 376f), glyphWidth: 1004f, target: new Vector2(3f, -69f), targetWidth: 317f, rotZ: 0f);
-            ModeTitleImage(stage, "ARGroup", ARTitlePath, new Vector2(1580f, 995f),
-                glyphTopLeft: new Vector2(314f, 350f), glyphWidth: 952f, target: new Vector2(10f, 80f), targetWidth: 245f, rotZ: -2.45f);
+            ModeTitleImage(stage, "TrainGroup", TrainTitlePath, new Vector2(1448f, 560f),
+                glyphTopLeft: new Vector2(70f, 113f), glyphWidth: 1308f, target: new Vector2(10.89f, -72.52f), targetWidth: 400f, rotZ: 0f);
+            ModeTitleImage(stage, "ARGroup", ARTitlePath, new Vector2(1447f, 565f),
+                glyphTopLeft: new Vector2(92f, 112f), glyphWidth: 1281f, target: new Vector2(-21.72f, 77.92f), targetWidth: 391.74f, rotZ: -2.45f);
             if (stage.Find("TrainGroup/TrainingModeBtn") is RectTransform trainBtn) trainBtn.anchoredPosition = TrainBtnCenter;
+            if (stage.Find("ARGroup/ARFieldModeBtn") is RectTransform arBtn) arBtn.anchoredPosition = ARBtnCenter;
         }
 
         static void ModeTitleImage(RectTransform stage, string group, string path, Vector2 imageSize,

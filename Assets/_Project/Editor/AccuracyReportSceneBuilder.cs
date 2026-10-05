@@ -35,7 +35,7 @@ namespace Artti.Editor
         {
             mode = TrainingMode.Accuracy,
             headerIcon = "icon_target",
-            title = "정확도 모드 리포트",
+            title = TrainingModeContext.AccuracyName + " 리포트",   // 변경점: "구음진단모드 리포트"(새 시안 이름)
             subtitle = "오늘의 발음 연습 결과를 확인해보세요.",
             cards = new[]
             {

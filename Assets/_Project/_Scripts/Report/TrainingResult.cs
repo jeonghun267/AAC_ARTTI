@@ -147,10 +147,10 @@ namespace Artti.Report
     // 완료 화면 문구. 짧고 긍정적으로(발달장애 사용자: 점수가 낮아도 다음 목표로 안내한다)
     public static class TrainingResultLabels
     {
-        public static string ModeName(TrainingMode mode) =>
-            mode == TrainingMode.Conversation ? "대화 모드" : "정확도 모드";
+        // 변경점: 화면 모드 이름은 TrainingModeContext 한 곳에서 정한다(구음진단모드 / 소통 연습모드)
+        public static string ModeName(TrainingMode mode) => TrainingModeContext.DisplayName(mode);
 
-        // 점수 판 아래 띠: "편의점 · 정확도 모드 · 3분 동안 연습했어요"
+        // 점수 판 아래 띠: "편의점 · 구음진단모드 · 3분 동안 연습했어요"
         public static string Summary(TrainingResult r)
         {
             int minutes = Mathf.RoundToInt(r.durationSeconds / 60f);

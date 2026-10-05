@@ -17,8 +17,13 @@ namespace Artti.Common
         public const string AccuracyVoice = "ko-KR-Standard-A";
         public const string ConversationVoice = "ko-KR-Standard-C";
 
+        // 변경점(2026-10-05 새 시안): 화면에 보이는 모드 이름. 정확도 모드 = "구음진단모드", 대화 모드 = "소통 연습모드"
+        //   (말하기 훈련 카드·리포트 메뉴 그림과 같은 이름). 코드의 TrainingMode 값과 기록 형식은 그대로
+        public const string AccuracyName = "구음진단모드";
+        public const string ConversationName = "소통 연습모드";
+
         public static string DisplayName(TrainingMode mode) =>
-            mode == TrainingMode.Accuracy ? "정확도 모드" : "대화 모드";
+            mode == TrainingMode.Accuracy ? AccuracyName : ConversationName;
 
         public static string VoiceFor(TrainingMode mode) =>
             mode == TrainingMode.Accuracy ? AccuracyVoice : ConversationVoice;

@@ -153,9 +153,9 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 3, y: -69}
-  m_SizeDelta: {x: 456.8715, y: 343.20615}
-  m_Pivot: {x: 0.14443676, y: 0.65409386}
+  m_AnchoredPosition: {x: 10.89, y: -72.52}
+  m_SizeDelta: {x: 442.81345, y: 171.25381}
+  m_Pivot: {x: 0.04834254, y: 0.79821426}
 --- !u!114 &65839140
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -176,7 +176,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: e952b896a48d35d468d988da5638cdcd, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 48ca6b9f9686d704088399a39ec40a95, type: 3}
   m_Type: 0
   m_PreserveAspect: 1
   m_FillCenter: 1
@@ -403,9 +403,9 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 10, y: 80}
-  m_SizeDelta: {x: 406.61765, y: 256.0662}
-  m_Pivot: {x: 0.19873418, y: 0.6482412}
+  m_AnchoredPosition: {x: -21.72, y: 77.92}
+  m_SizeDelta: {x: 442.5041, y: 172.7815}
+  m_Pivot: {x: 0.06357982, y: 0.8017699}
 --- !u!114 &259264983
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -426,7 +426,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 1e30101497dca1a42a5a33ccaa87e6e7, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 082db832ac76ad14baa2c9436c726636, type: 3}
   m_Type: 0
   m_PreserveAspect: 1
   m_FillCenter: 1
@@ -1659,7 +1659,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 149.3, y: -321.9}
+  m_AnchoredPosition: {x: 149.3, y: -282.1}
   m_SizeDelta: {x: 344.4976, y: 68.26799}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1067327263
@@ -2733,7 +2733,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9befdb5a2bfe5814bb82dbc8fdecd06f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Artti.UI.HomeMenu
-  reportScene: ReportScene
 --- !u!114 &1632299030
 MonoBehaviour:
   m_ObjectHideFlags: 0

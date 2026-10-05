@@ -161,8 +161,9 @@ namespace Artti.Report
             var sb = new StringBuilder();
             sb.AppendLine($"- 도전한 학습: {o.totalAttempts}회");
             sb.AppendLine($"- 완료한 학습: {o.completedCount}회");
-            sb.AppendLine($"- 정확도 모드: {o.accuracyAttempts}회 도전, {o.accuracyCompleted}회 완료 (완료율 {Mathf.RoundToInt(o.CompletionRate * 100f)}%)");
-            sb.AppendLine($"- 대화 모드: {o.conversationAttempts}회 도전, {o.conversationCompleted}회 완료 (어눌해도 진행되는 연습이라 완료율은 따지지 않음)");
+            // 변경점: AI가 응원 문구에 화면과 같은 모드 이름을 쓰도록(구음진단모드 / 소통 연습모드)
+            sb.AppendLine($"- {TrainingModeContext.AccuracyName}: {o.accuracyAttempts}회 도전, {o.accuracyCompleted}회 완료 (완료율 {Mathf.RoundToInt(o.CompletionRate * 100f)}%)");
+            sb.AppendLine($"- {TrainingModeContext.ConversationName}: {o.conversationAttempts}회 도전, {o.conversationCompleted}회 완료 (어눌해도 진행되는 연습이라 완료율은 따지지 않음)");
             if (o.completedByScenario != null)
                 foreach (var kv in o.completedByScenario)
                     sb.AppendLine($"- {ReportLabels.ScenarioName(kv.Key)} 완료: {kv.Value}회");

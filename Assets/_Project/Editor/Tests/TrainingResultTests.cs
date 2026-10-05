@@ -157,7 +157,7 @@ namespace Artti.EditorTests.Report
             Assert.That(TrainingResultLabels.AccuracyValue(r), Is.EqualTo("-"));
             Assert.That(TrainingResultLabels.ExpressionValue(r), Is.EqualTo("-"));
             Assert.That(TrainingResultLabels.IsBest(r), Is.False);
-            Assert.That(TrainingResultLabels.Summary(r), Is.EqualTo("편의점 · 정확도 모드 · 1분 안에 마쳤어요"));
+            Assert.That(TrainingResultLabels.Summary(r), Is.EqualTo("편의점 · 구음진단모드 · 1분 안에 마쳤어요"));
         }
 
         // 변경점(사용자 요청 2026-10-03): 버튼만 눌러 끝낸 훈련은 진행·응답 속도와 관계없이 0점.

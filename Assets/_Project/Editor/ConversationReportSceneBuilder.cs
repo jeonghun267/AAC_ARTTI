@@ -37,7 +37,7 @@ namespace Artti.Editor
         {
             mode = TrainingMode.Conversation,
             headerIcon = "icon_chat",
-            title = "대화 모드 리포트",
+            title = TrainingModeContext.ConversationName + " 리포트",   // 변경점: "소통 연습모드 리포트"(새 시안 이름)
             subtitle = "오늘의 대화 연습 결과를 확인해보세요.",
             cards = new[]
             {

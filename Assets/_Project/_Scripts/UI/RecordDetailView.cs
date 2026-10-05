@@ -382,7 +382,7 @@ namespace Artti.UI
             sb.Append("<color=#6E7687>서버 STT가 목표 문장과 비교해 채점한 값이에요.");
             if (r.avgClarityPct >= 0) sb.Append(" 평균은 음성으로 말한 모든 시도 기준이에요.");
             if (r.mode == TrainingMode.Conversation)
-                sb.Append(" 대화 모드라 발음이 달라도 가장 가까운 문장으로 대화를 이어갔어요.");
+                sb.Append($" {TrainingModeContext.ConversationName}라 발음이 달라도 가장 가까운 문장으로 대화를 이어갔어요.");
             sb.Append("</color>\n\n");
 
             if (measured == 0)
