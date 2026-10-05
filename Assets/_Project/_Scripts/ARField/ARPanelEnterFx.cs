@@ -10,7 +10,7 @@ namespace Artti.ARField
     //   씬 파일을 건드리지 않도록 씬이 열릴 때 Canvas 바로 아래 패널에 스스로 붙는다(BgmPlayer·SceneFader와 같은 방식).
     //   변경점(사용자 결정 2026-10-06):
     //     홈(HomePanel) = 효과 없음. 결과(ResultPanel) = 효과 없음(홈이 위에서 페이드아웃하며 드러난다, ARPanelFadeOut).
-    //     도움 상세(HelpDetailPanel) = 페이드인만 0.3초. 인사·주문·결제·편의(그 밖) = 페이드 + 0.98 -> 1 확대 0.35초(예전 0.22초).
+    //     도움 상세(HelpDetailPanel) = 페이드인만 0.6초. 인사·주문·결제·편의(그 밖) = 페이드 + 0.96 -> 1 확대 0.6초.
     [DisallowMultipleComponent]
     public sealed class ARPanelEnterFx : MonoBehaviour
     {
@@ -19,9 +19,10 @@ namespace Artti.ARField
         const string HomePanelName = "HomePanel";
         const string ResultPanelName = "ResultPanel";
         const string HelpDetailPanelName = "HelpDetailPanel";
-        const float Duration = 0.35f;
-        const float StartScale = 0.98f;
-        const float HelpDetailDuration = 0.3f;
+        // 변경점(실기기 2026-10-06 "너무 빨라 안 보임"): 0.35초 / 0.98배 / 도움 0.3초 -> 0.6초 / 0.96배 / 도움 0.6초
+        const float Duration = 0.6f;
+        const float StartScale = 0.96f;
+        const float HelpDetailDuration = 0.6f;
         // 변경점: 한 프레임에 진행하는 최대 시간. 패널이 처음 켜지는 프레임은 카드 만들기·사진·지도 때문에 수백 ms가 걸려
         //   효과가 한 프레임 만에 끝나 버렸다(실기기 2026-10-06). 늦은 프레임에도 페이드가 끝까지 보이게 한다
         internal const float MaxFrameStep = 1f / 30f;

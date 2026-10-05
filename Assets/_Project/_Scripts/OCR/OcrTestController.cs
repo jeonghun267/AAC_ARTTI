@@ -328,7 +328,7 @@ public class OcrTestController : MonoBehaviour
 
     // 변경점(사용자 결정 2026-10-06): 홈 -> 결과는 결과를 먼저 켜고, 홈을 맨 앞에서 서서히 사라지게 한다(페이드아웃).
     //   사라지는 동안 홈은 누를 수 없다. 결과 화면 자체의 등장 효과는 없다(ARPanelEnterFx가 결과에는 붙지 않음)
-    private const float HomeFadeOutSeconds = 0.35f;
+    private const float HomeFadeOutSeconds = 0.8f;   // 실기기에서 0.35초는 너무 빨라 안 보였다(2026-10-06)
 
     private void SwitchHomeToResult()
     {
