@@ -161,9 +161,9 @@ namespace Artti.Editor
             (Derived + "ui_aac_icon_pay_receipt.png", false, new[] { "영수증" }),
         };
 
-        // 변경점(2026-10-06 사용자 결정): 인사·편의 화면은 Gemini 대신 이 문장 4개(짧게, 한 줄로)
+        // 변경점(2026-10-06 사용자 결정): 인사 화면은 Gemini 대신 이 문장 4개(짧게, 한 줄로).
+        //   편의 화면은 예전처럼 Gemini 6개, 대신 짧은 요청 말투(CardGenerator 프롬프트)와 한 줄 글
         static readonly string[] GreetingPhrases = { "안녕하세요", "안녕히 계세요", "반가워요", "또 뵙네요" };
-        static readonly string[] ConveniencePhrases = { "빨대 주세요", "계산해주세요", "영수증 주세요", "주문 도와주세요" };
         // 카드 4개: 2x2를 카드 자리 가운데에(카드 크기는 6개와 같다 - 폭이 2열 최대이고 그림이 늘어나지 않게). 줄 사이만 넓힌다
         static readonly Vector2 FixedCardSpacing = new Vector2(29f, 50f);
 
@@ -173,15 +173,17 @@ namespace Artti.Editor
             public readonly (string icon, bool purple, string[] keywords)[] Styles;
             public readonly string[] Samples;   // 캡처용 예시 문장(고정 문장이 있으면 그 문장)
             public readonly bool WithInput;
-            public readonly string[] FixedPhrases;   // 변경점: 있으면 CardGenerator가 이 문장으로 카드를 만들고, 2x2 가운데·한 줄 글
+            public readonly string[] FixedPhrases;   // 변경점: 있으면 CardGenerator가 이 문장으로 카드를 만들고, 2x2 가운데
+            public readonly bool OneLine;            // 변경점: 카드 글을 줄바꿈 없이 한 줄(고정 문장 패널은 항상)
             public PanelSpec(string name, (string icon, bool purple, string[] keywords)[] styles, string[] samples, bool withInput,
-                string[] fixedPhrases = null)
+                string[] fixedPhrases = null, bool oneLine = false)
             {
                 Name = name;
                 Styles = styles;
                 Samples = fixedPhrases ?? samples;
                 WithInput = withInput;
                 FixedPhrases = fixedPhrases;
+                OneLine = oneLine || fixedPhrases != null;
             }
         }
 
@@ -190,7 +192,9 @@ namespace Artti.Editor
             new PanelSpec("GreetingPanel", GreetingStyles, null, true, GreetingPhrases),
             new PanelSpec("PaymentPanel", PaymentStyles,
                 new[] { "카드로 결제할게요", "현금으로 할게요", "영수증 주세요", "포인트 적립할게요", "얼마예요?", "봉투 주세요" }, true),
-            new PanelSpec("OtherPanel", ConvenienceStyles, null, true, ConveniencePhrases),
+            new PanelSpec("OtherPanel", ConvenienceStyles,
+                new[] { "빨대 주세요", "화장실 알려주세요", "와이파이 알려주세요", "충전기 빌려주세요", "계산해주세요", "영수증 주세요" }, true,
+                oneLine: true),
         };
 
         [MenuItem("Artti/Fix/ARField - AAC Panels Neon Design (Greeting + Payment + Other)")]
@@ -287,7 +291,7 @@ namespace Artti.Editor
 
             var template = FindTemplate(area, board);
             if (template == null) { Debug.LogError($"[ARFieldGreetingLayout] {spec.Name}: AACCardTemplate 없음"); return false; }
-            if (!CardTemplate(template, spec.Styles, oneLine: fixedCards)) return false;
+            if (!CardTemplate(template, spec.Styles, oneLine: spec.OneLine)) return false;
 
             // ===== 문장 직접 입력 줄(WithInput인 패널) =====
             if (spec.WithInput)

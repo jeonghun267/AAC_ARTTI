@@ -1066,7 +1066,7 @@ MonoBehaviour:
   - {fileID: 1168464816}
   fadeOverlay: {fileID: 64047237}
   bgm: {fileID: 1867750139}
-  bgmVolume: 0.8
+  bgmVolume: 0.26666668
   totalSeconds: 6
   fadeInSeconds: 0.6
   fadeOutSeconds: 0.8

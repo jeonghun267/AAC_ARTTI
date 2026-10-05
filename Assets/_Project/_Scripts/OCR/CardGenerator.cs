@@ -22,7 +22,7 @@ public class CardGenerator : MonoBehaviour
     [Tooltip("켤 때마다 새로 생성(체크) / 처음 한 번만 생성(해제, API 절약)")]
     [SerializeField] private bool regenerateEveryTime = false;
 
-    // 변경점(2026-10-06 사용자 결정): 문장을 정해 두면 Gemini로 만들지 않고 이 문장들로 카드를 만든다(인사·편의 화면 4개).
+    // 변경점(2026-10-06 사용자 결정): 문장을 정해 두면 Gemini로 만들지 않고 이 문장들로 카드를 만든다(인사 화면 4개).
     //   값은 에디터 스크립트 ARFieldGreetingLayout이 넣는다. 비어 있으면 예전처럼 Gemini가 cardCount개를 만든다.
     [Tooltip("정해 둔 문장. 있으면 Gemini 대신 이 문장으로 카드를 만든다")]
     [SerializeField] private string[] fixedPhrases = Array.Empty<string>();
@@ -33,6 +33,10 @@ public class CardGenerator : MonoBehaviour
 
     private bool hasGenerated = false;
     private const string GreetingCategory = "인사";
+    private const string ConvenienceCategory = "도움";   // 편의 패널(OtherPanel)의 카테고리
+    private const int ExtraRequestCandidates = 2;        // 편의: 더 받아 둘 문장 수
+    private const int OneLineMaxChars = 11;              // 편의: 카드 한 줄에 들어가는 길이(띄어쓰기 포함, 태블릿 캡처 기준)
+    private const string RequestEnding = "주세요";       // 편의: 부탁 말투(먼저 고른다)
 
     // 패널이 SetActive(true)로 켜질 때 자동 호출됨
     void OnEnable()
@@ -73,22 +77,58 @@ public class CardGenerator : MonoBehaviour
             ? "주문이나 결제 같은 다른 상황의 표현은 절대 넣지 마. "
             : "인사말이나(예: '안녕하세요', '안녕히 계세요') 다른 상황의 표현은 절대 넣지 마. ";
 
+        // 변경점(2026-10-06 사용자 결정): 편의 패널은 카드에 한 줄로 들어가게 짧은 요청 말투로만 만든다
+        //   ("무엇을 해야하나요" -> "빨대 주세요", "영수증 받을 수 있나요" -> "영수증 주세요"처럼). 다른 패널은 예전 그대로
+        bool requestTone = category == ConvenienceCategory;
+        //   한 줄에 안 들어가는 긴 문장이 가끔 나와서 2개 더 받아 짧은 것으로 고른다(PickOneLine)
+        int askCount = requestTone ? cardCount + ExtraRequestCandidates : cardCount;
+        string styleRule = requestTone
+            ? "가게나 매장에서 직원에게 하는 부탁만 만들어. " +
+              "각 문장은 띄어쓰기 포함 10자 이내의 짧은 한 문장이어야 해. " +
+              "'~주세요'로 끝나는 부탁 말투로만 써(예: '빨대 주세요', '계산해주세요', '영수증 주세요', '주문 도와주세요'). " +
+              "'~나요?', '~까요?', '~겠어요?', '~있나요?' 같은 질문형은 절대 쓰지 마. "
+            : "각 문장은 12자 이내의 쉽고 공손한 1인칭 표현이어야 해. ";
+        string varietyRule = requestTone
+            ? "각 카드는 서로 다른 것을 부탁하는 말로 다양하게 만들어줘. "
+            : "각 카드는 서로 다른 의도(요청·질문·확인·감사 등)를 담아 다양하게 만들어줘. ";
+
         // 3) 최종 프롬프트
         string prompt =
             "발달장애인이 사용하는 AAC 의사소통 앱이야. " +
             placeContext +
-            $"이 사람이 '{category}' 상황에서 직접 말할 수 있는 짧은 한국어 문장 {cardCount}개를 만들어줘. " +
+            $"이 사람이 '{category}' 상황에서 직접 말할 수 있는 짧은 한국어 문장 {askCount}개를 만들어줘. " +
             timeContext +
             $"오직 '{category}' 행동에 직접 필요한 말만 만들어. " +
             otherSituationRule +
-            "각 문장은 12자 이내의 쉽고 공손한 1인칭 표현이어야 해. " +
+            styleRule +
             "문장끼리 의미가 겹치면 안 돼. 같은 뜻을 다른 말로 바꾼 중복(예: '결제해주세요'와 '계산해주세요')은 금지야. " +
-            "각 카드는 서로 다른 의도(요청·질문·확인·감사 등)를 담아 다양하게 만들어줘. " +
+            varietyRule +
             "설명이나 코드블록 없이 아래 JSON 형식으로만 응답해: " +
             "{\"options\": [\"문장1\", \"문장2\"]}";
 
         Debug.Log($"[CardGenerator] '{category}' 요청 (장소: {(string.IsNullOrEmpty(place) ? "없음" : place)})");
         geminiManager.GenerateList(prompt, OnResult);
+    }
+
+    // 빈 문장·같은 문장은 빼고 고른다: 1) maxChars 이하이면서 '주세요'로 끝나는 것 2) maxChars 이하인 나머지
+    //   3) 그래도 모자라면 긴 것 중 짧은 순. 각 무리 안에서는 받은 순서
+    private static List<string> PickOneLine(List<string> phrases, int count, int maxChars)
+    {
+        var unique = new List<string>();
+        foreach (var p in phrases)
+        {
+            var t = p?.Trim();
+            if (!string.IsNullOrEmpty(t) && !unique.Contains(t)) unique.Add(t);
+        }
+        var picked = unique.FindAll(t => t.Length <= maxChars && t.EndsWith(RequestEnding, StringComparison.Ordinal));
+        picked.AddRange(unique.FindAll(t => t.Length <= maxChars && !t.EndsWith(RequestEnding, StringComparison.Ordinal)));
+        if (picked.Count < count)
+        {
+            var rest = unique.FindAll(t => t.Length > maxChars);
+            rest.Sort((a, b) => a.Length.CompareTo(b.Length));
+            picked.AddRange(rest);
+        }
+        return picked.Count > count ? picked.GetRange(0, count) : picked;
     }
 
     private string GetTimeOfDay()
@@ -109,6 +149,10 @@ public class CardGenerator : MonoBehaviour
         }
 
         hasGenerated = true;
+
+        // 변경점: 편의는 한 줄에 들어가는 짧은 문장을 먼저 골라 cardCount개만 쓴다
+        if (category == ConvenienceCategory && (fixedPhrases == null || fixedPhrases.Length == 0))
+            phrases = PickOneLine(phrases, cardCount, OneLineMaxChars);
 
         if (phrases.Count > 6)
             phrases = phrases.GetRange(0, 6);

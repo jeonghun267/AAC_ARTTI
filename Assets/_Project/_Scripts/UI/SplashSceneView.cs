@@ -24,7 +24,7 @@ namespace Artti.UI
 
         [Header("음악 (clip이 없으면 무음)")]
         [SerializeField] private AudioSource bgm;
-        [SerializeField, Range(0f, 1f)] private float bgmVolume = 0.8f;
+        [SerializeField, Range(0f, 1f)] private float bgmVolume = 0.8f / 3f;   // 변경점(2026-10-06): 전체 배경음악 1/3(0.8 -> 0.267, SplashScene 값도 같이)
 
         [Header("시간")]
         [SerializeField] private float totalSeconds = 6f;   // 스플래시 전체 길이

@@ -24235,11 +24235,7 @@ MonoBehaviour:
   cardCount: 6
   useTimeOfDay: 0
   regenerateEveryTime: 0
-  fixedPhrases:
-  - "\uBE68\uB300 \uC8FC\uC138\uC694"
-  - "\uACC4\uC0B0\uD574\uC8FC\uC138\uC694"
-  - "\uC601\uC218\uC99D \uC8FC\uC138\uC694"
-  - "\uC8FC\uBB38 \uB3C4\uC640\uC8FC\uC138\uC694"
+  fixedPhrases: []
   fallbackPlace: "\uCE74\uD398"
 --- !u!114 &1063178908
 MonoBehaviour:
@@ -24258,11 +24254,11 @@ MonoBehaviour:
     m_Right: 0
     m_Top: 0
     m_Bottom: 0
-  m_ChildAlignment: 4
+  m_ChildAlignment: 0
   m_StartCorner: 0
   m_StartAxis: 0
   m_CellSize: {x: 558, y: 138}
-  m_Spacing: {x: 29, y: 50}
+  m_Spacing: {x: 29, y: 19.5}
   m_Constraint: 1
   m_ConstraintCount: 2
 --- !u!1 &1078450075
@@ -28251,7 +28247,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Artti.ARField.ARFieldBgmPlayer
   clip: {fileID: 8300000, guid: a9bc7fd03c6479042935c01429b13aed, type: 3}
-  volume: 0.6666667
+  volume: 0.22222222
   fadeSeconds: 0.6
   tts: {fileID: 1852685085}
   speechFadeSeconds: 0.25

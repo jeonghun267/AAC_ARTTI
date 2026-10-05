@@ -11,9 +11,10 @@ namespace Artti.Common
     public sealed class BgmPlayer : MonoBehaviour
     {
         const string ClipPath = "Audio/BGM/Unity_BGM";
-        const float Volume = 0.45f;
-        const float DuckedVolume = 0.12f;      // 목소리 미리듣기처럼 말소리가 나는 동안
-        const float DipVolume = 0.15f;         // 화면이 어두워지는 전환(SceneFader, 스플래시 끝) 동안 잠깐
+        // 변경점(2026-10-06 사용자 요청): 전체 배경음악을 예전의 1/3로(0.45 / 0.12 / 0.15 -> 0.15 / 0.04 / 0.05)
+        const float Volume = 0.15f;
+        const float DuckedVolume = 0.04f;      // 목소리 미리듣기처럼 말소리가 나는 동안
+        const float DipVolume = 0.05f;         // 화면이 어두워지는 전환(SceneFader, 스플래시 끝) 동안 잠깐
         const float FadeInSeconds = 1.2f;      // 다시 커질 때(전환 뒤 '진입' 느낌도 이 속도)
         const float FadeOutSeconds = 0.6f;
         const float DipDownSeconds = 0.2f;     // 전환 암전(0.22초)이 짧아 줄일 때는 빠르게

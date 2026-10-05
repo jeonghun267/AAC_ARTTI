@@ -13,8 +13,9 @@ namespace Artti.ARField
     public sealed class ARFieldBgmPlayer : MonoBehaviour
     {
         [SerializeField] private AudioClip clip;
-        [Tooltip("원래 소리의 2/3")]
-        [SerializeField, Range(0f, 1f)] private float volume = 2f / 3f;
+        // 변경점(2026-10-06 사용자 요청): 전체 배경음악 1/3 -> 원래 소리의 2/3에서 2/9로(ARFieldScene 값도 같이)
+        [Tooltip("원래 소리의 2/9 (예전 2/3의 1/3)")]
+        [SerializeField, Range(0f, 1f)] private float volume = 2f / 9f;
         [SerializeField] private float fadeSeconds = 0.6f;
 
         [Header("설명 듣기 동안 멈춤")]
