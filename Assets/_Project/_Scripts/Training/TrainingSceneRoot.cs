@@ -56,6 +56,15 @@ namespace Artti.Training
         [SerializeField] private string sttServerUrl;
         [Tooltip("인식 요청 경로. 비우면 서버의 API 문서(/openapi.json 등)나 흔한 경로에서 자동으로 찾는다 (예: /stt, /transcribe)")]
         [SerializeField] private string sttServerPath;
+        // 변경점: 두 모델 서버(Artti_ASR_dual_epoch2)에 보낼 동작 방식(훈련모드 안의 두 모드만).
+        //   정확도 모드 = accuracy: 인식 문장과 명료도 모두 기존 명료도 학습 모델.
+        //   대화 모드 = dialogue: 같은 녹음을 새 모델(어눌한 말 인식 → NPC 대화)과 기존 모델(목표 문장 대비 명료도)에 각각 보낸다.
+        //   서버를 어느 실행 파일로 켜도 모드별로 같게 동작한다. 서버 문서의 mode 선택지에 값이 있을 때만 보내므로
+        //   기존 한 모델 서버(8000)에는 아무것도 더하지 않는다. 비우면 보내지 않는다(서버 실행 설정을 따름).
+        [Tooltip("정확도 모드에서 두 모델 서버에 보낼 mode. accuracy = 기존 명료도 모델만")]
+        [SerializeField] private string sttServerModeAccuracy = "accuracy";
+        [Tooltip("대화 모드에서 두 모델 서버에 보낼 mode. dialogue = 새 모델 인식(NPC 대화) + 기존 모델 명료도")]
+        [SerializeField] private string sttServerModeConversation = "dialogue";
 
         // 변경점: 정확도 모드 명료도 관문 (ClarityGatePolicy). 대화 모드에는 적용하지 않는다.
         [Header("정확도 모드 명료도 기준")]
@@ -161,7 +170,8 @@ namespace Artti.Training
                     serverUrl,
                     sttServerPath,
                     ApiKeyLoader.Get(ApiKeyLoader.SttServerApiKey),
-                    ApiKeyLoader.Get(ApiKeyLoader.SttServerModel));
+                    ApiKeyLoader.Get(ApiKeyLoader.SttServerModel),
+                    serverMode: IsConversationMode ? sttServerModeConversation : sttServerModeAccuracy);
                 _sttFailover = new FailoverSttService(serverStt, deviceStt);
                 _sttService = _sttFailover;
             }

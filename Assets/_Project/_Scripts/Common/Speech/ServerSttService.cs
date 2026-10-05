@@ -65,6 +65,8 @@ namespace Artti.Common.Speech
         private bool _missingModelLogged;
         private CancellationTokenSource _activeCts;
         private string _target; // 변경점: 이번 발화의 목표 문장 (없으면 null)
+        // 변경점: 두 모델 서버에 보낼 동작 방식(mode). 서버 문서의 mode 선택지에 있을 때만 보낸다(없으면 null).
+        private readonly string _serverMode;
 
         public ServerState State => _state;
         public string BaseUrl => _baseUrl;
@@ -76,10 +78,13 @@ namespace Artti.Common.Speech
         public bool CanRecord => !_micFailed && MicrophoneUtteranceRecorder.HasDevice;
 
         // model: OpenAI 호환 서버의 모델 id를 직접 지정할 때 (비우면 서버의 /v1/models에서 고른다)
+        // serverMode: 두 모델 서버의 mode 값("accuracy" = 기존 명료도 모델만, "dialogue" = 새 모델 인식 + 기존 모델 명료도).
+        //   서버 문서의 mode 선택지에 있을 때만 보낸다. 비우면 보내지 않는다(서버 실행 설정을 따름).
         public ServerSttService(string baseUrl, string endpointPath = null, string apiKey = null, string model = null,
-            string language = "ko")
+            string language = "ko", string serverMode = null)
         {
             _language = language;
+            _serverMode = string.IsNullOrWhiteSpace(serverMode) ? null : serverMode.Trim();
             _apiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey.Trim();
             _configuredModel = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
             _modelId = _configuredModel;
@@ -609,7 +614,7 @@ namespace Artti.Common.Speech
             }
             // 변경점: 목표 문장을 함께 보낸다 (문서의 목표 필드, 문서 없이 찾은 경로면 "target" 폼 필드)
             string target = _target;
-            sending = sending.WithTarget(target);
+            sending = sending.WithTarget(target).WithMode(_serverMode);
 
             string url = _baseUrl + endpoint.Path + (string.IsNullOrEmpty(sending.Query) ? "" : "?" + sending.Query);
             string boundary = SttServerProtocol.NewBoundary();
@@ -687,9 +692,15 @@ namespace Artti.Common.Speech
                 //   무음 환각으로 비운 결과(text 빈 문자열)의 명료도는 쓰지 않는다.
                 bool hasClarity = SttServerProtocol.TryParseClarity(responseText, out int clarityPct, out string light, out string echoed)
                                   && !string.IsNullOrWhiteSpace(text);
+                // 변경점: 두 모델 서버(대화 모드)면 명료도는 다른 모델(기존 모델)이 들은 문장으로 계산했다. 그 문장도 담는다.
+                string clarityText = null;
+                if (hasClarity && SttServerProtocol.TryParseClarityText(responseText, out string heardByClarity))
+                    clarityText = heardByClarity;
 
                 Debug.Log($"[ServerSTT] '{text}' (음성 {seconds:F1}s, 업로드 {wav.Length / 1024}KB, {watch.ElapsedMilliseconds}ms)" +
-                          (hasClarity ? $" 명료도 {clarityPct}% [{light}] 목표 '{echoed ?? target}'" : ""));
+                          (sending.ModeField != null && sending.HasField(sending.ModeField) ? $" mode={_serverMode}" : "") +
+                          (hasClarity ? $" 명료도 {clarityPct}% [{light}] 목표 '{echoed ?? target}'" : "") +
+                          (clarityText != null && clarityText != text ? $" 명료도 모델 인식 '{clarityText}'" : ""));
                 result.Result = new SttResult
                 {
                     text = text,
@@ -700,7 +711,8 @@ namespace Artti.Common.Speech
                     clarityLight = hasClarity ? light : null,
                     // 변경점: 목표 문장은 앱이 보낸 화면 문장을 먼저 쓴다(서버가 돌려준 값은 다듬어진 형태일 수 있어
                     //   리포트 모범 발음이 이상하게 읽힐 수 있다). 앱 문장이 없을 때만 서버 값
-                    clarityTarget = hasClarity ? (!string.IsNullOrWhiteSpace(target) ? target : echoed) : null
+                    clarityTarget = hasClarity ? (!string.IsNullOrWhiteSpace(target) ? target : echoed) : null,
+                    clarityText = clarityText
                 };
                 return result;
             }

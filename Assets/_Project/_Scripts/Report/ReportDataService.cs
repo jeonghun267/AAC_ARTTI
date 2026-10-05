@@ -15,7 +15,9 @@ namespace Artti.Report
         public bool completed;
         public long dateMs;       // SessionEnded ts, 없으면 마지막 이벤트 ts
         public long startMs;      // ScenarioEntered ts, 없으면 첫 이벤트 ts
-        public int durationMin;   // startMs ~ dateMs
+        public int durationMin;   // 변경점: 실제 연습 시간(activeSeconds)의 분. 예전에는 startMs ~ dateMs 경과 시간
+        // 변경점: 실제 연습 시간(초). 기록 사이가 IdleCapMs보다 길면(앱을 켜 둔 채 쉬거나 백그라운드) 그 간격은 IdleCapMs까지만 센다
+        public int activeSeconds;
         public TrainingMode mode; // ScenarioEntered payload 기준. 모드 기록이 없는 예전 세션은 정확도 모드
     }
 
@@ -543,7 +545,8 @@ namespace Artti.Report
                         turn.clarityPct = clarityPct;
                         turn.clarityLight = clarityLight;
                         turn.clarityTarget = clarityTarget;
-                        turn.clarityHeard = ParseSttText(ev.payloadJson);
+                        // 변경점: 두 모델 서버면 명료도를 계산한 기존 모델의 문장, 아니면(이전 기록 포함) 알아들은 문장
+                        turn.clarityHeard = ParseClarityHeard(ev.payloadJson) ?? ParseSttText(ev.payloadJson);
                     }
                 }
                 else if (ev.eventType == EvSessionEvaluated)
@@ -633,6 +636,7 @@ namespace Artti.Report
             var ended = events.LastOrDefault(e => e.eventType == EvSessionEnded);
             long startMs = entered?.timestampUnixMs ?? events[0].timestampUnixMs;
             long endMs = ended?.timestampUnixMs ?? events[events.Count - 1].timestampUnixMs;
+            int activeSeconds = (int)(ActiveMs(events.Select(e => e.timestampUnixMs), startMs, endMs) / 1000);
 
             return new ReportSessionSummary
             {
@@ -641,9 +645,29 @@ namespace Artti.Report
                 completed = ended != null && ended.payloadJson == "completed",
                 startMs = startMs,
                 dateMs = endMs,
-                durationMin = Mathf.Max(0, Mathf.RoundToInt((endMs - startMs) / 60000f)),
+                durationMin = Mathf.RoundToInt(activeSeconds / 60f),
+                activeSeconds = activeSeconds,
                 mode = ParseMode(entered?.payloadJson)
             };
+        }
+
+        // 변경점: 한 기록 간격으로 세는 최대 시간. 점원 말 듣기·생각·말하기·서버 인식(두 모델 약 10초)을 넉넉히 넘는 2분.
+        //   그보다 긴 간격은 앱을 켜 둔 채 자리를 비웠거나 백그라운드에 둔 시간으로 본다.
+        public const long IdleCapMs = 2 * 60 * 1000;
+
+        // 변경점: 세션의 실제 연습 시간(ms). 시작~끝 사이 기록을 시간순으로 이어 간격을 더하되 한 간격은 IdleCapMs까지만 센다.
+        //   예전에는 끝 - 시작(경과 시간)이라 앱을 켜 둔 채 다음 날 이어서 끝내면 한 번이 하루로 잡혔다(총 대화 시간 1526분).
+        //   끝 뒤의 기록(대화 AI 평가 등)은 세지 않는다.
+        public static long ActiveMs(IEnumerable<long> timestamps, long startMs, long endMs)
+        {
+            if (timestamps == null || endMs <= startMs) return 0;
+            long total = 0, prev = startMs;
+            foreach (var t in timestamps.Where(t => t > startMs && t <= endMs).OrderBy(t => t))
+            {
+                total += Math.Min(t - prev, IdleCapMs);
+                prev = t;
+            }
+            return total + Math.Min(endMs - prev, IdleCapMs);
         }
 
         TrainingMode SessionMode(List<AACEvent> events) =>
@@ -676,6 +700,8 @@ namespace Artti.Report
         }
 
         const string ClarityMarker = "|clarity:";
+        // 변경점: 명료도를 계산한 모델이 들은 문장(대화 모드 두 모델 서버). "|clarity:" 바로 앞에 붙는다(EventLogger).
+        const string ClarityHeardMarker = "|clarityheard:";
 
         // CardSelected payload: "{cardId}:{text}" 또는 "{cardId}:{text}|stt:{sttText}"
         //   변경점: 끝에 "|clarity:{0..100}:{light}:{목표 문장}"이 붙을 수 있다(EventLogger). 문장 파싱 전에 떼어낸다.
@@ -721,7 +747,20 @@ namespace Artti.Report
         static string StripClarity(string payload)
         {
             int clarityIdx = payload.LastIndexOf(ClarityMarker, StringComparison.Ordinal);
-            return clarityIdx >= 0 ? payload.Substring(0, clarityIdx) : payload;
+            if (clarityIdx >= 0) payload = payload.Substring(0, clarityIdx);
+            // 변경점: 명료도 모델 문장도 떼어 |stt: 문장에 섞이지 않게 한다
+            int heardIdx = payload.LastIndexOf(ClarityHeardMarker, StringComparison.Ordinal);
+            return heardIdx >= 0 ? payload.Substring(0, heardIdx) : payload;
+        }
+
+        // 변경점: 명료도를 계산한 모델이 들은 문장(|clarityheard:). 없으면(한 모델 인식·이전 기록) null
+        static string ParseClarityHeard(string payload)
+        {
+            if (string.IsNullOrEmpty(payload)) return null;
+            int clarityIdx = payload.LastIndexOf(ClarityMarker, StringComparison.Ordinal);
+            var head = clarityIdx >= 0 ? payload.Substring(0, clarityIdx) : payload;
+            int idx = head.LastIndexOf(ClarityHeardMarker, StringComparison.Ordinal);
+            return idx >= 0 ? head.Substring(idx + ClarityHeardMarker.Length) : null;
         }
 
         // 변경점: CardSelected payload 끝의 "|clarity:{0..100}:{light}:{목표 문장}" 파싱.
