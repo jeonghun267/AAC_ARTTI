@@ -29,6 +29,7 @@ namespace Artti.ARField
             transform.SetAsLastSibling();
             _group.blocksRaycasts = false;
             _cts = new CancellationTokenSource();
+            Debug.Log($"[ARPanelFx] {name} 페이드아웃 {seconds:F2}초");
             RunAsync(seconds, _cts.Token).Forget();
         }
 
@@ -50,7 +51,7 @@ namespace Artti.ARField
             while (t < seconds)
             {
                 if (await UniTask.Yield(PlayerLoopTiming.Update, ct).SuppressCancellationThrow()) return;
-                t += Time.unscaledDeltaTime;
+                t += Mathf.Min(Time.unscaledDeltaTime, ARPanelEnterFx.MaxFrameStep);   // 늦은 프레임에도 끝까지 보이게
                 float k = Mathf.Clamp01(t / seconds);
                 _group.alpha = 1f - k * k * (3f - 2f * k);   // smoothstep
             }

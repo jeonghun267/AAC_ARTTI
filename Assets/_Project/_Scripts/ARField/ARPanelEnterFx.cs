@@ -22,6 +22,9 @@ namespace Artti.ARField
         const float Duration = 0.35f;
         const float StartScale = 0.98f;
         const float HelpDetailDuration = 0.3f;
+        // 변경점: 한 프레임에 진행하는 최대 시간. 패널이 처음 켜지는 프레임은 카드 만들기·사진·지도 때문에 수백 ms가 걸려
+        //   효과가 한 프레임 만에 끝나 버렸다(실기기 2026-10-06). 늦은 프레임에도 페이드가 끝까지 보이게 한다
+        internal const float MaxFrameStep = 1f / 30f;
 
         private CanvasGroup _group;
         private CancellationTokenSource _cts;
@@ -39,6 +42,7 @@ namespace Artti.ARField
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             if (scene.name != SceneName) return;
+            int count = 0;
             foreach (var root in scene.GetRootGameObjects())
             {
                 if (root.name != CanvasName) continue;
@@ -49,8 +53,10 @@ namespace Artti.ARField
                     if (fx == null) fx = panel.gameObject.AddComponent<ARPanelEnterFx>();
                     if (panel.name == HelpDetailPanelName) fx.Setup(HelpDetailDuration, 1f);   // 페이드인만
                     else fx.Setup(Duration, StartScale);
+                    count++;
                 }
             }
+            Debug.Log($"[ARPanelFx] 패널 {count}개에 등장 효과를 붙임");
         }
 
         public void Setup(float duration, float startScale)
@@ -93,7 +99,7 @@ namespace Artti.ARField
             while (t < _duration)
             {
                 if (await UniTask.Yield(PlayerLoopTiming.Update, ct).SuppressCancellationThrow()) return;
-                t += Time.unscaledDeltaTime;
+                t += Mathf.Min(Time.unscaledDeltaTime, MaxFrameStep);
                 Apply(Mathf.Clamp01(t / _duration));
             }
             Apply(1f);
