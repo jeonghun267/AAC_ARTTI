@@ -22,6 +22,11 @@ public class CardGenerator : MonoBehaviour
     [Tooltip("켤 때마다 새로 생성(체크) / 처음 한 번만 생성(해제, API 절약)")]
     [SerializeField] private bool regenerateEveryTime = false;
 
+    // 변경점(2026-10-06 사용자 결정): 문장을 정해 두면 Gemini로 만들지 않고 이 문장들로 카드를 만든다(인사·편의 화면 4개).
+    //   값은 에디터 스크립트 ARFieldGreetingLayout이 넣는다. 비어 있으면 예전처럼 Gemini가 cardCount개를 만든다.
+    [Tooltip("정해 둔 문장. 있으면 Gemini 대신 이 문장으로 카드를 만든다")]
+    [SerializeField] private string[] fixedPhrases = Array.Empty<string>();
+
     [Header("테스트용 장소")]
     [Tooltip("ResultPanel이 장소를 안 넣어줬을 때 쓸 기본 장소. 예: 카페. 비워두면 장소 없이 생성")]
     [SerializeField] private string fallbackPlace = "";
@@ -39,6 +44,12 @@ public class CardGenerator : MonoBehaviour
     // 패널 전환을 SetActive로 안 한다면, 전환 코드에서 이 메서드를 직접 호출하세요
     public void Generate()
     {
+        if (fixedPhrases != null && fixedPhrases.Length > 0)
+        {
+            OnResult(new List<string>(fixedPhrases));
+            return;
+        }
+
         // 1) 장소 맥락: ResultPanel이 넣어준 값 우선, 없으면 테스트용 fallback 사용
         string place = PlaceContext.HasContext ? PlaceContext.Category : fallbackPlace;
         string placeName = PlaceContext.HasContext ? PlaceContext.PlaceName : "";
