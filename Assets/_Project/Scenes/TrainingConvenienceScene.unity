@@ -15403,7 +15403,7 @@ MonoBehaviour:
   npcSpeechSource: {fileID: 1897224168}
   counter: {fileID: 0}
   speakCardOnTap: 0
-  sttServerUrl: http://192.168.0.167:8000
+  sttServerUrl: http://127.0.0.1:8001
   sttServerPath: 
   accuracyClarityMinPercent: 60
   accuracyClarityMaxRetries: 2

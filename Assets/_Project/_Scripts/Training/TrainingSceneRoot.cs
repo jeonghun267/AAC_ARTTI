@@ -74,6 +74,19 @@ namespace Artti.Training
         [SerializeField, Range(0, 5)] private int accuracyClarityMaxRetries = 2;
         private ClarityGatePolicy _clarityGate;
 
+        // 변경점(사용자 결정): 현장지원모드(대화 모드)는 어눌한 말은 알아듣고 넘어가되, 뭉개진 말은 한 번 더 기회를 준다.
+        //   뭉개짐 = 명료도 모델(기존 모델)이 들은 말이 해석된 문장과 이 값(0~100, ClarityEstimator)보다 덜 같을 때.
+        //   모의 녹음 270개 기준 40: 약간 어눌함 90/90 통과, 중간 78/90 통과, 심함 49/90 통과. 뭉개 말한 실기기 4건(0~33)은 되묻기.
+        [Header("현장지원모드 되묻기 기준")]
+        [Tooltip("명료도 모델이 들은 말이 해석된 문장과 이 값(%)보다 덜 같으면 추천 문장을 한 번 더 말해 달라고 한다(두 번째는 넘어감)")]
+        [SerializeField, Range(0, 100)] private int conversationRetryClarityPercent = 40;
+        // 변경점: 두 모델(새 대화 모델·명료도 모델)이 같은 녹음을 이 값 이상 같게 들었으면 또렷한 말로 본다.
+        //   모의 녹음 270개 기준 90: 약간 어눌함 84/90 합의, 뭉개진 말(목표 대비 40 미만) 53개 중 1개만 합의.
+        //   쓰임: "아니요"처럼 추천 문장과 다른 말로 또렷하게 답하면 뭉개짐으로 보지 않는다.
+        //         AI가 일상 대화로 판단했는데 두 모델이 다르게 들었으면 뭉개진 말로 보고 되묻는다(예전에는 그 단계에서 계속 맴돌았다)
+        [Tooltip("두 모델이 들은 문장이 이 값(%) 이상 같으면 또렷한 말로 본다")]
+        [SerializeField, Range(0, 100)] private int conversationModelAgreePercent = 90;
+
         private DialogueManager _dialogueManager;
         private ITtsService _ttsService;
         private ITtsService _npcTtsService;
@@ -841,14 +854,30 @@ namespace Artti.Training
                     IsConversationMode ? sttResultP : ClarityEstimator.FillIfMissing(sttResultP, card.phrase?.text));
 
                 // 빈 결과 시 fallback 전용 대사 후 같은 objective 유지 — 2차 시도(scaffold_level=1)는 같은 카드 유지 (PLAN.MD 7.3.1)
-                if (string.IsNullOrWhiteSpace(sttResultP.text))
+                // 변경점: 대화(현장지원) 모드는 한 번만 다시 묻고, 또 못 들으면 누른 카드 문장으로 진행한다
+                bool cardMoveOn = IsConversationMode && !string.IsNullOrWhiteSpace(card.phrase?.text)
+                                  && _unclearRetries >= UnclearRetryLimit;
+                if (string.IsNullOrWhiteSpace(sttResultP.text) && !cardMoveOn)
                 {
+                    if (IsConversationMode)
+                    {
+                        // 시나리오 실패 횟수(4회면 강제 종료)에 넣지 않고 되묻기 횟수로 센다. 발화는 위에서 이미 기록됨
+                        AskConversationRetry(sttResultP, card.phrase?.text, "카드 말하기 못 들음", logUtterance: false);
+                        return;
+                    }
                     _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
-                    _dialogueManager.RegisterFailure();
                     _lastToolSpoke = true;
+                    _dialogueManager.RegisterFailure();
                     SpeakNpc(PickFallback("stt_empty"), isFallback: true);
                     return;
                 }
+                // 변경점: 카드 문장을 뭉개서 말했으면 한 번 더 기회(두 번째는 카드 문장으로 진행)
+                if (IsConversationMode && !cardMoveOn && IsGarbled(sttResultP.clarityText, card.phrase?.text))
+                {
+                    AskConversationRetry(sttResultP, card.phrase?.text, "카드 말하기 뭉개짐", logUtterance: false);
+                    return;
+                }
+                if (IsConversationMode) _unclearRetries = 0;   // 진행하는 턴이면 되묻기 횟수를 비운다
 
                 // 변경점: 정확도 모드 명료도 관문 (발화는 위 LogCardSelected에서 이미 기록됨)
                 if (BlockLowClarity(card.id, sttResultP, logUtterance: false)) return;
@@ -990,8 +1019,9 @@ namespace Artti.Training
                 uiView.ShowSttResult(recognized);
 
                 // 변경점: 추천 문장이 아닌 다른 정답(다른 힌트·다른 상품)을 말했으면 목표 대비 명료도는 의미가 없으므로 버린다.
+                //   대화 모드는 뭉개진 말이 대부분 다른 후보에 더 가까워 보여 다 버려졌으므로, 해석 뒤 ConversationClarity로 정한다
                 spoken = stt;
-                if (spoken.hasClarity && dashboardView != null
+                if (!IsConversationMode && spoken.hasClarity && dashboardView != null
                     && !ConvenienceQuickPhrasePolicy.IsAttemptAtTarget(recognized, clarityTarget, dashboardView.GetSpeechCandidates()))
                     spoken.hasClarity = false;
 
@@ -1002,39 +1032,83 @@ namespace Artti.Training
                     && ConvenienceQuickPhrasePolicy.IsAttemptAtTarget(recognized, clarityTarget, dashboardView.GetSpeechCandidates()))
                     spoken = ClarityEstimator.FillIfMissing(spoken, clarityTarget);
 
-                if (string.IsNullOrWhiteSpace(recognized))
+                bool heardNothing = string.IsNullOrWhiteSpace(recognized);
+                // 변경점: 대화(현장지원) 모드는 아무것도 못 들은 것도 '다시 말해 줄래요' 횟수에 넣는다.
+                //   한 번 다시 묻고, 또 못 들으면 추천 문장으로 다음 대화로 넘어간다(예전에는 횟수 없이 계속 되물었다).
+                if (heardNothing && IsConversationMode && dashboardView != null
+                    && _unclearRetries >= UnclearRetryLimit && !string.IsNullOrWhiteSpace(clarityTarget))
                 {
+                    utterance = ConvenienceQuickPhrasePolicy.ConversationFallback(recognized, clarityTarget);
+                    Debug.Log($"[TrainingSceneRoot] 대화 모드: 다시 말해도 못 들음 -> 추천 문장 '{utterance}'로 진행");
+                }
+                else if (heardNothing)
+                {
+                    if (IsConversationMode && dashboardView != null)
+                    {
+                        // 대화 모드: 시나리오 실패 횟수(RegisterFailure, 4회면 강제 종료)에 넣지 않고 되묻기 횟수로 센다
+                        AskConversationRetry(spoken, clarityTarget, "못 들음");
+                        return;
+                    }
                     _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
                     _dialogueManager.RegisterFailure();
                     SpeakNpc("괜찮아요. 왼쪽 문장을 보고 다시 말해볼까요?", isFallback: true);   // 변경점: 문장 버튼은 왼쪽에 있다
                     return;
                 }
-
-                // 변경점: 정확도 모드는 목표 문장을 또렷하게 말해야 다음으로 넘어간다(명료도 관문).
-                if (BlockLowClarity("guided_voice", gateInput, logUtterance: true)) return;
-
-                // 대화 모드: 어눌하게 말해도 화면 후보 문장으로 해석해 진행한다 (규칙 -> 애매하면 AI -> 추천 문장).
-                //   인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다. 정확도 모드는 기존 흐름 그대로.
-                if (IsConversationMode && dashboardView != null)
+                else
                 {
-                    var resolved = await ResolveConversationUtteranceAsync(recognized, stt.alternatives, clarityTarget, _cts.Token);
-                    utterance = resolved.phrase;
-                    smallTalk = resolved.smallTalk;
+                    // 변경점: 정확도 모드는 목표 문장을 또렷하게 말해야 다음으로 넘어간다(명료도 관문).
+                    if (BlockLowClarity("guided_voice", gateInput, logUtterance: true)) return;
+
+                    // 대화 모드: 어눌하게 말해도 화면 후보 문장으로 해석해 진행한다 (규칙 -> 애매하면 AI -> 추천 문장).
+                    //   인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다. 정확도 모드는 기존 흐름 그대로.
+                    if (IsConversationMode && dashboardView != null)
+                    {
+                        var resolved = await ResolveConversationUtteranceAsync(recognized, stt.alternatives, clarityTarget, _cts.Token);
+                        utterance = resolved.phrase;
+                        smallTalk = resolved.smallTalk;
+                    }
+                    else utterance = recognized;
+
+                    // 변경점: AI가 일상 대화로 판단했어도 두 모델이 서로 다르게 들었으면 뭉개진 말이다(봉투 질문에서 "예요요요"가 일상 대화로 맴돎).
+                    //   한 번 되묻고, 두 번째에는 추천 문장으로 다음 대화로 넘어간다. 명료도 모델 문장이 없으면(기기 음성 인식) 예전처럼 일상 대화
+                    if (IsConversationMode && dashboardView != null && smallTalk && stt.clarityText != null
+                        && !ModelsAgree(recognized, stt.clarityText))
+                    {
+                        if (_unclearRetries < UnclearRetryLimit)
+                        {
+                            Debug.Log($"[TrainingSceneRoot] 대화 모드 뭉개짐(일상 대화로 판단됨): 새 모델 '{recognized}' / 명료도 모델 '{stt.clarityText}'");
+                            AskConversationRetry(spoken, clarityTarget, "뭉개진 발화");
+                            return;
+                        }
+                        if (!string.IsNullOrWhiteSpace(clarityTarget))
+                        {
+                            utterance = ConvenienceQuickPhrasePolicy.ConversationFallback(recognized, clarityTarget);
+                            smallTalk = false;
+                            Debug.Log($"[TrainingSceneRoot] 대화 모드: 다시 말해도 뭉개짐 -> 추천 문장 '{utterance}'로 진행");
+                        }
+                    }
+
+                    // 변경점(사용자 결정): 뭉개진 말은 새 모델·AI가 그럴듯한 문장으로 맞춰도 바로 넘기지 않는다.
+                    //   명료도 모델이 들은 말이 해석된 문장과 많이 다르면 한 번 더 기회를 주고, 두 번째에는 해석된 문장으로 진행한다
+                    //   변경점: 두 모델이 거의 같게 들었으면 다른 말로 또렷하게 답한 것("아니요" -> 봉투 필요 없어요)이므로 되묻지 않는다
+                    if (IsConversationMode && dashboardView != null && utterance != null && !smallTalk
+                        && _unclearRetries < UnclearRetryLimit && IsGarbled(stt.clarityText, utterance)
+                        && !ModelsAgree(recognized, stt.clarityText))
+                    {
+                        Debug.Log($"[TrainingSceneRoot] 대화 모드 뭉개짐: 해석 '{utterance}' / 명료도 모델 '{stt.clarityText}'");
+                        AskConversationRetry(spoken, clarityTarget, "뭉개진 발화");
+                        return;
+                    }
                 }
-                else utterance = recognized;
 
                 // 변경점: 못 알아들었으면 한 번 다시 말해 달라고 한다. 인식 원문과 재시도는 기록하고 이번 턴은 진행하지 않는다
                 //   (DialogueManager.RegisterFailure는 부르지 않는다: 실패 4회면 시나리오가 강제 종료된다)
                 if (utterance == null)
                 {
-                    // 변경점: 못 알아들은 말은 자유 발화로 기록한다(리포트 '전체 보기'에서 모범 발음 없이 내 발음만)
-                    _eventLogger?.LogCardSelected(Artti.Report.ReportDataService.FreeSpeechSource, spoken.text, spoken);
-                    hud?.SetUserUtterance(spoken.text);
-                    _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
-                    _lastToolSpoke = true;
-                    SpeakNpc(UnclearRetryLine, isFallback: true);
+                    AskConversationRetry(spoken, clarityTarget, "해석 실패");
                     return;
                 }
+                if (IsConversationMode) spoken = ConversationClarity(spoken, utterance, clarityTarget, smallTalk);
             }
             finally
             {
@@ -1105,6 +1179,73 @@ namespace Artti.Training
         private const float ConversationJudgeTimeoutSeconds = 3f;
         private const int UnclearRetryLimit = 1;
         private const string UnclearRetryLine = "잘 못 들었어요. 한 번만 더 말해 줄래요?";
+        private string _lastRetryLine;   // 마지막으로 한 되묻기 문장(AI 판단 때 원래 질문을 맥락으로 쓰려고)
+
+        // 변경점: 현장지원모드 되묻기(못 들음·뜻 모름·뭉개짐 공통). 추천 문장(카드 문장)이 있으면 그 문장을 한 번 더 말해 달라고 한다.
+        //   시나리오 실패 횟수(RegisterFailure, 4회면 강제 종료)에는 넣지 않는다. 알아들은 턴이 진행되면 횟수는 0
+        private void AskConversationRetry(SttResult spoken, string target, string reason, bool logUtterance = true)
+        {
+            if (logUtterance && !string.IsNullOrWhiteSpace(spoken.text))
+            {
+                // 못 알아들은 말은 자유 발화로 기록한다(리포트 '전체 보기'에서 모범 발음 없이 내 발음만)
+                _eventLogger?.LogCardSelected(Artti.Report.ReportDataService.FreeSpeechSource, spoken.text, spoken);
+                hud?.SetUserUtterance(spoken.text);
+            }
+            _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
+            _unclearRetries++;
+            if (_lastNpcLine != _lastRetryLine) _clerkLineBeforeRetry = _lastNpcLine;   // 다시 말했을 때 AI가 원래 질문을 맥락으로 쓰게
+            _lastRetryLine = RetryLineFor(target);
+            _lastToolSpoke = true;
+            Debug.Log($"[TrainingSceneRoot] 대화 모드 {reason} -> 다시 말해 달라고 함 ({_unclearRetries}/{UnclearRetryLimit}): '{_lastRetryLine}'");
+            SpeakNpc(_lastRetryLine, isFallback: true);
+        }
+
+        // "물 주세요" -> "물 주세요라고 한 번 더 말씀해 주시겠어요?" (추천 문장이 없으면 기본 되묻기)
+        private static string RetryLineFor(string target)
+        {
+            var phrase = target?.Trim().TrimEnd('?', '!', '.', '…');
+            return string.IsNullOrEmpty(phrase) ? UnclearRetryLine : $"{phrase}라고 한 번 더 말씀해 주시겠어요?";
+        }
+
+        // 변경점: 뭉개짐 판단 - 명료도 모델(기존 모델)이 들은 말이 해석된 문장과 얼마나 같은지(ClarityEstimator, 0~100).
+        //   명료도 모델 문장이 없으면(기기 음성 인식·서버 없음) 판단하지 않는다. 명료도 모델이 아무것도 못 들었으면 뭉개짐.
+        private bool IsGarbled(string clarityText, string phrase)
+        {
+            if (clarityText == null || string.IsNullOrWhiteSpace(phrase)) return false;
+            if (string.IsNullOrWhiteSpace(clarityText)) return true;
+            return ClarityEstimator.TryEstimate(phrase, clarityText, out int percent) && percent < conversationRetryClarityPercent;
+        }
+
+        // 변경점: 현장지원모드 명료도 기록 기준 = 해석된 문장(사용자가 말하려던 문장).
+        //   예전에는 뭉개진 인식 문장이 추천 문장보다 다른 후보에 가까워 보이면 명료도를 버려서, 뭉개 말한 턴은 거의 기록이 없었고
+        //   완료 화면 '정확도'가 "-"였다(2026-10-05 태블릿 세션 음성 9턴 중 0턴 기록).
+        //   추천 문장으로 해석됨 -> 서버 점수 그대로. 다른 후보로 해석됨 -> 명료도 모델 문장을 그 후보와 비교한 추정치(ClarityEstimator).
+        //   일상 대화는 목표 문장이 없으므로 기록하지 않는다. 되묻기 턴은 추천 문장을 다시 말해 달라고 했으므로 서버 점수 그대로(호출 측).
+        //   "아니요" -> 봉투 필요 없어요처럼 다른 말로 또렷하게 답했으면(두 모델 합의) 문장 차이만 재므로 기록하지 않는다(정확도 모드와 같은 원칙)
+        private SttResult ConversationClarity(SttResult spoken, string phrase, string target, bool smallTalk)
+        {
+            if (!spoken.hasClarity) return spoken;
+            if (smallTalk || string.IsNullOrWhiteSpace(phrase)
+                || (ModelsAgree(spoken.text, spoken.clarityText) && IsGarbled(spoken.clarityText, phrase)))
+            {
+                spoken.hasClarity = false;
+                return spoken;
+            }
+            if (ClarityEstimator.TryEstimate(target, phrase, out int same) && same == 100) return spoken;
+
+            int percent;
+            if (spoken.clarityText == null) { spoken.hasClarity = false; return spoken; }
+            if (string.IsNullOrWhiteSpace(spoken.clarityText)) percent = 0;   // 명료도 모델이 아무것도 못 들음
+            else if (!ClarityEstimator.TryEstimate(phrase, spoken.clarityText, out percent)) { spoken.hasClarity = false; return spoken; }
+            spoken.clarityPercent = percent;
+            spoken.clarityLight = percent >= ClarityEstimator.GreenFrom ? "green" : percent >= ClarityEstimator.YellowFrom ? "yellow" : "red";
+            spoken.clarityTarget = phrase;
+            return spoken;
+        }
+
+        // 변경점: 두 모델이 같은 녹음을 거의 같게 들었는가(또렷한 말). 어느 한쪽이 비었으면 false
+        private bool ModelsAgree(string recognized, string clarityText) =>
+            ClarityEstimator.TryEstimate(recognized, clarityText, out int percent) && percent >= conversationModelAgreePercent;
         private int _unclearRetries;   // 못 알아들어 다시 말해 달라고 한 횟수. 알아들은 턴이 진행되면 0
         private string _clerkLineBeforeRetry;   // 다시 말해 달라고 하기 전 점원이 한 말(AI 판단 맥락)
 
@@ -1122,13 +1263,15 @@ namespace Artti.Training
                 return (match, false);
             }
             // 변경점: AI에게는 점원이 방금 한 말(맥락)을 함께 준다. 다시 물어본 뒤라면 그 전의 원래 질문
-            var clerkLine = _lastNpcLine == UnclearRetryLine ? _clerkLineBeforeRetry : _lastNpcLine;
+            var clerkLine = _lastNpcLine == _lastRetryLine ? _clerkLineBeforeRetry : _lastNpcLine;
 
             if (_geminiService != null && candidates.Count > 0)
             {
+                // 변경점: 타이머도 함께 해제한다. 예전에는 판단이 3초 전에 끝나 CTS가 해제된 뒤 타이머가 Cancel을 불러
+                //   매 턴 ObjectDisposedException이 로그에 찍혔다
                 using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                using (timeout.CancelAfterSlim(System.TimeSpan.FromSeconds(ConversationJudgeTimeoutSeconds), DelayType.Realtime))
                 {
-                    timeout.CancelAfterSlim(System.TimeSpan.FromSeconds(ConversationJudgeTimeoutSeconds), DelayType.Realtime);
                     ShowThinking(true);
                     try
                     {
@@ -1158,10 +1301,8 @@ namespace Artti.Training
 
             if (_unclearRetries < UnclearRetryLimit)
             {
-                _unclearRetries++;
-                _clerkLineBeforeRetry = clerkLine;   // 다시 말했을 때 AI가 원래 질문을 맥락으로 쓰게
-                Debug.Log($"[TrainingSceneRoot] 대화 모드 해석 실패: '{recognized}' -> 다시 말해 달라고 함 ({_unclearRetries}/{UnclearRetryLimit})");
-                return (null, false);
+                Debug.Log($"[TrainingSceneRoot] 대화 모드 해석 실패: '{recognized}'");
+                return (null, false);   // 되묻기(횟수·맥락 기록)는 호출 측 AskConversationRetry
             }
             var fallback = ConvenienceQuickPhrasePolicy.ConversationFallback(recognized, target);
             Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(폴백): '{recognized}' -> '{fallback}'");
@@ -1297,7 +1438,9 @@ namespace Artti.Training
             if (_dashboardTurnBusy || _freeTalkActive || _sessionCompleted || !_useGemini
                 || string.IsNullOrWhiteSpace(utterance)) return;
 
-            _unclearRetries = 0;   // 변경점: 알아들은 턴(음성·버튼·키보드)이 진행되면 '다시 말해 줄래요' 횟수를 비운다
+            // 변경점: 알아들은 턴(음성·버튼·키보드)이 진행되면 '다시 말해 줄래요' 횟수를 비운다.
+            //   일상 대화는 단계가 그대로이므로 비우지 않는다(비우면 같은 질문에서 되묻기가 끝없이 반복됐다)
+            if (!smallTalk) _unclearRetries = 0;
             _dashboardTurnBusy = true;
             dashboardView?.SetInteractionEnabled(false);
             try
