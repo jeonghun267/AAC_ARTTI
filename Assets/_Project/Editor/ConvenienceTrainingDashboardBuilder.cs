@@ -19,9 +19,10 @@ namespace Artti.Editor
         private const string RoundedPath = "Assets/_Project/Art/UI/RoundedRect.png";
         private const string AacDbPath = "Assets/_Project/_Data/AAC/AACDatabase.asset";
         // 변경점: 서버PC 음성 인식 서버. IP가 바뀌면 여기와 씬의 TrainingSceneRoot > Stt Server Url을 함께 고친다.
-        // 변경점: 두 모델 서버(Artti_ASR_dual_epoch2, 8001). 127.0.0.1은 서버 PC의 에디터에서 그대로 되고,
-        //   휴대폰은 USB 연결 후 `adb reverse tcp:8001 tcp:8001`로 같은 주소를 쓴다(PC IP가 바뀌어도 그대로).
-        private const string SttServerUrl = "http://127.0.0.1:8001";
+        // 변경점: 두 모델 서버(Artti_ASR_dual_epoch2, 8001)를 서버 PC의 LAN 주소로 쓴다.
+        //   태블릿의 127.0.0.1은 태블릿 자신이라 서버에 닿지 않아(연결 실패 후 기기 STT로 떨어져 정확도가 "-"가 됨) USB 없이 같은 와이파이로 접속한다.
+        //   서버 PC의 IP가 바뀌면 여기와 씬의 TrainingSceneRoot > Stt Server Url을 함께 고친다.
+        private const string SttServerUrl = "http://192.168.0.167:8001";
 
         private static readonly string[] ProductPaths =
         {
