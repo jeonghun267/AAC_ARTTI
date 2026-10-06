@@ -609,7 +609,9 @@ namespace Artti.UI
             }
             var key = ApiKeyLoader.GetOrFallback(ApiKeyLoader.GoogleTtsApi, ApiKeyLoader.GeminiApi);
             if (string.IsNullOrEmpty(key)) return new NoopTtsService();
-            return new CloudTtsService(key, audioSource);
+            var tts = new CloudTtsService(key, audioSource);
+            ProfileVoice.Apply(tts);   // 변경점: 문장 듣기도 프로필 목소리(여성/남성)·빠르기(예전: 항상 기본 여성 목소리)
+            return tts;
         }
     }
 }

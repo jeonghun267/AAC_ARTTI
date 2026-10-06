@@ -170,8 +170,8 @@ namespace Artti.Training
             if (speechPrefs != null)
             {
                 speakCardOnTap = speechPrefs.speakCardOnTap;
-                // 변경점: 카드 읽어주는 목소리 = 프로필 남녀 목소리(카드 채널은 항상 점원과 따로)
-                _ttsService.SetVoice(speechPrefs.readingVoice.ToVoiceName());
+                // 변경점: 카드 읽어주는 목소리 = 프로필 남녀 목소리(카드 채널은 항상 점원과 따로, ProfileVoice와 같은 기준)
+                _ttsService.SetVoice(ProfileVoice.Voice.ToVoiceName());
                 float rate = speechPrefs.speechRate.ToMultiplier();
                 _ttsService.SetSpeakingRate(rate);
                 _npcTtsService.SetSpeakingRate(rate);

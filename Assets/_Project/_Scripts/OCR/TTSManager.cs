@@ -24,6 +24,7 @@ public class TTSManager : MonoBehaviour
     private CancellationTokenSource _cts;
     private int _generation;
     private int _inFlight;   // 음성을 받는 중인 요청 수(받는 동안도 '읽는 중'으로 본다 - 배경음 멈춤용)
+    private string _voiceName;
 
     void Start()
     {
@@ -112,13 +113,10 @@ public class TTSManager : MonoBehaviour
         }
     }
 
-    // 활성 프로필의 목소리·빠르기. 프로필이 없으면 여성 목소리, 보통 빠르기
+    // 활성 프로필의 목소리·빠르기(ProfileVoice). 읽을 때마다 넣어 프로필 설정을 바꾸면 바로 반영된다
     private void ApplyProfile()
     {
-        var profile = AppBootstrap.Instance != null && AppBootstrap.Instance.ProfileManager != null
-            ? AppBootstrap.Instance.ProfileManager.ActiveProfile : null;
-        _cloud.SetVoice((profile != null ? profile.readingVoice : ReadingVoice.Female).ToVoiceName());
-        _cloud.SetSpeakingRate(profile != null ? profile.speechRate.ToMultiplier() : 1f);
+        _voiceName = ProfileVoice.Apply(_cloud);
     }
 
     private async UniTaskVoid SpeakCloudAsync(string message, int generation, CancellationToken ct)
@@ -133,7 +131,12 @@ public class TTSManager : MonoBehaviour
         {
             _inFlight--;
         }
-        if (ct.IsCancellationRequested || generation != _generation || this == null) return;   // 늦게 도착한 이전 문장
+        if (this == null) return;
+        if (ct.IsCancellationRequested || generation != _generation)
+        {
+            Debug.Log($"[TTSManager] 늦게 도착한 이전 문장 버림: \"{message}\"");
+            return;
+        }
         if (clip == null)
         {
             Debug.LogWarning("[TTSManager] Cloud TTS 실패 - 기기 TTS로 읽음");
@@ -142,6 +145,7 @@ public class TTSManager : MonoBehaviour
         }
         _source.clip = clip;
         _source.Play();
+        Debug.Log($"[TTSManager] Google 음성 재생 ({_voiceName}, {clip.length:F1}초): \"{message}\"");
     }
 
     private void SpeakNative(string message)

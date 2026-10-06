@@ -320,9 +320,7 @@ namespace Artti.UI
             var key = ApiKeyLoader.GetOrFallback(ApiKeyLoader.GoogleTtsApi, ApiKeyLoader.GeminiApi);
             if (string.IsNullOrEmpty(key)) return new NoopTtsService();
             var tts = new CloudTtsService(key, audioSource);
-            tts.SetVoice(TrainingModeContext.VoiceFor(TrainingMode.Accuracy));   // 정확도 모드 점원 목소리
-            var profile = AppBootstrap.Instance?.ProfileManager?.ActiveProfile;
-            if (profile != null) tts.SetSpeakingRate(profile.speechRate.ToMultiplier());
+            ProfileVoice.Apply(tts);   // 변경점: 모범 발음도 프로필 목소리(여성/남성)·빠르기(예전: 항상 정확도 모드 점원 여성 목소리)
             return tts;
         }
     }

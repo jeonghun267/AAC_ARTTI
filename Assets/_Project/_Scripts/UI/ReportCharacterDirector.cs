@@ -192,7 +192,9 @@ namespace Artti.UI
             // 훈련모드와 동일: TTS는 Cloud(ko-KR 단말 미지원 회피), 키는 .env. 키 없으면 NoopTts로 폴백.
             var ttsKey = ApiKeyLoader.GetOrFallback(ApiKeyLoader.GoogleTtsApi, ApiKeyLoader.GeminiApi);
             if (string.IsNullOrEmpty(ttsKey)) return new NoopTtsService();
-            return new CloudTtsService(ttsKey, audioSource);
+            var tts = new CloudTtsService(ttsKey, audioSource);
+            ProfileVoice.Apply(tts);   // 변경점: 프로필 목소리(여성/남성)·빠르기
+            return tts;
         }
 
         // ===== 클립 적용 헬퍼 =====
