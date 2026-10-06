@@ -28,6 +28,10 @@ namespace Artti.Training
         [SerializeField] private Actor accuracyClerk = new Actor();
         [SerializeField] private Actor conversationClerk = new Actor();
 
+        // 변경점(2026-10-06): 이 모드에서 실제로 나오는 점원이 남자 점원인가(목소리를 점원 성별에 맞추려고)
+        public bool UsesMaleClerk(TrainingMode mode) =>
+            mode == TrainingMode.Conversation && conversationClerk.root != null;
+
         public Actor Activate(TrainingMode mode)
         {
             bool useConversation = mode == TrainingMode.Conversation && conversationClerk.root != null;

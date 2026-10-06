@@ -162,7 +162,11 @@ namespace Artti.Training
             }
             _ttsService = new CloudTtsService(ttsKey, _cardSpeechSource);
             _npcTtsService = new CloudTtsService(ttsKey, npcSpeechSource);
-            _npcTtsService.SetVoice(TrainingModeContext.VoiceFor(_mode)); // 모드별 점원 목소리
+            // 변경점: 점원 목소리 = 화면에 나오는 점원의 성별(여자 점원 ko-KR-Standard-A / 남자 점원 C).
+            //   남자 점원이 연결되지 않아 여자 점원이 나오면 여성 목소리(예전: 모드만 보고 남성 목소리가 될 수 있었다)
+            bool maleClerk = clerkCast != null ? clerkCast.UsesMaleClerk(_mode) : _mode == TrainingMode.Conversation;
+            _npcTtsService.SetVoice((maleClerk ? ReadingVoice.Male : ReadingVoice.Female).ToVoiceName());
+            Debug.Log($"[TrainingSceneRoot] 점원 목소리 {(maleClerk ? "남성" : "여성")}, 카드 읽기 목소리 {ProfileVoice.Voice.DisplayName()}");
 
             // 변경점: 활성 프로필의 카드 읽어주기·말 빠르기(점원·카드 음성 공통)를 적용한다.
             //   프로필 없이 씬을 바로 실행하면(에디터) Inspector 값과 보통 빠르기를 그대로 쓴다.
