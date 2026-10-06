@@ -878,7 +878,7 @@ namespace Artti.Training
                     if (IsConversationMode)
                     {
                         // 시나리오 실패 횟수(4회면 강제 종료)에 넣지 않고 되묻기 횟수로 센다. 발화는 위에서 이미 기록됨
-                        AskConversationRetry(sttResultP, card.phrase?.text, "카드 말하기 못 들음", logUtterance: false);
+                        AskConversationRetry(sttResultP, card.phrase?.text, "카드 말하기 못 들음", logUtterance: false, askChoice: false);   // 변경점: askChoice
                         return;
                     }
                     _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
@@ -890,7 +890,7 @@ namespace Artti.Training
                 // 변경점: 카드 문장을 뭉개서 말했으면 한 번 더 기회(두 번째는 카드 문장으로 진행)
                 if (IsConversationMode && !cardMoveOn && IsGarbled(sttResultP.clarityText, card.phrase?.text))
                 {
-                    AskConversationRetry(sttResultP, card.phrase?.text, "카드 말하기 뭉개짐", logUtterance: false);
+                    AskConversationRetry(sttResultP, card.phrase?.text, "카드 말하기 뭉개짐", logUtterance: false, askChoice: false);   // 변경점: askChoice
                     return;
                 }
                 if (IsConversationMode) _unclearRetries = 0;   // 진행하는 턴이면 되묻기 횟수를 비운다
@@ -1049,8 +1049,10 @@ namespace Artti.Training
                     spoken = ClarityEstimator.FillIfMissing(spoken, clarityTarget);
 
                 bool heardNothing = string.IsNullOrWhiteSpace(recognized);
+                _lastAnswerWasDecline = false;   // 변경점: 이번 턴 해석 전에는 거절 답이 아니다(이전 턴 값이 남지 않게)
                 // 변경점: 대화(현장지원) 모드는 아무것도 못 들은 것도 '다시 말해 줄래요' 횟수에 넣는다.
-                //   한 번 다시 묻고, 또 못 들으면 추천 문장으로 다음 대화로 넘어간다(예전에는 횟수 없이 계속 되물었다).
+                //   한 번 다시 묻고, 또 못 들으면 다음 대화로 넘어간다. 아무 소리도 못 들어 고를 단서가 없을 때만 추천 문장을 쓴다
+                //   (변경점, 사용자 결정 2026-10-06: 들린 말이 있으면 추천 문장이 아니라 가장 가까운 선택지로 넘어간다 - ClosestCandidate)
                 if (heardNothing && IsConversationMode && dashboardView != null
                     && _unclearRetries >= UnclearRetryLimit && !string.IsNullOrWhiteSpace(clarityTarget))
                 {
@@ -1079,14 +1081,16 @@ namespace Artti.Training
                     //   인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다. 정확도 모드는 기존 흐름 그대로.
                     if (IsConversationMode && dashboardView != null)
                     {
-                        var resolved = await ResolveConversationUtteranceAsync(recognized, stt.alternatives, clarityTarget, _cts.Token);
+                        // 변경점: 명료도 모델이 들은 문장도 함께 넘긴다(ResolveConversationUtteranceAsync 안에서 추측에 합친다)
+                        var resolved = await ResolveConversationUtteranceAsync(recognized, stt.alternatives, stt.clarityText, clarityTarget, _cts.Token);
                         utterance = resolved.phrase;
                         smallTalk = resolved.smallTalk;
                     }
                     else utterance = recognized;
 
                     // 변경점: AI가 일상 대화로 판단했어도 두 모델이 서로 다르게 들었으면 뭉개진 말이다(봉투 질문에서 "예요요요"가 일상 대화로 맴돎).
-                    //   한 번 되묻고, 두 번째에는 추천 문장으로 다음 대화로 넘어간다. 명료도 모델 문장이 없으면(기기 음성 인식) 예전처럼 일상 대화
+                    //   한 번 되묻고, 또 뭉개지면 넘어간다. 추천 문장이 아니라 들린 소리에 가장 가까운 선택지로(변경점, 사용자 결정 2026-10-06).
+                    //   명료도 모델 문장이 없으면(기기 음성 인식) 예전처럼 일상 대화
                     if (IsConversationMode && dashboardView != null && smallTalk && stt.clarityText != null
                         && !ModelsAgree(recognized, stt.clarityText))
                     {
@@ -1096,18 +1100,16 @@ namespace Artti.Training
                             AskConversationRetry(spoken, clarityTarget, "뭉개진 발화");
                             return;
                         }
-                        if (!string.IsNullOrWhiteSpace(clarityTarget))
-                        {
-                            utterance = ConvenienceQuickPhrasePolicy.ConversationFallback(recognized, clarityTarget);
-                            smallTalk = false;
-                            Debug.Log($"[TrainingSceneRoot] 대화 모드: 다시 말해도 뭉개짐 -> 추천 문장 '{utterance}'로 진행");
-                        }
+                        utterance = ClosestCandidate(recognized, stt.alternatives, stt.clarityText, clarityTarget);
+                        smallTalk = false;
+                        Debug.Log($"[TrainingSceneRoot] 대화 모드: 다시 말해도 뭉개짐 -> 가장 가까운 선택지 '{utterance}'로 진행");
                     }
 
                     // 변경점(사용자 결정): 뭉개진 말은 새 모델·AI가 그럴듯한 문장으로 맞춰도 바로 넘기지 않는다.
                     //   명료도 모델이 들은 말이 해석된 문장과 많이 다르면 한 번 더 기회를 주고, 두 번째에는 해석된 문장으로 진행한다
                     //   변경점: 두 모델이 거의 같게 들었으면 다른 말로 또렷하게 답한 것("아니요" -> 봉투 필요 없어요)이므로 되묻지 않는다
                     if (IsConversationMode && dashboardView != null && utterance != null && !smallTalk
+                        && !_lastAnswerWasDecline   // 변경점: "아니요/없어요"로 알아들었으면 뭉개짐으로 되묻지 않는다(해석 문장과 소리가 달라 늘 뭉개짐으로 보임)
                         && _unclearRetries < UnclearRetryLimit && IsGarbled(stt.clarityText, utterance)
                         && !ModelsAgree(recognized, stt.clarityText))
                     {
@@ -1124,7 +1126,8 @@ namespace Artti.Training
                     AskConversationRetry(spoken, clarityTarget, "해석 실패");
                     return;
                 }
-                if (IsConversationMode) spoken = ConversationClarity(spoken, utterance, clarityTarget, smallTalk);
+                // 변경점: 거절 답은 일상 대화처럼 명료도를 기록하지 않는다(해석된 '계산할게요'와 '없어요'의 문장 차이는 발음이 아니다)
+                if (IsConversationMode) spoken = ConversationClarity(spoken, utterance, clarityTarget, smallTalk || _lastAnswerWasDecline);
             }
             finally
             {
@@ -1190,16 +1193,33 @@ namespace Artti.Training
         // 대화 모드 문장 해석: 1) 규칙(틀린 글자 수)으로 확실하면 바로 결정
         //   2) 애매하면 Gemini가 뜻으로 판단 (최대 ConversationJudgeTimeoutSeconds초)
         //   3) Gemini가 '알아들었지만 화면 문장이 아님(일상 대화)'이라고 하면 점원이 그 말을 받아 주고 지금 단계에 머문다
-        //   4) Gemini도 모르거나 늦으면 한 번은 다시 말해 달라고 하고(null), 두 번째에도 모르면 추천 문장
-        //      (변경점, 사용자 결정 2026-10-02: 예전에는 바로 추천 문장 "물 주세요"로 넘어가 "과자"라고 해도 물이 됐다)
+        //   4) Gemini도 모르거나 늦으면 한 번은 다시 말해 달라고 하고(null), 두 번째에도 모르면 들린 소리에 가장 가까운 선택지로 넘어간다
+        //      (변경점, 사용자 결정 2026-10-06: 2026-10-02에는 두 번째에 고정된 추천 문장으로 넘겼으나, 결제에서 "현금"이 "카드"가 됐다)
         private const float ConversationJudgeTimeoutSeconds = 3f;
         private const int UnclearRetryLimit = 1;
         private const string UnclearRetryLine = "잘 못 들었어요. 한 번만 더 말해 줄래요?";
+        // 변경점(사용자 결정 2026-10-06): 되묻기는 추천 문장을 지목하지 않는다. 사용자가 무슨 말을 할지 모르므로
+        //   단계의 질문을 그대로 다시 묻는다(점원이 처음 물을 때 ConvenienceQuickPhrasePolicy와 같은 선택지).
+        //   한 번 되물은 뒤에도 못 알아들으면 되묻지 않고 넘어간다(들린 소리에 가장 가까운 선택지, ClosestCandidate).
+
+        private static string StepRetryLine(string objectiveId)
+        {
+            switch (objectiveId)
+            {
+                case "checkout": return "카드와 현금 중 무엇으로 하시겠어요?";
+                case "extras": return "봉투가 필요하세요?";
+                case "select_items": return "더 필요한 물건이 있으세요?";
+                case "greeting": return "어떤 물건이 필요하세요?";
+                default: return UnclearRetryLine;
+            }
+        }
         private string _lastRetryLine;   // 마지막으로 한 되묻기 문장(AI 판단 때 원래 질문을 맥락으로 쓰려고)
 
-        // 변경점: 현장지원모드 되묻기(못 들음·뜻 모름·뭉개짐 공통). 추천 문장(카드 문장)이 있으면 그 문장을 한 번 더 말해 달라고 한다.
+        // 변경점: 현장지원모드 되묻기(못 들음·뜻 모름·뭉개짐 공통).
         //   시나리오 실패 횟수(RegisterFailure, 4회면 강제 종료)에는 넣지 않는다. 알아들은 턴이 진행되면 횟수는 0
-        private void AskConversationRetry(SttResult spoken, string target, string reason, bool logUtterance = true)
+        //   변경점(사용자 결정 2026-10-06): 음성 되묻기는 추천 문장을 지목하지 않고 단계의 질문을 다시 묻는다(askChoice, StepRetryLine).
+        //   카드를 눌러 그 문장을 따라 읽는 경우(askChoice=false)는 읽을 문장이 정해져 있으므로 그대로 그 문장을 말해 달라고 한다
+        private void AskConversationRetry(SttResult spoken, string target, string reason, bool logUtterance = true, bool askChoice = true)
         {
             if (logUtterance && !string.IsNullOrWhiteSpace(spoken.text))
             {
@@ -1210,7 +1230,7 @@ namespace Artti.Training
             _eventLogger?.LogStepRetryAttempt(_dialogueManager.CurrentObjectiveId);
             _unclearRetries++;
             if (_lastNpcLine != _lastRetryLine) _clerkLineBeforeRetry = _lastNpcLine;   // 다시 말했을 때 AI가 원래 질문을 맥락으로 쓰게
-            _lastRetryLine = RetryLineFor(target);
+            _lastRetryLine = askChoice ? StepRetryLine(_dialogueManager.CurrentObjectiveId) : RetryLineFor(target);
             _lastToolSpoke = true;
             Debug.Log($"[TrainingSceneRoot] 대화 모드 {reason} -> 다시 말해 달라고 함 ({_unclearRetries}/{UnclearRetryLimit}): '{_lastRetryLine}'");
             SpeakNpc(_lastRetryLine, isFallback: true);
@@ -1267,12 +1287,31 @@ namespace Artti.Training
 
         // 반환: phrase = 진행할 문장(null이면 다시 말해 달라고 한다), smallTalk = 화면 문장이 아닌 일상 대화(phrase = 인식 원문)
         private async UniTask<(string phrase, bool smallTalk)> ResolveConversationUtteranceAsync(
-            string recognized, string[] alternatives, string target, CancellationToken ct)
+            string recognized, string[] alternatives, string clarityText, string target, CancellationToken ct)
         {
             var candidates = dashboardView.GetSpeechCandidates().ToList();
+            // 변경점: 명료도 모델이 들은 문장도 인식기의 추측으로 본다. 새 모델이 "현금으로 할게요"를 '형님은 왜 그래요?'로 들어도
+            //   명료도 모델은 '형금으로 알 해요?'로 들어 후보와 가까운 경우가 있다(2026-10-06 실기기). 같은 문장·빈 문장은 넣지 않는다.
+            if (!string.IsNullOrWhiteSpace(clarityText) && clarityText != recognized
+                && (alternatives == null || System.Array.IndexOf(alternatives, clarityText) < 0))
+            {
+                int old = alternatives != null ? alternatives.Length : 0;
+                var merged = new string[old + 1];
+                if (old > 0) System.Array.Copy(alternatives, merged, old);
+                merged[old] = clarityText;
+                alternatives = merged;
+            }
             // 변경점: 인식기의 다른 추측들도 함께 본다(맨 앞 = 가장 그럴듯한 것)
             var heardOptions = new List<string> { recognized };
             if (alternatives != null) heardOptions.AddRange(alternatives);
+            // 변경점(2026-10-06): "아니요", "없어요" 같은 거절은 화면 문장에 없어도 단계 질문의 답으로 본다(아래 DeclineAnswerPhrase)
+            var declinePhrase = DeclineAnswerPhrase(heardOptions);
+            _lastAnswerWasDecline = declinePhrase != null;
+            if (declinePhrase != null)
+            {
+                Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(거절 답): '{string.Join("' / '", heardOptions)}' -> '{declinePhrase}'");
+                return (declinePhrase, false);
+            }
             if (ConvenienceQuickPhrasePolicy.TryMatchCandidate(heardOptions, target, candidates, out var match))
             {
                 Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(규칙): '{string.Join("' / '", heardOptions)}' -> '{match}'");
@@ -1320,9 +1359,50 @@ namespace Artti.Training
                 Debug.Log($"[TrainingSceneRoot] 대화 모드 해석 실패: '{recognized}'");
                 return (null, false);   // 되묻기(횟수·맥락 기록)는 호출 측 AskConversationRetry
             }
-            var fallback = ConvenienceQuickPhrasePolicy.ConversationFallback(recognized, target);
-            Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(폴백): '{recognized}' -> '{fallback}'");
-            return (fallback, false);
+            // 변경점(사용자 결정 2026-10-06): 두 번째에도 못 골랐으면 고정된 추천 문장이 아니라 들린 소리에 가장 가까운 선택지로 넘어간다
+            var closest = ClosestCandidate(recognized, alternatives, null, target);
+            Debug.Log($"[TrainingSceneRoot] 대화 모드 해석(가장 가까운 선택지): '{recognized}' -> '{closest}'");
+            return (closest, false);
+        }
+
+        // 변경점(2026-10-06): 점원의 질문이 "더 필요한 물건 있으세요?"(물건 고르기, 담은 물건이 있을 때)나 "봉투 필요하세요?"(봉투)일 때
+        //   "아니요", "없어요", "됐어요" 같은 거절은 화면에 '아니요' 문장이 없어도 각각 '계산할게요' / '봉투 필요 없어요'로 본다.
+        //   어눌한 말도 잡도록 새 모델·다른 추측·명료도 모델이 들은 것 중 하나라도 거절이면 인정한다(2026-10-06 실기기: 없어요 -> 일상 대화로 되풀이).
+        //   해당 단계가 아니거나 그 문장이 후보에 없으면 null
+        private bool _lastAnswerWasDecline;   // 직전 해석이 거절 답("아니요")으로 정해졌나: 되묻기·명료도 기록 판단에서 쓴다
+        private string DeclineAnswerPhrase(IList<string> heardOptions)
+        {
+            if (dashboardView == null || _dialogueManager == null) return null;
+            string phrase;
+            switch (_dialogueManager.CurrentObjectiveId)
+            {
+                case "select_items":
+                    if (string.IsNullOrEmpty(_dialogueManager.LastSlotListItem("items_requested"))) return null;
+                    phrase = "계산할게요";
+                    break;
+                case "extras":
+                    phrase = "봉투 필요 없어요";
+                    break;
+                default:
+                    return null;
+            }
+            if (!dashboardView.GetSpeechCandidates().Contains(phrase)) return null;
+            foreach (var heard in heardOptions)
+                if (ConvenienceQuickPhrasePolicy.IsDeclineAnswer(heard)) return phrase;
+            return null;
+        }
+
+        // 변경점: 기준(임계값)을 넘어도 들린 소리(새 모델 + 다른 추측 + 명료도 모델)에 가장 가까운 화면 문장. 하나도 못 고르면 추천 문장
+        private string ClosestCandidate(string recognized, string[] alternatives, string clarityText, string target)
+        {
+            var heard = new List<string> { recognized };
+            if (alternatives != null) heard.AddRange(alternatives);
+            if (!string.IsNullOrWhiteSpace(clarityText) && !heard.Contains(clarityText)) heard.Add(clarityText);
+            if (dashboardView != null
+                && ConvenienceQuickPhrasePolicy.TryMatchCandidate(heard, target, dashboardView.GetSpeechCandidates().ToList(), out var closest,
+                                                                  ignoreThreshold: true))
+                return closest;
+            return ConvenienceQuickPhrasePolicy.ConversationFallback(recognized, target);
         }
 
         private void StartFreeTalk()

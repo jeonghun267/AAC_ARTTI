@@ -4,7 +4,7 @@ using UnityEngine.SceneManagement;
 
 namespace Artti.Common
 {
-    // 배경음악: 스플래시·메인·프로필(고르기·만들기)·설정 씬에서 같은 곡을 끊기지 않게 이어서 틀고,
+    // 배경음악: 스플래시·메인·프로필(고르기·만들기)·설정·훈련 허브 씬에서 같은 곡을 끊기지 않게 이어서 틀고,
     // 다른 씬(훈련·리포트·현장모드)으로 가면 서서히 줄여 멈췄다가 돌아오면 멈춘 곳부터 다시 튼다.
     // 씬 파일을 건드리지 않도록 SceneFader처럼 처음 필요할 때 스스로 만들어 DontDestroyOnLoad로 둔다.
     // 곡: Resources/Audio/BGM/Unity_BGM (가져오기 설정은 Editor/BgmImportSettings)
@@ -23,6 +23,7 @@ namespace Artti.Common
         static readonly string[] MusicScenes =
         {
             "SplashScene", "MainScene", "ProfileSelectScene", "ProfileCreateScene", "ProfileSettingsScene",
+            "TrainingHubScene",   // 변경점(2026-10-06 사용자 요청): 훈련 허브도 메인과 같은 곡을 이어서 튼다
         };
 
         static BgmPlayer _instance;

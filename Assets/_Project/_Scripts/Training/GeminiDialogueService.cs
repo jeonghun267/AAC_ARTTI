@@ -114,6 +114,9 @@ namespace Artti.Training
                 "The text comes from speech recognition of a person with a developmental disability, so it may be misspelled, garbled, " +
                 "cut short, or have similar-sounding consonants and vowels swapped (e.g. 가자 for 과자, 봉두 for 봉투, 하께요 for 할게요). " +
                 "Use the clerk's last line as context: a short reply like 네 or 아뇨 can match the phrase that answers it. " +
+                "A reply that declines or says there is nothing more (아니요, 없어요, 됐어요, 그게 다예요) to a question like " +
+                "\"더 필요한 물건 있으세요?\" matches the phrase about paying (계산할게요) if it is in the list; " +
+                "to \"봉투 필요하세요?\" it matches 봉투 필요 없어요. " +
                 "Other recognition guesses may also be given; any of them may be the right one. " +
                 "Reply with only one of these: the number of the phrase that has the same meaning; " +
                 "0 if you understand what the customer meant but it matches none of the phrases (for example small talk or another topic); " +

@@ -269,6 +269,20 @@ namespace Artti.Training
         private const float NameContainedScore = 0.1f;  // 상품 이름이 말 속에 그대로 들어 있을 때("음 과자요")
         private const float AlternativePenalty = 0.05f; // 인식기의 두 번째·세 번째 추측은 조금 덜 믿는다
 
+        // 변경점(2026-10-06): "아니요/없어요/됐어요"처럼 거절하거나 '그만'이라는 짧은 답인가.
+        //   화면 문장에 '아니요'가 없어도 단계 질문("더 필요한 물건 있으세요?", "봉투 필요하세요?")에 대한 답으로 해석하려고 쓴다.
+        //   어눌한 발음도 잡도록 앞부분만 본다("아니오", "아뇨", "없어"). 긴 문장은 다른 말일 수 있어 10자 이하만 본다
+        private static readonly string[] DeclineWords = { "아니", "아뇨", "아냐", "없어", "없습", "됐어", "괜찮", "그게다", "이게다", "그만" };
+
+        public static bool IsDeclineAnswer(string heard)
+        {
+            var c = KoreanSpeechSimilarity.Compact(heard);
+            if (c.Length == 0 || c.Length > 10) return false;
+            foreach (var word in DeclineWords)
+                if (c.Contains(word)) return true;
+            return false;
+        }
+
         // 규칙 판정만: 기준 이내로 가까운 후보가 있으면 true. 없으면(애매함) 호출 측이 AI 판단 또는 다시 묻기를 쓴다.
         public static bool TryMatchCandidate(string recognized, string target, IEnumerable<string> candidates, out string match) =>
             TryMatchCandidate(new[] { recognized }, target, candidates, out match);
@@ -277,7 +291,10 @@ namespace Artti.Training
         //   heardOptions = 인식기의 추측들(첫 번째가 가장 그럴듯함). 휴대폰 인식은 어눌한 말일수록 두세 번째 추측이 맞을 때가 많다.
         //   후보마다 발음 거리를 재서 가장 가까운 것, 동점이면 추천 문장. 예전에는 글자 단위 편집 거리라 "가자"와 "과자"를 완전히 다른 글자로 봤다.
         //   상품 요청("과자 주세요")은 이름만 말해도 된다. 한 글자 이름("물")은 똑같을 때만("네"가 "물"로 잡히지 않게).
-        public static bool TryMatchCandidate(IList<string> heardOptions, string target, IEnumerable<string> candidates, out string match)
+        //   변경점(사용자 결정 2026-10-06): ignoreThreshold = true면 기준(임계값)을 넘어도 가장 가까운 후보를 고른다.
+        //   두 번 물어도 못 알아들어 넘어갈 때, 고정된 추천 문장 대신 들린 소리에 가장 가까운 선택지를 쓰기 위한 것
+        public static bool TryMatchCandidate(IList<string> heardOptions, string target, IEnumerable<string> candidates, out string match,
+                                             bool ignoreThreshold = false)
         {
             match = null;
             if (heardOptions == null || candidates == null) return false;
@@ -286,7 +303,7 @@ namespace Artti.Training
             float bestScore = float.MaxValue;
             void Consider(string candidate, float score, float allowed)
             {
-                if (score > allowed) return;
+                if (!ignoreThreshold && score > allowed) return;
                 if (score < bestScore || (System.Math.Abs(score - bestScore) < 0.0001f && candidate == target))
                 {
                     best = candidate;
