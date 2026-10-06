@@ -20771,7 +20771,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &907292496
 RectTransform:
   m_ObjectHideFlags: 0
@@ -22257,7 +22257,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 1306, y: 0}
+  m_SizeDelta: {x: 8, y: 0}
   m_Pivot: {x: 0, y: 0.5}
 --- !u!114 &975018035
 MonoBehaviour:
@@ -26888,7 +26888,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 56ef886773fcfda4d8f2818a5f6e0240, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GeminiMenuManager
-  apiKey: 
+  apiKey: AQ.Ab8RN6JBoIsm3xATAuuaoWyIgX4Ho-7_Eh0J_29n7dc5vVPkOA
 --- !u!4 &1184933092
 Transform:
   m_ObjectHideFlags: 0
@@ -42369,7 +42369,7 @@ RectTransform:
   m_GameObject: {fileID: 1767489471}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1.55773, y: 1.55773, z: 1}
+  m_LocalScale: {x: 0, y: 0, z: 0}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 202078112}
@@ -42387,7 +42387,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 12.461853}
+  m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 1448, y: 1086}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1767489473
@@ -43575,7 +43575,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &1807099908
 RectTransform:
   m_ObjectHideFlags: 0
@@ -44477,7 +44477,7 @@ RectTransform:
   m_GameObject: {fileID: 1841106127}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1.7716264, y: 1.7716264, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 623306485}
@@ -44494,10 +44494,10 @@ RectTransform:
   m_Father: {fileID: 907292496}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
-  m_Pivot: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 7.086487}
+  m_SizeDelta: {x: -888, y: -659}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1841106129
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -51218,10 +51218,10 @@ RectTransform:
   m_Father: {fileID: 1807099908}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 1, y: 1}
+  m_AnchorMax: {x: 0, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 320}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0, y: 0}
 --- !u!114 &2108462029
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -61931,10 +61931,10 @@ RectTransform:
   m_Father: {fileID: 907292496}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
-  m_Pivot: {x: 0, y: 0}
+  m_SizeDelta: {x: 282.9331, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &8400000003
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -67671,6 +67671,90 @@ MonoBehaviour:
   - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
     menuName: "\uB354\uD2F0\uB545\uCF69\uB77C\uB5BC"
     price: "3,900\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uCD08\uCF54\uC824\uB77C\uB610 \uB9D0\uCC28\uB77C\uB5BC"
+    price: "4,400\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "(HOT)\uD5DB\uAC1C\uB9AC\uCE74\uB178"
+    price: "2,400\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "(ICE)\uD5DB\uAC1C\uB9AC\uCE74\uB178"
+    price: "2,400\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uC655\uBA54\uAC00\uCE74\uD398\uB77C\uB5BC"
+    price: "4,400\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uC655\uBA54\uAC00\uD5DB\uAC1C\uB9AC\uCE74\uB178"
+    price: "3,400\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uD560\uBA54\uAC00\uBBF8\uC22B\uCEE4\uD53C"
+    price: "3,100\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uB77C\uC774\uD2B8 \uBC14\uB2D0\uB77C \uC544\uBAAC\uB4DC\uB77C\uB5BC"
+    price: "3,900\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uC5F0\uC720\uB77C\uB5BC"
+    price: "3,900\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uD560\uBA54\uAC00\uCEE4\uD53C"
+    price: "2,300\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uC655\uD560\uBA54\uAC00\uCEE4\uD53C"
+    price: "3,400\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uB514\uCE74\uD398\uC778 \uD5E4\uC774\uC990\uB11B \uC544\uBA54\uB9AC\uCE74\uB178"
+    price: "3,700\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uB514\uCE74\uD398\uC778 \uBC14\uB2D0\uB77C \uC544\uBA54\uB9AC\uCE74\uB178"
+    price: "3,700\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uC5D0\uC2A4\uD504\uB808\uC18C"
+    price: "1,500\uC6D0"
+  - brand: "\uBA54\uAC00MGC\uCEE4\uD53C"
+    menuName: "\uC5D0\uC2A4\uD504\uB808\uC18C \uB3C4\uD53C\uC624"
+    price: "2,000\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uC544\uBA54\uB9AC\uCE74\uB178"
+    price: "2,000\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uC5D0\uC2A4\uD504\uB808\uC18C"
+    price: "2,000\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uC1FC\uCF5C\uB77C\uD504\uB808\uC18C"
+    price: "2,500\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uD50C\uB7AB\uD654\uC774\uD2B8(295ml/10oz)"
+    price: "3,400\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uCE74\uD398\uB77C\uB5BC"
+    price: "3,500\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uBC14\uB2D0\uB77C\uBE48\uB77C\uB5BC"
+    price: "4,000\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uB3CC\uCCB4\uB77C\uB5BC"
+    price: "4,300\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uBC00\uD06C\uCE74\uB77C\uBA5C\uB77C\uB5BC"
+    price: "4,500\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uCE74\uD398\uBAA8\uCE74"
+    price: "4,800\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uCF5C\uB4DC\uBE0C\uB8E8"
+    price: "3,800\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uCF5C\uB4DC\uBE0C\uB8E8\uB77C\uB5BC"
+    price: "4,300\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uB3CC\uCCB4\uCF5C\uB4DC\uBE0C\uB8E8\uB77C\uB5BC"
+    price: "4,500\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uC2DC\uADF8\uB2C8\uCC98\uB77C\uB5BC"
+    price: "4,000\uC6D0"
+  - brand: "\uD150\uD37C\uC13C\uD2B8 \uCEE4\uD53C"
+    menuName: "\uD150\uB77C\uB5BC"
+    price: "3,400\uC6D0"
   menuScroll: {fileID: 8710000043}
   tts: {fileID: 1852685085}
   testMenus:
