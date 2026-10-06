@@ -19,6 +19,7 @@ namespace Artti.Common.Speech
         private const int RequestTimeoutSeconds = 10;
         private string _voiceName = "ko-KR-Standard-A"; // SetVoice로 교체 (훈련 모드별 점원 목소리)
         private float _speakingRate = 1f;                // SetSpeakingRate로 교체 (프로필 말 빠르기)
+        private int _generation;                         // SpeakAsync·StopAll마다 늘린다. 늦게 온 이전 음성 버리기용
 
         public CloudTtsService(string apiKey, AudioSource audioSource)
         {
@@ -29,9 +30,12 @@ namespace Artti.Common.Speech
         }
 
         // 재생을 시작하면 바로 돌아온다(끝날 때까지 기다리지 않는다). 끝을 기다릴 쪽은 AudioSource.isPlaying을 본다
+        //   변경점: 음성을 받는 사이에 멈춤(StopAll)·취소·새 요청이 있었으면 늦게 도착한 이 음성은 재생하지 않는다
         public async UniTask SpeakAsync(string text, CancellationToken ct = default)
         {
+            int generation = ++_generation;
             var clip = await SynthesizeAsync(text, ct);
+            if (ct.IsCancellationRequested || generation != _generation) return;
             if (clip != null && _audioSource != null)
             {
                 _audioSource.clip = clip;
@@ -91,6 +95,7 @@ namespace Artti.Common.Speech
         //   Unity의 == 연산자로 확인해야 MissingReferenceException이 나지 않는다.
         public void StopAll()
         {
+            _generation++;   // 받는 중인 음성도 버린다
             if (_audioSource != null) _audioSource.Stop();
         }
         public void SetVoice(string voiceName)

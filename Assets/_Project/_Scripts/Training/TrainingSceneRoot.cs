@@ -144,11 +144,24 @@ namespace Artti.Training
                 hud?.SetSpeakerSource(npcSpeechSource);
             }
 
+            // 변경점: 카드 읽기와 점원 목소리는 항상 다른 채널. 점원 채널이 없거나 카드와 같으면
+            //   기존 소스는 점원이 쓰고 카드 전용 소스를 새로 만든다(예전에는 같은 채널을 써 카드도 점원 목소리였다)
             _cardSpeechSource = GetComponent<AudioSource>();
+            if (npcSpeechSource == null || npcSpeechSource == _cardSpeechSource)
+            {
+                var shared = _cardSpeechSource;
+                if (npcSpeechSource == null) npcSpeechSource = shared != null ? shared : gameObject.AddComponent<AudioSource>();
+                _cardSpeechSource = gameObject.AddComponent<AudioSource>();
+                _cardSpeechSource.playOnAwake = false;
+                _cardSpeechSource.spatialBlend = 0f;
+                if (shared != null)
+                {
+                    _cardSpeechSource.volume = shared.volume;
+                    _cardSpeechSource.outputAudioMixerGroup = shared.outputAudioMixerGroup;
+                }
+            }
             _ttsService = new CloudTtsService(ttsKey, _cardSpeechSource);
-            _npcTtsService = npcSpeechSource != null
-                ? new CloudTtsService(ttsKey, npcSpeechSource)
-                : _ttsService;
+            _npcTtsService = new CloudTtsService(ttsKey, npcSpeechSource);
             _npcTtsService.SetVoice(TrainingModeContext.VoiceFor(_mode)); // 모드별 점원 목소리
 
             // 변경점: 활성 프로필의 카드 읽어주기·말 빠르기(점원·카드 음성 공통)를 적용한다.
@@ -157,9 +170,8 @@ namespace Artti.Training
             if (speechPrefs != null)
             {
                 speakCardOnTap = speechPrefs.speakCardOnTap;
-                // 변경점: 카드 읽어주는 목소리. 점원 음성 채널이 없어 카드와 같은 서비스를 쓰면 점원 목소리를 유지한다.
-                if (!ReferenceEquals(_ttsService, _npcTtsService))
-                    _ttsService.SetVoice(speechPrefs.readingVoice.ToVoiceName());
+                // 변경점: 카드 읽어주는 목소리 = 프로필 남녀 목소리(카드 채널은 항상 점원과 따로)
+                _ttsService.SetVoice(speechPrefs.readingVoice.ToVoiceName());
                 float rate = speechPrefs.speechRate.ToMultiplier();
                 _ttsService.SetSpeakingRate(rate);
                 _npcTtsService.SetSpeakingRate(rate);
