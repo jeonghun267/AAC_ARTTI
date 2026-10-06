@@ -17,7 +17,7 @@ namespace Artti.Common.Speech
         // 변경점: 응답 없는 요청이 무한정 걸려 있지 않게 한다 (기본값 0 = 제한 없음).
         //   훈련 씬은 점원 음성이 끝나길 기다렸다가 마이크를 여므로 걸린 요청이 듣기를 막는다.
         private const int RequestTimeoutSeconds = 10;
-        private string _voiceName = "ko-KR-Standard-A"; // SetVoice로 교체 (훈련 모드별 점원 목소리)
+        private string _voiceName = TrainingModeContext.AccuracyVoice; // SetVoice로 교체 (훈련 모드별 점원 목소리)
         private float _speakingRate = 1f;                // SetSpeakingRate로 교체 (프로필 말 빠르기)
         private int _generation;                         // SpeakAsync·StopAll마다 늘린다. 늦게 온 이전 음성 버리기용
 

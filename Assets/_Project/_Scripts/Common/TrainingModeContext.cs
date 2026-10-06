@@ -14,8 +14,10 @@ namespace Artti.Common
 
         // 모드별 점원 목소리 (Google Cloud TTS 한국어 표준 음성. A·B 여성, C·D 남성)
         // 대화 모드 점원은 남자 캐릭터(ARTTI_Male)라 남성 음성을 쓴다.
-        public const string AccuracyVoice = "ko-KR-Standard-A";
-        public const string ConversationVoice = "ko-KR-Standard-C";
+        // 변경점(2026-10-06 사용자 요청): 더 자연스러운 Google Chirp3-HD 목소리로(예전 Standard-A / Standard-C).
+        //   여성 = 여자 점원·여성 프로필, 남성 = 남자 점원·남성 프로필. 말 빠르기 적용됨, 응답 약 0.8~1.1초(Standard 0.7초)
+        public const string AccuracyVoice = "ko-KR-Chirp3-HD-Kore";
+        public const string ConversationVoice = "ko-KR-Chirp3-HD-Charon";
 
         // 변경점(2026-10-05 새 시안): 화면에 보이는 모드 이름. 정확도 모드 = "구음진단모드", 대화 모드 = "소통 연습모드"
         //   (말하기 훈련 카드·리포트 메뉴 그림과 같은 이름). 코드의 TrainingMode 값과 기록 형식은 그대로

@@ -162,7 +162,7 @@ namespace Artti.Training
             }
             _ttsService = new CloudTtsService(ttsKey, _cardSpeechSource);
             _npcTtsService = new CloudTtsService(ttsKey, npcSpeechSource);
-            // 변경점: 점원 목소리 = 화면에 나오는 점원의 성별(여자 점원 ko-KR-Standard-A / 남자 점원 C).
+            // 변경점: 점원 목소리 = 화면에 나오는 점원의 성별(여자 점원 = 여성 / 남자 점원 = 남성, 이름은 TrainingModeContext).
             //   남자 점원이 연결되지 않아 여자 점원이 나오면 여성 목소리(예전: 모드만 보고 남성 목소리가 될 수 있었다)
             bool maleClerk = clerkCast != null ? clerkCast.UsesMaleClerk(_mode) : _mode == TrainingMode.Conversation;
             _npcTtsService.SetVoice((maleClerk ? ReadingVoice.Male : ReadingVoice.Female).ToVoiceName());
