@@ -10,7 +10,7 @@
 ![Gemini](https://img.shields.io/badge/Gemini_2.5_Flash-8E75B2?style=flat-square&logo=googlegemini&logoColor=white)
 ![AR Foundation](https://img.shields.io/badge/AR_Foundation_6.3-222222?style=flat-square)
 
-<img src="docs/images/training-complete.png" width="760" alt="편의점 대화 훈련 완료 화면">
+
 
 </div>
 
