@@ -147,6 +147,7 @@ docs/                  # 기획서, 화면정의서, 기술 정리
 
 | 문서 | 내용 |
 |---|---|
+| [docs/README.md](docs/README.md) | 문서 목차 (현재 문서 · 초기 기획 · 보관 문서) |
 | [docs/PLAN.md](docs/PLAN.md) | 개발 기획서 (배경, 인터뷰, 설계, 일정) |
 | [docs/TECH_NOTES.md](docs/TECH_NOTES.md) | 씬별 기술 정리, 문제 → 원인 → 해결 기록 |
 | [docs/Artti_화면정의서_v3.3_260608.md](docs/Artti_화면정의서_v3.3_260608.md) | 화면 정의서 |

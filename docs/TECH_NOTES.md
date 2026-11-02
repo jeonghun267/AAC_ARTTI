@@ -710,7 +710,7 @@
 
 **저장소 정리 후보** (지금 코드에서 쓰지 않음)
 - 패키지: Ready Player Me, glTFast, Visual Scripting, Timeline, Multiplayer Center, collab-proxy. Input System도 코드 참조가 없음
-- 예전 점원 에셋과 도구: `Art/Characters/ARTTI_Clerk*`(v03~v10), `Models/Clerk/`, `ArttiLipSyncController.cs`, `ArttiClerk*.cs`, `ClerkCharacterSetup.cs`, `ClerkAnimationSetup.cs`, `CounterDisplayWirer.cs`, `docs/BLENDER_TROUBLESHOOTING.md`
+- 예전 점원 에셋과 도구: `Art/Characters/ARTTI_Clerk*`(v03~v10), `Models/Clerk/`, `ArttiLipSyncController.cs`, `ArttiClerk*.cs`, `ClerkCharacterSetup.cs`, `ClerkAnimationSetup.cs`, `CounterDisplayWirer.cs`, `docs/archive/BLENDER_TROUBLESHOOTING.md`
 - 예전 화면 효과: `CardHoverEffect`, `SparkleField`, `HomeParallax` 등 씬에서 참조하지 않는 스크립트
 - 반복되는 커밋 노이즈
   - 폰트 아틀라스: `NotoSansKR-Medium SDF`가 동적 아틀라스라 새 글자가 쓰일 때마다 에셋이 바뀝니다(수정 커밋 26개).
