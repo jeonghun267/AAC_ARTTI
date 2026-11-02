@@ -2,7 +2,7 @@
 
 # 아르띠 (Artti)
 
-**발달장애인이 편의점·약국·음식점에서 스스로 말할 수 있도록 돕는 AI · AAC 소통 훈련 앱**
+**발달장애인이 편의점 같은 동네 가게에서 스스로 말할 수 있도록 돕는 AI · AAC 소통 훈련 앱**
 
 ![Unity](https://img.shields.io/badge/Unity_6.3_LTS-000000?style=flat-square&logo=unity&logoColor=white)
 ![Android](https://img.shields.io/badge/Android_11+-3DDC84?style=flat-square&logo=android&logoColor=white)
