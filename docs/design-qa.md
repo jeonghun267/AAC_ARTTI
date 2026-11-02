@@ -3,8 +3,8 @@
 ## Evidence
 
 - Source: `C:\Users\admin_14\Desktop\41.png`
-- Implementation: `C:\Users\admin_14\Documents\GitHub\AAC_ARTTI\completion-implementation.png`
-- Combined comparison: `C:\Users\admin_14\Documents\GitHub\AAC_ARTTI\completion-comparison.png`
+- Implementation: `images/training-complete.png`
+- Combined comparison: `images/completion-comparison.png`
 - Viewport: 1536 × 1024 at 1× for both source and implementation
 - State: convenience-store training completion, help modal closed
 
