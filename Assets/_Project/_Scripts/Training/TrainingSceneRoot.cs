@@ -1086,7 +1086,10 @@ namespace Artti.Training
                         utterance = resolved.phrase;
                         smallTalk = resolved.smallTalk;
                     }
-                    else utterance = recognized;
+                    // 변경점: 정확도 모드도 관문을 통과한 말은 화면 문장에 맞춰 넘긴다(규칙 판정만, AI 판단은 쓰지 않는다).
+                    //   인식 원문을 그대로 넘기면 "계산 할게요"처럼 조금만 달라도 고정 문장 규칙을 벗어나 Gemini가 대답했고,
+                    //   단계와 맞지 않는 대사가 나왔다. 인식 원문과 명료도는 spoken에 그대로 남아 레포트에 기록된다
+                    else utterance = AccuracyUtterance(recognized, stt.alternatives, clarityTarget);
 
                     // 변경점: AI가 일상 대화로 판단했어도 두 모델이 서로 다르게 들었으면 뭉개진 말이다(봉투 질문에서 "예요요요"가 일상 대화로 맴돎).
                     //   한 번 되묻고, 또 뭉개지면 넘어간다. 추천 문장이 아니라 들린 소리에 가장 가까운 선택지로(변경점, 사용자 결정 2026-10-06).
@@ -1165,6 +1168,18 @@ namespace Artti.Training
 
         private static bool IsWaterRequest(string text) =>
             string.Equals(text?.Trim().TrimEnd('?', '!', '.', '…'), "물 주세요", System.StringComparison.Ordinal);
+
+        // 정확도 모드: 인식 원문(과 인식기의 다른 추측)이 화면 문장 하나에 충분히 가까우면 그 문장, 아니면 원문 그대로
+        private string AccuracyUtterance(string recognized, string[] alternatives, string target)
+        {
+            if (dashboardView == null) return recognized;
+            var heardOptions = new List<string> { recognized };
+            if (alternatives != null) heardOptions.AddRange(alternatives);
+            if (!ConvenienceQuickPhrasePolicy.TryMatchCandidate(heardOptions, target, dashboardView.GetSpeechCandidates().ToList(), out var match))
+                return recognized;
+            if (match != recognized) Debug.Log($"[TrainingSceneRoot] 정확도 모드 해석: '{recognized}' -> '{match}'");
+            return match;
+        }
 
         // 정확도 모드 명료도 관문. 기준 미달이면 점원이 다시 말해 달라고 하고 true를 돌려준다(이번 턴은 진행하지 않음).
         //   명료도가 없으면(다른 후보 문장을 말함, 명료도를 주지 않는 기기 STT) 막지 않는다.
@@ -1584,10 +1599,13 @@ namespace Artti.Training
                     }
                 }
 
+                // 변경점: 목소리로 한 턴을 "버튼을 눌렀다"고 알리던 것을 "목소리로 말했다"로 구분한다
                 string sourceContext = isProduct
                     ? $"The user tapped the recommended product '{sourceName}' (product_id={sourceId}). " +
                       $"Treat it as the direct customer utterance: \"{utterance}\". Respond about that exact product."
-                    : $"The user tapped a dialogue-hint button. Treat it as the direct customer utterance: \"{utterance}\".";
+                    : spoken != null
+                        ? $"The customer said this by voice: \"{utterance}\". Treat it as the direct customer utterance."
+                        : $"The user tapped a dialogue-hint button. Treat it as the direct customer utterance: \"{utterance}\".";
                 // 변경점: 일상 대화(화면 문장이 아님). 어눌한 음성 인식이라 너그럽게 뜻을 짐작해 짧게 받아 주고, 지금 단계 질문으로 부드럽게 돌아온다
                 if (smallTalk)
                     sourceContext =

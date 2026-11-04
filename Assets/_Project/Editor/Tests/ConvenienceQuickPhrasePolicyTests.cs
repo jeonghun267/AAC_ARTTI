@@ -236,6 +236,57 @@ namespace Artti.EditorTests.Training
             Assert.That(ConvenienceQuickPhrasePolicy.ResolveConversationUtterance("아아아아아아", null, ItemCandidates),
                 Is.EqualTo("아아아아아아"));
         }
+
+        // 변경점: 구음진단모드는 인식 원문이 그대로 오므로 띄어쓰기·문장부호·같은 뜻의 말도 고정 문장 규칙으로 처리해야 한다
+        [TestCase("계산 할게요.")]
+        [TestCase("결제할게요")]
+        [TestCase("결제 해 주세요")]
+        [TestCase("계산할께요!")]
+        public void CheckoutVariants_UseTheCheckoutRule(string heard)
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.TryResolve(heard, "select_items", "물", true, out var decision), Is.True);
+            Assert.That(decision.Tool, Is.EqualTo(DialogueTool.MarkObjectiveComplete));
+            Assert.That(decision.ObjectiveId, Is.EqualTo("select_items"));
+            Assert.That(decision.NpcSpeech, Does.Contain("봉투"));
+        }
+
+        [TestCase("카드로 결제할게요", "카드")]
+        [TestCase("현금으로 계산 할게요", "현금")]
+        public void PaymentVariants_CompleteCheckout(string heard, string method)
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.TryResolve(heard, "checkout", "물", true, out var decision), Is.True);
+            Assert.That(decision.Tool, Is.EqualTo(DialogueTool.MarkObjectiveComplete));
+            Assert.That(decision.NpcSpeech, Does.Contain(method));
+        }
+
+        [Test]
+        public void UnknownSentence_IsNotAFixedPhrase()
+        {
+            Assert.That(ConvenienceQuickPhrasePolicy.TryResolve("오늘 날씨 좋네요", "select_items", "물", true, out _), Is.False);
+        }
+
+        // 변경점: 단계가 맞지 않는 답에 "결제 단계에서 …", "계산 단계에서 …" 같은 안내문을 말하지 않고 지금 단계 질문으로 돌아온다
+        [TestCase("카드로 할게요", "select_items")]
+        [TestCase("현금으로 할게요", "extras")]
+        [TestCase("봉투 주세요", "select_items")]
+        [TestCase("봉투 필요 없어요", "checkout")]
+        [TestCase("계산할게요", "extras")]
+        public void OutOfStepAnswer_StaysWithNaturalClerkLine(string phrase, string objectiveId)
+        {
+            ConvenienceQuickPhrasePolicy.TryResolve(phrase, objectiveId, "물", true, out var decision);
+            Assert.That(decision.Tool, Is.EqualTo(DialogueTool.PresentCards));
+            Assert.That(decision.NpcSpeech, Does.Not.Contain("단계"));
+            Assert.That(decision.NpcSpeech, Does.EndWith("?"));
+        }
+
+        // 변경점: 점원 대사가 한국어가 아니면(영어 문장, 한자·가나 섞임) 읽지 않는다
+        [TestCase("네, 계산 도와드릴게요. 봉투 필요하세요?", ExpectedResult = true)]
+        [TestCase("네, GS25 카드로 결제 도와드릴게요.", ExpectedResult = true)]
+        [TestCase("", ExpectedResult = true)]
+        [TestCase("Sure, I can help you with the payment.", ExpectedResult = false)]
+        [TestCase("네, 结账 도와드릴게요.", ExpectedResult = false)]
+        [TestCase("はい、봉투 필요하세요?", ExpectedResult = false)]
+        public bool IsKoreanSpeech(string line) => GeminiDialogueService.IsKoreanSpeech(line);
     }
 }
 #endif

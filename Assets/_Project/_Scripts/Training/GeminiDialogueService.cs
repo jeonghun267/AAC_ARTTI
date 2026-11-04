@@ -58,8 +58,48 @@ namespace Artti.Training
             }
 
             var raw = await SendAsync(body, ct);
-            return raw == null ? null : ParseResponse(raw);
+            var turn = raw == null ? null : ParseResponse(raw);
+
+            // 변경점: 점원 대사가 한국어가 아니면 한 번만 다시 요청하고, 그래도 아니면 null(호출 측이 준비된 문장으로 대체).
+            //   프롬프트로 한국어를 요구해도 가끔 영어·한자가 섞인 대사가 와서 한국어 TTS가 외국어처럼 읽었다
+            if (turn != null && !IsKoreanSpeech(turn.NpcSpeech))
+            {
+                Debug.LogWarning($"[Gemini] 한국어가 아닌 점원 대사 - 다시 요청: {turn.NpcSpeech}");
+                ((JArray)body["contents"][0]["parts"]).Add(new JObject
+                {
+                    ["text"] = "IMPORTANT: npc_speech must be written only in Korean (한국어)."
+                });
+                raw = await SendAsync(body, ct);
+                turn = raw == null ? null : ParseResponse(raw);
+                if (turn != null && !IsKoreanSpeech(turn.NpcSpeech))
+                {
+                    Debug.LogWarning($"[Gemini] 다시 받아도 한국어가 아님 - 준비된 문장으로 대체: {turn.NpcSpeech}");
+                    return null;
+                }
+            }
+            return turn;
         }
+
+        // 변경점: 점원 대사로 읽어도 되는 한국어 문장인가. 한글이 없거나, 한자·가나 같은 다른 문자가 섞였거나,
+        //   영문이 너무 많으면(상품 · 브랜드 이름 정도는 허용) 아니다. 빈 대사는 호출 측이 따로 메꾸므로 true
+        public static bool IsKoreanSpeech(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return true;
+            int hangul = 0, latin = 0, other = 0;
+            foreach (var ch in text)
+            {
+                if ((ch >= '가' && ch <= '힣') || (ch >= 'ㄱ' && ch <= 'ㆎ')) hangul++;
+                else if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')) latin++;
+                else if (char.IsLetter(ch)) other++;
+            }
+            return hangul > 0 && other == 0 && latin <= Math.Max(4, hangul / 2);
+        }
+
+        // 변경점: 응답의 첫 텍스트 파트. 모델의 생각(thought) 파트는 영어 설명이라 대사로 읽히지 않게 건너뛴다
+        private static string FirstText(JArray parts) =>
+            parts?.Where(p => p["thought"]?.Type != JTokenType.Boolean || !(bool)p["thought"])
+                .Select(p => p["text"]?.ToString())
+                .FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
 
         // 변경점(대화하기 모드): 도구 없이 평문 응답만 받는 자유 대화 경로.
         //   tools/tool_config를 아예 싣지 않아 Gemini가 함수 호출 대신 그냥 말하게 된다.
@@ -75,10 +115,16 @@ namespace Artti.Training
             try
             {
                 var parts = JObject.Parse(raw)["candidates"]?[0]?["content"]?["parts"] as JArray;
-                var text = parts?.Select(p => p["text"]?.ToString()).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+                var text = FirstText(parts);
                 if (string.IsNullOrWhiteSpace(text))
                 {
                     Debug.LogWarning($"[Gemini] 자유 대화 응답 비어있음 (안전필터 가능)\n{raw}");
+                    return null;
+                }
+                // 변경점: 한국어가 아니면 null(호출 측이 준비된 문장으로 대체)
+                if (!IsKoreanSpeech(text))
+                {
+                    Debug.LogWarning($"[Gemini] 자유 대화 응답이 한국어가 아님 - 준비된 문장으로 대체: {text}");
                     return null;
                 }
                 return text.Trim();
@@ -143,7 +189,7 @@ namespace Artti.Training
             try
             {
                 var parts = JObject.Parse(raw)["candidates"]?[0]?["content"]?["parts"] as JArray;
-                var text = parts?.Select(p => p["text"]?.ToString()).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t));
+                var text = FirstText(parts);
                 return ParsePhraseMatch(text, candidates.Count);
             }
             catch (Exception e)
@@ -261,7 +307,7 @@ namespace Artti.Training
                 }
 
                 // function call이 없을 때(mode ANY면 드묾) 텍스트라도 살려서 발화로 사용.
-                string text = parts.Select(p => p["text"]?.ToString()).FirstOrDefault(t => !string.IsNullOrEmpty(t));
+                string text = FirstText(parts);   // 변경점: 생각(thought) 파트는 대사로 쓰지 않는다
                 if (!string.IsNullOrEmpty(text))
                     return new DialogueTurn
                     {
