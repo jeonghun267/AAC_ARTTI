@@ -35,11 +35,41 @@ namespace Artti.Training
             { "휴지", "2,000원" }, { "과자", "1,700원" }   // 변경점: 추천 상품에 과자 추가(TrainingCon 시안)
         };
 
+        // 변경점: 고정 문장은 띄어쓰기·문장부호를 빼고 비교하고, 같은 뜻의 다른 말("결제할게요")도 같은 문장으로 본다.
+        //   구음진단모드는 인식 원문이 오므로 "계산 할게요"처럼 띄어쓰기 하나만 달라도 규칙을 벗어나 Gemini가 대답했고,
+        //   단계와 맞지 않는 대사가 나왔다. 키는 공백·문장부호를 뺀 형태
+        private static readonly string[] FixedPhrases =
+        {
+            "물 주세요", "어디에 있어요", "얼마예요", "계산할게요", "감사합니다",
+            "봉투 주세요", "봉투 필요 없어요", "카드로 할게요", "현금으로 할게요"
+        };
+
+        private static readonly Dictionary<string, string> Aliases = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            { "계산할께요", "계산할게요" }, { "결제할게요", "계산할게요" }, { "결제할께요", "계산할게요" },
+            { "계산해주세요", "계산할게요" }, { "결제해주세요", "계산할게요" },
+            { "계산하겠습니다", "계산할게요" }, { "결제하겠습니다", "계산할게요" },
+            { "카드로할께요", "카드로 할게요" }, { "카드로결제할게요", "카드로 할게요" }, { "카드로계산할게요", "카드로 할게요" },
+            { "카드로결제해주세요", "카드로 할게요" }, { "카드로계산해주세요", "카드로 할게요" },
+            { "현금으로할께요", "현금으로 할게요" }, { "현금으로결제할게요", "현금으로 할게요" }, { "현금으로계산할게요", "현금으로 할게요" },
+            { "현금으로결제해주세요", "현금으로 할게요" }, { "현금으로계산해주세요", "현금으로 할게요" },
+        };
+
+        // 고정 문장이면 그 문장(물음표 없는 형태), 아니면 null
+        public static string FixedPhraseOf(string phrase)
+        {
+            var compact = NormalizeSpeech(phrase);
+            if (compact.Length == 0) return null;
+            foreach (var fixedPhrase in FixedPhrases)
+                if (NormalizeSpeech(fixedPhrase) == compact) return fixedPhrase;
+            return Aliases.TryGetValue(compact, out var alias) ? alias : null;
+        }
+
         public static bool TryResolve(
             string phrase, string objectiveId, string lastItem, bool hasItems, out Decision decision)
         {
             decision = null;
-            var normalized = phrase?.Trim().TrimEnd('?', '!', '.', '…');
+            var normalized = FixedPhraseOf(phrase);   // 변경점: 정확히 같은 글자만 보던 것을 공백·부호·같은 뜻까지
             if (string.IsNullOrEmpty(normalized) || string.IsNullOrEmpty(objectiveId)) return false;
 
             switch (normalized)
@@ -66,10 +96,10 @@ namespace Artti.Training
                     decision = ResolveBag(objectiveId, false);
                     return true;
                 case "카드로 할게요":
-                    decision = ResolvePayment(objectiveId, "카드");
+                    decision = ResolvePayment(objectiveId, "카드", hasItems);
                     return true;
                 case "현금으로 할게요":
-                    decision = ResolvePayment(objectiveId, "현금");
+                    decision = ResolvePayment(objectiveId, "현금", hasItems);
                     return true;
                 default:
                     return false;
@@ -78,18 +108,48 @@ namespace Artti.Training
 
         private static Decision ResolveBag(string objectiveId, bool needed)
         {
+            // 변경점: 봉투 단계가 아닐 때 "계산 단계에서 봉투가 필요한지 다시 알려주세요"처럼 안내문 같은 말을 하던 것을
+            //   점원이 받아 주고 지금 단계 질문으로 돌아오는 말로 바꿨다(단계 진행은 예전과 같음)
             if (objectiveId != "extras")
-                return Stay("계산 단계에서 봉투가 필요한지 다시 알려주세요.", YesNoCards);
+            {
+                switch (objectiveId)
+                {
+                    case "greeting":
+                    case "select_items":
+                        return Stay(needed ? "네, 봉투는 계산할 때 챙겨 드릴게요. 더 필요한 물건 있으세요?"
+                                           : "네, 봉투 없이 드릴게요. 더 필요한 물건 있으세요?", YesNoCards);
+                    case "checkout":
+                        return Stay(needed ? "네, 봉투에 담아 드릴게요. 결제는 어떻게 하시겠어요?"
+                                           : "네, 봉투 없이 드릴게요. 결제는 어떻게 하시겠어요?", PaymentCards);
+                    default:
+                        return Stay("계산이 모두 끝났어요. 감사합니다.", FarewellCards);
+                }
+            }
 
             var bagLine = needed ? "네, 봉투에 담아드릴게요." : "네, 봉투 없이 준비할게요.";
             return CompleteCurrent("extras",
                 $"{bagLine}\n카드와 현금 중 골라주세요.", PaymentCards);
         }
 
-        private static Decision ResolvePayment(string objectiveId, string method)
+        private static Decision ResolvePayment(string objectiveId, string method, bool hasItems)
         {
+            // 변경점: 결제 단계가 아닐 때 "결제 단계에서 결제 방법을 선택해주세요"라고 하던 것을 자연스러운 대답으로(단계 진행은 예전과 같음)
             if (objectiveId != "checkout")
-                return Stay("결제 단계에서 결제 방법을 선택해주세요.", PaymentCards);
+            {
+                var way = method == "카드" ? "카드로" : "현금으로";
+                switch (objectiveId)
+                {
+                    case "greeting":
+                    case "select_items":
+                        return hasItems
+                            ? Stay($"네, 결제는 {way} 도와드릴게요. 더 필요한 물건 있으세요?", YesNoCards)
+                            : Stay($"네, 결제는 {way} 도와드릴게요. 먼저 사실 물건을 골라 주세요.", ItemCards);
+                    case "extras":
+                        return Stay($"네, 결제는 {way} 도와드릴게요. 그 전에 봉투 필요하세요?", YesNoCards);
+                    default:
+                        return Stay("결제는 이미 끝났어요. 감사합니다.", FarewellCards);
+                }
+            }
 
             return CompleteCurrent("checkout",
                 $"네, {method} 결제가 완료됐습니다. 이용해 주셔서 감사합니다.", FarewellCards);
@@ -152,7 +212,8 @@ namespace Artti.Training
                         ? CompleteCurrent("select_items", "네, 계산 도와드릴게요. 봉투 필요하세요?", YesNoCards)
                         : Stay("먼저 계산할 상품을 골라주세요.", ItemCards);
                 case "extras":
-                    return Stay("계산 전에 봉투가 필요한지 알려주세요.", YesNoCards);
+                    // 변경점: "계산 전에 봉투가 필요한지 알려주세요"를 누를 때마다 되풀이하던 것을 점원 말투로
+                    return Stay("네, 계산해 드릴게요. 그 전에 봉투 필요하세요?", YesNoCards);
                 case "checkout":
                     return Stay("네, 결제는 카드와 현금 중 무엇으로 하시겠어요?", PaymentCards);
                 default:
