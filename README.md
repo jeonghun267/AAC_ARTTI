@@ -53,23 +53,7 @@
 
 ## 시스템 구조
 
-```mermaid
-flowchart LR
-    subgraph App["Unity 앱 (Android)"]
-        P[프로필 선택] --> M[모드 선택]
-        M --> T[말하기 훈련]
-        M --> A[AR 현장]
-        T --> R[리포트]
-        DB[(AAC 카드 DB<br/>ScriptableObject)]
-        T -.-> DB
-        A -.-> DB
-    end
-
-    T -- 발화 녹음 --> STT[LAN STT 서버<br/>+ Android 음성 인식 폴백]
-    T -- 대화 턴 --> G[Gemini 2.5 Flash<br/>function calling]
-    T -- 점원 대사 --> TTS[Google Cloud TTS]
-    A -- 간판 사진 --> OCR[ML Kit OCR<br/>기기 내 실행]
-```
+![ARTTI 시스템 아키텍처](docs/images/artti_architecture.png)
 
 ## 기술 스택
 
